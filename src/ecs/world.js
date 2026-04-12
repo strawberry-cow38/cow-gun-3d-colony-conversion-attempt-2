@@ -1,0 +1,224 @@
+/**
+ * Handwritten archetype-style ECS.
+ *
+ * - Entity = packed 32-bit int (lower 16 bits = slot index, upper 16 = generation).
+ * - Component = name + default-value factory.
+ * - Archetype = unique sorted set of component names; stores parallel arrays per
+ *   component (SoA layout) for cache-friendly iteration.
+ * - Query = iterate all archetypes whose set is a superset of the query set.
+ *
+ * Scope: this module owns entity lifecycle, component registry, archetype storage,
+ * and queries. Systems / scheduling / dirty bus live elsewhere.
+ */
+
+const SLOT_BITS = 16;
+const SLOT_MASK = (1 << SLOT_BITS) - 1;
+
+/** @typedef {number} EntityId  packed (slot|gen) */
+
+/**
+ * @template T
+ * @typedef {{ name: string, factory: () => T }} ComponentDef
+ */
+
+export class World {
+  constructor() {
+    /** @type {Map<string, ComponentDef<any>>} */
+    this.components = new Map();
+    /** @type {Map<string, Archetype>} */
+    this.archetypes = new Map();
+    /** Slots: index → { gen, archetype, row } | null. */
+    this.slots = [];
+    /** Free slot indices for recycling. */
+    this.freeSlots = [];
+  }
+
+  /**
+   * Define a component type.
+   * @template T
+   * @param {string} name
+   * @param {() => T} factory  default-value factory; called per entity.
+   * @returns {ComponentDef<T>}
+   */
+  defineComponent(name, factory) {
+    if (this.components.has(name)) {
+      throw new Error(`component ${name} already defined`);
+    }
+    const def = { name, factory };
+    this.components.set(name, def);
+    return def;
+  }
+
+  /**
+   * Spawn an entity with the given component values.
+   * Pass component names as keys; values are merged onto the component's default.
+   * @param {Record<string, object>} initial
+   * @returns {EntityId}
+   */
+  spawn(initial = {}) {
+    const names = Object.keys(initial).sort();
+    for (const name of names) {
+      if (!this.components.has(name)) throw new Error(`unknown component ${name}`);
+    }
+    const archetype = this.#getOrCreateArchetype(names);
+
+    let slotIndex;
+    if (this.freeSlots.length > 0) {
+      slotIndex = /** @type {number} */ (this.freeSlots.pop());
+    } else {
+      slotIndex = this.slots.length;
+      this.slots.push(null);
+    }
+    const prev = this.slots[slotIndex];
+    const gen = prev ? (prev.gen + 1) & SLOT_MASK : 1;
+
+    const row = archetype.allocRow(slotIndex);
+    for (const name of names) {
+      const def = /** @type {ComponentDef<any>} */ (this.components.get(name));
+      const value = { ...def.factory(), ...initial[name] };
+      const col = /** @type {any[]} */ (archetype.columns.get(name));
+      col[row] = value;
+    }
+    this.slots[slotIndex] = { gen, archetype, row };
+
+    return slotIndex | (gen << SLOT_BITS);
+  }
+
+  /**
+   * Despawn an entity. Safe to call with a stale id (no-op).
+   * @param {EntityId} id
+   */
+  despawn(id) {
+    const slot = this.#resolve(id);
+    if (!slot) return;
+    const { archetype, row } = slot;
+    if (!archetype) return;
+    const movedSlotIndex = archetype.freeRow(row);
+    if (movedSlotIndex !== -1) {
+      const moved = this.slots[movedSlotIndex];
+      if (moved) moved.row = row;
+    }
+    const slotIndex = id & SLOT_MASK;
+    const gen = (id >>> SLOT_BITS) & SLOT_MASK;
+    this.slots[slotIndex] = { gen, archetype: null, row: -1 };
+    this.freeSlots.push(slotIndex);
+  }
+
+  /**
+   * Get a component value for an entity. Returns undefined if missing or stale.
+   * @param {EntityId} id
+   * @param {string} name
+   */
+  get(id, name) {
+    const slot = this.#resolve(id);
+    if (!slot || !slot.archetype) return undefined;
+    const col = slot.archetype.columns.get(name);
+    return col ? col[slot.row] : undefined;
+  }
+
+  /**
+   * Query all entities that have ALL of the given components.
+   * Yields { id, components: {name: value, ...} } per match.
+   * @param {string[]} names
+   */
+  *query(names) {
+    const sorted = [...names].sort();
+    for (const archetype of this.archetypes.values()) {
+      if (!archetype.has(sorted)) continue;
+      const cols = sorted.map((n) => /** @type {any[]} */ (archetype.columns.get(n)));
+      for (let row = 0; row < archetype.size; row++) {
+        const slotIndex = archetype.rowToSlot[row];
+        const slot = this.slots[slotIndex];
+        if (!slot) continue;
+        /** @type {Record<string, any>} */
+        const components = {};
+        for (let i = 0; i < sorted.length; i++) components[sorted[i]] = cols[i][row];
+        yield { id: slotIndex | (slot.gen << SLOT_BITS), components };
+      }
+    }
+  }
+
+  /** Total live entity count. */
+  get entityCount() {
+    let n = 0;
+    for (const a of this.archetypes.values()) n += a.size;
+    return n;
+  }
+
+  /**
+   * @param {EntityId} id
+   * @returns {{ gen: number, archetype: Archetype | null, row: number } | null}
+   */
+  #resolve(id) {
+    const slotIndex = id & SLOT_MASK;
+    const gen = (id >>> SLOT_BITS) & SLOT_MASK;
+    const slot = this.slots[slotIndex];
+    if (!slot || slot.gen !== gen || slot.archetype === null) return null;
+    return slot;
+  }
+
+  /** @param {string[]} sortedNames */
+  #getOrCreateArchetype(sortedNames) {
+    const key = sortedNames.join('|');
+    let a = this.archetypes.get(key);
+    if (!a) {
+      a = new Archetype(sortedNames);
+      this.archetypes.set(key, a);
+    }
+    return a;
+  }
+}
+
+/**
+ * One archetype = one unique sorted component set.
+ * Stores rows of component values in parallel arrays, one per component.
+ */
+class Archetype {
+  /** @param {string[]} sortedNames */
+  constructor(sortedNames) {
+    this.names = sortedNames;
+    this.nameSet = new Set(sortedNames);
+    /** @type {Map<string, any[]>} */
+    this.columns = new Map();
+    for (const n of sortedNames) this.columns.set(n, []);
+    /** row index → entity slot index */
+    this.rowToSlot = [];
+    this.size = 0;
+  }
+
+  /** @param {string[]} sortedQueryNames */
+  has(sortedQueryNames) {
+    for (const n of sortedQueryNames) if (!this.nameSet.has(n)) return false;
+    return true;
+  }
+
+  /** @param {number} slotIndex */
+  allocRow(slotIndex) {
+    const row = this.size++;
+    this.rowToSlot[row] = slotIndex;
+    for (const col of this.columns.values()) col[row] = undefined;
+    return row;
+  }
+
+  /**
+   * Free a row using swap-with-last. Returns the slot index that was moved
+   * into this row's spot (or -1 if no swap happened).
+   * @param {number} row
+   */
+  freeRow(row) {
+    const last = --this.size;
+    if (row === last) {
+      for (const col of this.columns.values()) col[last] = undefined;
+      this.rowToSlot[last] = -1;
+      return -1;
+    }
+    for (const col of this.columns.values()) {
+      col[row] = col[last];
+      col[last] = undefined;
+    }
+    const movedSlot = this.rowToSlot[last];
+    this.rowToSlot[row] = movedSlot;
+    this.rowToSlot[last] = -1;
+    return movedSlot;
+  }
+}

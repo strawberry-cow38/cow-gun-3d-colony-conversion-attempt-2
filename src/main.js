@@ -1,50 +1,75 @@
-import * as THREE from 'three';
+/**
+ * Phase 1 entry: ECS + 30Hz sim loop + stress test of 1000 entities.
+ *
+ * Wires:
+ *   - World (ECS)
+ *   - Scheduler (tier-based system runner)
+ *   - SimLoop (fixed-step 30Hz with render alpha)
+ *   - StressInstancer (renders all StressViz entities as InstancedMesh cubes)
+ *   - HUD overlay (sim Hz, render FPS, per-system ms)
+ */
+
+import { registerPhase1Components } from './components/index.js';
+import { Scheduler } from './ecs/schedule.js';
+import { World } from './ecs/world.js';
+import { createScene } from './render/scene.js';
+import { createStressInstancer } from './render/stressInstancer.js';
+import { SimLoop } from './sim/loop.js';
+import { applyVelocity, snapshotPositions, spawnStressEntities, stressBounce } from './stress.js';
+
+const STRESS_COUNT = 1000;
+
+const world = new World();
+registerPhase1Components(world);
+
+const scheduler = new Scheduler();
+scheduler.add(snapshotPositions);
+scheduler.add(applyVelocity);
+scheduler.add(stressBounce);
+
+spawnStressEntities(world, STRESS_COUNT);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
+const { renderer, scene, camera } = createScene(canvas);
+const stressInstancer = createStressInstancer(scene, STRESS_COUNT);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight, false);
+const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
+let renderFrameCount = 0;
+let renderFpsSampleStart = performance.now();
+let measuredFps = 0;
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a22);
-
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(3, 3, 3);
-camera.lookAt(0, 0, 0);
-
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshStandardMaterial({ color: 0xff66aa }),
-);
-scene.add(cube);
-
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(20, 20),
-  new THREE.MeshStandardMaterial({ color: 0x223344 }),
-);
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.5;
-scene.add(ground);
-
-const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-scene.add(ambient);
-const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-sun.position.set(5, 10, 5);
-scene.add(sun);
-
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
+const loop = new SimLoop({
+  step(dt, tick) {
+    scheduler.tick(world, tick, dt);
+  },
+  render(alpha) {
+    stressInstancer.update(world, alpha);
+    renderer.render(scene, camera);
+    renderFrameCount++;
+    const now = performance.now();
+    if (now - renderFpsSampleStart >= 500) {
+      measuredFps = (renderFrameCount * 1000) / (now - renderFpsSampleStart);
+      renderFrameCount = 0;
+      renderFpsSampleStart = now;
+      updateHud();
+    }
+  },
 });
 
-const clock = new THREE.Clock();
-function frame() {
-  const dt = clock.getDelta();
-  cube.rotation.y += dt * 0.6;
-  cube.rotation.x += dt * 0.3;
-  renderer.render(scene, camera);
-  requestAnimationFrame(frame);
+function updateHud() {
+  const lines = [
+    'phase 1: ECS + 30Hz sim',
+    `entities: ${world.entityCount}  archetypes: ${world.archetypes.size}`,
+    `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
+    `render: ${measuredFps.toFixed(0)} fps`,
+    'systems (avg ms):',
+  ];
+  for (const sys of scheduler.systems) {
+    const avg = scheduler.avgMs.get(sys.name) ?? 0;
+    lines.push(`  ${sys.name}: ${avg.toFixed(3)}ms`);
+  }
+  hud.innerText = lines.join('\n');
 }
-frame();
+
+loop.start();
+updateHud();

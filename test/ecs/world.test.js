@@ -1,0 +1,93 @@
+import { describe, expect, it } from 'vitest';
+import { World } from '../../src/ecs/world.js';
+
+describe('World', () => {
+  it('spawns and reads components', () => {
+    const w = new World();
+    w.defineComponent('Position', () => ({ x: 0, y: 0, z: 0 }));
+    const e = w.spawn({ Position: { x: 5 } });
+    expect(w.get(e, 'Position')).toEqual({ x: 5, y: 0, z: 0 });
+  });
+
+  it('throws on unknown component', () => {
+    const w = new World();
+    expect(() => w.spawn({ Nope: {} })).toThrow(/unknown component/);
+  });
+
+  it('throws on duplicate component definition', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({}));
+    expect(() => w.defineComponent('A', () => ({}))).toThrow(/already defined/);
+  });
+
+  it('despawns and recycles slots with bumped generation', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({ v: 0 }));
+    const e1 = w.spawn({ A: { v: 1 } });
+    w.despawn(e1);
+    const e2 = w.spawn({ A: { v: 2 } });
+    expect(w.get(e1, 'A')).toBeUndefined();
+    expect(w.get(e2, 'A')).toEqual({ v: 2 });
+    expect(e1).not.toBe(e2);
+  });
+
+  it('despawn is no-op on stale id', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({}));
+    const e = w.spawn({ A: {} });
+    w.despawn(e);
+    expect(() => w.despawn(e)).not.toThrow();
+  });
+
+  it('groups entities into archetypes by component set', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({}));
+    w.defineComponent('B', () => ({}));
+    w.spawn({ A: {} });
+    w.spawn({ A: {} });
+    w.spawn({ A: {}, B: {} });
+    expect(w.archetypes.size).toBe(2);
+  });
+
+  it('query yields entities matching all requested components', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({ tag: 'a' }));
+    w.defineComponent('B', () => ({ tag: 'b' }));
+    w.spawn({ A: {} });
+    const ab1 = w.spawn({ A: {}, B: {} });
+    const ab2 = w.spawn({ A: {}, B: {} });
+
+    const ids = [...w.query(['A', 'B'])].map((m) => m.id).sort();
+    expect(ids).toEqual([ab1, ab2].sort());
+  });
+
+  it('query yields the same component objects (mutation persists)', () => {
+    const w = new World();
+    w.defineComponent('Pos', () => ({ x: 0 }));
+    w.spawn({ Pos: { x: 1 } });
+    for (const { components } of w.query(['Pos'])) components.Pos.x = 99;
+    for (const { components } of w.query(['Pos'])) expect(components.Pos.x).toBe(99);
+  });
+
+  it('despawn does not corrupt other entities in same archetype (swap-with-last)', () => {
+    const w = new World();
+    w.defineComponent('V', () => ({ v: 0 }));
+    const ids = [];
+    for (let i = 0; i < 5; i++) ids.push(w.spawn({ V: { v: i } }));
+    w.despawn(ids[1]);
+    w.despawn(ids[3]);
+    const survivors = [...w.query(['V'])].map((m) => m.components.V.v).sort();
+    expect(survivors).toEqual([0, 2, 4]);
+    expect(w.entityCount).toBe(3);
+  });
+
+  it('entityCount tracks live entities', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({}));
+    expect(w.entityCount).toBe(0);
+    const e = w.spawn({ A: {} });
+    expect(w.entityCount).toBe(1);
+    w.despawn(e);
+    expect(w.entityCount).toBe(0);
+  });
+});
