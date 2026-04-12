@@ -1,10 +1,11 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v1):
+ * Format (v2):
  * {
- *   version: 1,
- *   tileGrid: { W, H, elevation: number[], biome: number[] }
+ *   version: 2,
+ *   tileGrid: { W, H, elevation: number[], biome: number[] },
+ *   cows: [ { name, position: {x,y,z}, hunger: number } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -17,9 +18,26 @@ import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { TileGrid } from './tileGrid.js';
 
 /**
- * @param {TileGrid} tileGrid
+ * @typedef SerializedCow
+ * @property {string} name
+ * @property {{ x: number, y: number, z: number }} position
+ * @property {number} hunger
  */
-export function serializeState(tileGrid) {
+
+/**
+ * @param {TileGrid} tileGrid
+ * @param {import('../ecs/world.js').World} world
+ */
+export function serializeState(tileGrid, world) {
+  /** @type {SerializedCow[]} */
+  const cows = [];
+  for (const { components } of world.query(['Cow', 'Position', 'Hunger', 'Brain'])) {
+    cows.push({
+      name: components.Brain.name,
+      position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
+      hunger: components.Hunger.value,
+    });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -28,6 +46,7 @@ export function serializeState(tileGrid) {
       elevation: Array.from(tileGrid.elevation),
       biome: Array.from(tileGrid.biome),
     },
+    cows,
   };
 }
 
@@ -42,10 +61,35 @@ export function hydrateTileGrid(state) {
 }
 
 /**
+ * Spawn cow entities from a (migrated) save state. Existing cows in the world
+ * are NOT removed — caller is responsible for clearing the world first if it
+ * wants a clean replace.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ cows?: SerializedCow[] }} state
+ */
+export function hydrateCows(world, state) {
+  const cows = state.cows ?? [];
+  for (const c of cows) {
+    world.spawn({
+      Cow: {},
+      Position: { ...c.position },
+      PrevPosition: { ...c.position },
+      Velocity: { x: 0, y: 0, z: 0 },
+      Hunger: { value: c.hunger },
+      Brain: { name: c.name },
+      Job: { kind: 'none', state: 'idle', payload: {} },
+      Path: { steps: [], index: 0 },
+      CowViz: {},
+    });
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[] } }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[] }, cows: SerializedCow[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

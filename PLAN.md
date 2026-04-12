@@ -75,16 +75,21 @@ Make the 3D world feel like a place.
 
 ---
 
-## Phase 3 — First cow
+## Phase 3 — First cow *(done)*
 
 One pawn doing one thing. The smallest interesting simulation.
 
-- [ ] Pathfinding: A* on tile grid, with cached paths + dirty invalidation on terrain change
-- [ ] `Cow` archetype: `Position`, `Velocity`, `Hunger`, `Brain`, `JobAssigned?`
-- [ ] Job board: queue of jobs, assignment system finds nearest free worker
-- [ ] First job: `Wander` (pick random tile, walk there, idle 2s, repeat)
-- [ ] Cow render: low-poly box (or capsule) with name label, walking animation = bobbing
-- [ ] Selection: click cow to show its current job + stats in a debug panel
+- [x] Pathfinding: A* on tile grid, with cached paths + dirty invalidation on terrain change
+- [x] `Cow` archetype: `Position`, `Velocity`, `Hunger`, `Brain`, `JobAssigned?`
+- [x] Job board: queue of jobs, assignment system finds nearest free worker
+- [x] First job: `Wander` (pick random tile, walk there, idle 2s, repeat)
+- [x] Cow render: low-poly box (or capsule) with name label, walking animation = bobbing
+- [x] Selection: click cow to show its current job + stats in a debug panel
+
+Notes deferred to later phases:
+- Name label in 3D (sprite/billboard) — Phase 6 with mood/traits HUD.
+- Real jobs on the JobBoard — Phase 4 (chop/haul/build). Phase 3 uses board scaffolding but cow synthesizes Wander locally as fallback.
+- Fine-grained pathfind cache invalidation — Phase 4 when terrain becomes mutable.
 
 **Definition of done:** One cow spawned, wanders the map autonomously, click to see its job + stats. Save/load preserves the cow.
 

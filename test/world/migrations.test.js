@@ -16,8 +16,20 @@ describe('migration runner', () => {
     expect(out.tileGrid.biome).toEqual([0, 0, 0, 0]);
   });
 
+  it('upgrades a v1 save by adding an empty cows array', () => {
+    const v1 = { version: 1, tileGrid: { W: 2, H: 1, elevation: [0, 0], biome: [0, 0] } };
+    const out = runMigrations(v1);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.cows).toEqual([]);
+    expect(out.tileGrid).toEqual(v1.tileGrid);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
-    const cur = { version: CURRENT_VERSION, tileGrid: { W: 1, H: 1, elevation: [0], biome: [0] } };
+    const cur = {
+      version: CURRENT_VERSION,
+      tileGrid: { W: 1, H: 1, elevation: [0], biome: [0] },
+      cows: [],
+    };
     const out = runMigrations(cur);
     expect(out).toEqual(cur);
   });
