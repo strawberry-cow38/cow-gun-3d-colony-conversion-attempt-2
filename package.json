@@ -1,0 +1,30 @@
+{
+  "name": "cow-gun-3d-colony-conversion-attempt-2",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "^0.171.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/three": "^0.171.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  }
+}
