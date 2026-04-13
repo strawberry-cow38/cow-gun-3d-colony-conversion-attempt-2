@@ -42,6 +42,15 @@ const COW_PERSONAL_SPACE_SQ = 20 * 20; // head-on crowding → slow down
 const AVOID_STRENGTH = 0.45; // lateral nudge weight before re-normalizing
 const SLOW_FACTOR = 0.7; // "excuse me, fellow cow" speed when blocked
 
+// Spatial bucketing for the avoidance scan. Cell is the sense radius so every
+// cow that could possibly affect another lives in self + 8 surrounding cells.
+// Integer key encoding (ix+OFFSET)*STRIDE + (iz+OFFSET) keeps Map lookups
+// hashing cheap numbers instead of strings; STRIDE=1024 supports signed tile
+// offsets far larger than any sane grid.
+const NEIGHBOR_CELL_SIZE = 32; // == sqrt(COW_SENSE_RADIUS_SQ)
+const NEIGHBOR_CELL_OFFSET = 512;
+const NEIGHBOR_CELL_STRIDE = 1024;
+
 /**
  * @typedef PathDeps
  * @property {import('../world/tileGrid.js').TileGrid} grid
@@ -669,18 +678,31 @@ export function makeCowFollowPathSystem(deps) {
     name: 'cowFollowPath',
     tier: 'every',
     run(world) {
-      // Snapshot cow positions so each cow can steer around the others cheaply
-      // (O(N²) scan is fine at colony scale — swap in a spatial hash later).
+      // Snapshot cow positions into a spatial hash so the avoidance scan hits
+      // O(N) on average instead of O(N²). Cell size is the sense radius, so
+      // only self + 8 neighbor cells ever need to be walked per cow.
       const drivenId = deps.drivingCowId?.() ?? null;
       /** @type {{ id: number, pos: {x:number,y:number,z:number}, vel: {x:number,y:number,z:number}, path: any }[]} */
       const herd = [];
+      /** @type {Map<number, typeof herd>} */
+      const cells = new Map();
       for (const { id, components } of world.query(['Cow', 'Position', 'Velocity', 'Path'])) {
-        herd.push({
+        const entry = {
           id,
           pos: components.Position,
           vel: components.Velocity,
           path: components.Path,
-        });
+        };
+        herd.push(entry);
+        const ix = Math.floor(entry.pos.x / NEIGHBOR_CELL_SIZE) + NEIGHBOR_CELL_OFFSET;
+        const iz = Math.floor(entry.pos.z / NEIGHBOR_CELL_SIZE) + NEIGHBOR_CELL_OFFSET;
+        const key = ix * NEIGHBOR_CELL_STRIDE + iz;
+        let bucket = cells.get(key);
+        if (!bucket) {
+          bucket = [];
+          cells.set(key, bucket);
+        }
+        bucket.push(entry);
       }
 
       for (const self of herd) {
@@ -722,27 +744,36 @@ export function makeCowFollowPathSystem(deps) {
 
         // Soft avoidance: nudge sideways when a neighbor sits roughly ahead of
         // us, slow down when one is crowding our personal space head-on.
+        // Only walk neighbor cells in the spatial hash — 3x3 max.
         let nudgeX = 0;
         let nudgeZ = 0;
         let crowded = false;
-        for (const other of herd) {
-          if (other === self) continue;
-          const ex = other.pos.x - pos.x;
-          const ez = other.pos.z - pos.z;
-          const d2 = ex * ex + ez * ez;
-          if (d2 < 0.001 || d2 > COW_SENSE_RADIUS_SQ) continue;
-          const d = Math.sqrt(d2);
-          // Only react to neighbors roughly in the direction we're going.
-          const fwdDot = (ex * nx + ez * nz) / d;
-          if (fwdDot < 0.2) continue;
-          const weight = 1 - d / Math.sqrt(COW_SENSE_RADIUS_SQ);
-          // Nudge perpendicular to our desired heading, flipping side based on
-          // which side the other cow sits so we drift around them.
-          const cross = nx * ez - nz * ex;
-          const side = cross >= 0 ? 1 : -1;
-          nudgeX += -nz * side * weight;
-          nudgeZ += nx * side * weight;
-          if (d2 < COW_PERSONAL_SPACE_SQ && fwdDot > 0.5) crowded = true;
+        const myIx = Math.floor(pos.x / NEIGHBOR_CELL_SIZE) + NEIGHBOR_CELL_OFFSET;
+        const myIz = Math.floor(pos.z / NEIGHBOR_CELL_SIZE) + NEIGHBOR_CELL_OFFSET;
+        for (let cdx = -1; cdx <= 1; cdx++) {
+          for (let cdz = -1; cdz <= 1; cdz++) {
+            const bucket = cells.get((myIx + cdx) * NEIGHBOR_CELL_STRIDE + (myIz + cdz));
+            if (!bucket) continue;
+            for (const other of bucket) {
+              if (other === self) continue;
+              const ex = other.pos.x - pos.x;
+              const ez = other.pos.z - pos.z;
+              const d2 = ex * ex + ez * ez;
+              if (d2 < 0.001 || d2 > COW_SENSE_RADIUS_SQ) continue;
+              const d = Math.sqrt(d2);
+              // Only react to neighbors roughly in the direction we're going.
+              const fwdDot = (ex * nx + ez * nz) / d;
+              if (fwdDot < 0.2) continue;
+              const weight = 1 - d / Math.sqrt(COW_SENSE_RADIUS_SQ);
+              // Nudge perpendicular to our desired heading, flipping side
+              // based on which side the other cow sits so we drift around.
+              const cross = nx * ez - nz * ex;
+              const side = cross >= 0 ? 1 : -1;
+              nudgeX += -nz * side * weight;
+              nudgeZ += nx * side * weight;
+              if (d2 < COW_PERSONAL_SPACE_SQ && fwdDot > 0.5) crowded = true;
+            }
+          }
         }
 
         nx += nudgeX * AVOID_STRENGTH;
