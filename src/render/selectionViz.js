@@ -14,13 +14,17 @@
  */
 
 import * as THREE from 'three';
-import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
 const ARROW_COLOR = 0xffe14a;
 const NEXT_LINE_COLOR = 0x4ac0ff;
 const FULL_PATH_COLOR = 0xffa14a;
+const WAYPOINT_COLOR = 0xff4ac0;
 const PATH_LINE_CAPACITY = 4096; // plenty for any realistic path
+const WAYPOINT_CAPACITY = 64;
+const WAYPOINT_RADIUS = TILE_SIZE * 0.35;
 const LINE_GROUND_CLEARANCE = 0.1 * UNITS_PER_METER;
+const WAYPOINT_CLEARANCE = 0.2 * UNITS_PER_METER;
 const ARROW_HEAD_HEIGHT = 0.35 * UNITS_PER_METER;
 const ARROW_HEAD_RADIUS = 0.18 * UNITS_PER_METER;
 const ARROW_STEM_HEIGHT = 0.35 * UNITS_PER_METER;
@@ -57,18 +61,32 @@ export function createSelectionViz(scene) {
   fullLine.visible = false;
   scene.add(fullLine);
 
+  // Pink diamond waypoint markers — 4 segments per marker = 8 verts/wp.
+  const wpGeo = new THREE.BufferGeometry();
+  const wpPositions = new Float32Array(WAYPOINT_CAPACITY * 8 * 3);
+  wpGeo.setAttribute('position', new THREE.BufferAttribute(wpPositions, 3));
+  wpGeo.setDrawRange(0, 0);
+  const wpLines = new THREE.LineSegments(
+    wpGeo,
+    new THREE.LineBasicMaterial({ color: WAYPOINT_COLOR }),
+  );
+  wpLines.frustumCulled = false;
+  wpLines.visible = false;
+  scene.add(wpLines);
+
   /**
    * @param {import('../ecs/world.js').World} world
    * @param {number | null} selectedCow
    * @param {number} alpha
    * @param {number} timeSec
-   * @param {{ W: number, H: number }} grid
+   * @param {import('../world/tileGrid.js').TileGrid} grid
    */
   function update(world, selectedCow, alpha, timeSec, grid) {
     if (selectedCow === null) {
       arrow.visible = false;
       nextLine.visible = false;
       fullLine.visible = false;
+      wpLines.visible = false;
       return;
     }
     const pos = world.get(selectedCow, 'Position');
@@ -77,6 +95,7 @@ export function createSelectionViz(scene) {
       arrow.visible = false;
       nextLine.visible = false;
       fullLine.visible = false;
+      wpLines.visible = false;
       return;
     }
     const x = prev.x + (pos.x - prev.x) * alpha;
@@ -87,6 +106,30 @@ export function createSelectionViz(scene) {
     arrow.position.set(x, y + ARROW_HOVER_OFFSET + bob, z);
     arrow.rotation.y = timeSec * ARROW_SPIN_SPEED;
     arrow.visible = true;
+
+    // Pink waypoint diamonds — whether or not a path is active right now
+    // (shift-queued waypoints still want to render).
+    const job = world.get(selectedCow, 'Job');
+    const waypoints = /** @type {{i:number,j:number}[]} */ (job?.payload?.waypoints ?? []);
+    const wpCount = Math.min(waypoints.length, WAYPOINT_CAPACITY);
+    for (let n = 0; n < wpCount; n++) {
+      const wp = waypoints[n];
+      const tw = tileToWorld(wp.i, wp.j, grid.W, grid.H);
+      const wy = grid.getElevation(wp.i, wp.j) + WAYPOINT_CLEARANCE;
+      const off = n * 8 * 3;
+      // 4 tips of the diamond, then 4 segments connecting them (E-N-W-S-E).
+      const E = [tw.x + WAYPOINT_RADIUS, wy, tw.z];
+      const N = [tw.x, wy, tw.z - WAYPOINT_RADIUS];
+      const W_ = [tw.x - WAYPOINT_RADIUS, wy, tw.z];
+      const S = [tw.x, wy, tw.z + WAYPOINT_RADIUS];
+      writeSegment(wpPositions, off, E, N);
+      writeSegment(wpPositions, off + 6, N, W_);
+      writeSegment(wpPositions, off + 12, W_, S);
+      writeSegment(wpPositions, off + 18, S, E);
+    }
+    wpGeo.attributes.position.needsUpdate = true;
+    wpGeo.setDrawRange(0, wpCount * 8);
+    wpLines.visible = wpCount > 0;
 
     const path = world.get(selectedCow, 'Path');
     if (!path || path.index >= path.steps.length) {
@@ -126,7 +169,20 @@ export function createSelectionViz(scene) {
     fullLine.visible = vertexCount >= 2;
   }
 
-  return { arrow, nextLine, fullLine, update };
+  return { arrow, nextLine, fullLine, wpLines, update };
+}
+
+/**
+ * @param {Float32Array} out @param {number} off
+ * @param {number[]} a @param {number[]} b
+ */
+function writeSegment(out, off, a, b) {
+  out[off] = a[0];
+  out[off + 1] = a[1];
+  out[off + 2] = a[2];
+  out[off + 3] = b[0];
+  out[off + 4] = b[1];
+  out[off + 5] = b[2];
 }
 
 function buildArrow() {

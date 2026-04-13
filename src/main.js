@@ -147,7 +147,7 @@ const loop = new SimLoop({
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec);
-    selectionViz.update(world, selectedCow, alpha, tSec, { W: gridW, H: gridH });
+    selectionViz.update(world, selectedCow, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
@@ -228,7 +228,7 @@ function updateHud() {
     ...cowLines,
     '',
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
-    'LMB = select cow/tile, RMB (with cow selected) = move-to tile',
+    'LMB = select cow/tile, RMB = move-to, Shift+RMB = queue waypoint',
     'N = spawn cow at last clicked tile',
     'K = save, L = load',
   ];

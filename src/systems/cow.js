@@ -48,8 +48,15 @@ export function makeCowBrainSystem(deps) {
         }
 
         if (job.kind === 'move') {
-          // Player-issued move: FollowPath consumes Path.steps; when empty
-          // we clear the job so wander resumes.
+          // Player-issued move. Pop any waypoint boundary we've passed so the
+          // selection viz stops drawing markers for already-reached steps.
+          const waypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
+          const legEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
+          while (legEnds.length > 0 && path.index > legEnds[0]) {
+            waypoints.shift();
+            legEnds.shift();
+          }
+          // When the full chained path is consumed, revert so wander resumes.
           if (path.index >= path.steps.length) {
             job.kind = 'none';
             job.state = 'idle';

@@ -4,6 +4,12 @@
  * cleans the job back to 'none' once the path is consumed, so wander
  * resumes naturally.
  *
+ * Shift-modifier queues waypoints: each shift-RMB appends another tile
+ * to `Job.payload.waypoints` and rebuilds the chained A* path from the
+ * cow's current tile through every pending waypoint. `Job.payload.legEnds`
+ * records the step-index boundaries so the brain can pop completed
+ * waypoints as the cow advances.
+ *
  * Listens for `contextmenu` on the canvas; RtsCamera already preventDefaults
  * the browser menu.
  */
@@ -61,18 +67,52 @@ export class CowMoveCommand {
       return;
     }
 
+    const queuing = e.shiftKey && job.kind === 'move';
+    /** @type {{ i: number, j: number }[]} */
+    const waypoints = queuing ? [...(job.payload.waypoints ?? []), goal] : [goal];
+
     const start = clampToGrid(pos.x, pos.z, this.tileGrid);
-    const route = this.pathCache.find(start, goal);
-    if (!route || route.length === 0) {
-      console.log('[move] no path to', goal);
+    const chained = chainLegs(this.pathCache, start, waypoints);
+    if (!chained) {
+      console.log('[move] no path through waypoints:', waypoints);
       return;
     }
-    path.steps = route;
+    path.steps = chained.steps;
     path.index = 0;
     job.kind = 'move';
     job.state = 'moving';
-    job.payload = { goal };
+    job.payload = { waypoints, legEnds: chained.legEnds };
   }
+}
+
+/**
+ * Chain A* between `start → waypoints[0] → waypoints[1] → …`. Returns the
+ * concatenated step list and the step-index boundary for each leg (inclusive
+ * upper bound: `path.steps[legEnds[k]]` is the k-th waypoint tile). Returns
+ * null if any leg is unreachable.
+ *
+ * Each leg's first step duplicates the previous leg's end tile, so we drop
+ * it when concatenating — except on the very first leg.
+ *
+ * @param {import('../sim/pathfinding.js').PathCache} cache
+ * @param {{ i: number, j: number }} start
+ * @param {{ i: number, j: number }[]} waypoints
+ */
+function chainLegs(cache, start, waypoints) {
+  /** @type {{ i: number, j: number }[]} */
+  const steps = [];
+  /** @type {number[]} */
+  const legEnds = [];
+  let cursor = start;
+  for (const wp of waypoints) {
+    const leg = cache.find(cursor, wp);
+    if (!leg || leg.length === 0) return null;
+    const slice = steps.length === 0 ? leg : leg.slice(1);
+    for (const s of slice) steps.push(s);
+    legEnds.push(steps.length - 1);
+    cursor = wp;
+  }
+  return { steps, legEnds };
 }
 
 /**
