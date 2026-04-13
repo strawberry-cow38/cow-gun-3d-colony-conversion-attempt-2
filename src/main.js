@@ -15,6 +15,7 @@ import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createItemInstancer } from './render/itemInstancer.js';
+import { createItemLabels } from './render/itemLabels.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
 import { RtsCamera } from './render/rtsCamera.js';
@@ -134,6 +135,7 @@ const cowNameTags = createCowNameTags(scene);
 const selectionViz = createSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
 const itemInstancer = createItemInstancer(scene, 1024);
+const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
 
 onWorldChopComplete = () => {
@@ -250,6 +252,7 @@ const loop = new SimLoop({
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
+    itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
     pruneStaleSelections();
     selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);

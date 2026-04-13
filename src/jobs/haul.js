@@ -127,8 +127,84 @@ export function findAndReserveSlot(grid, slots, kind, i, j) {
 }
 
 /**
+ * @typedef StockpileStack
+ * @property {number} itemId
+ * @property {number} i @property {number} j
+ * @property {string} kind
+ * @property {number} count    count at snapshot time (before reservations)
+ */
+
+/**
+ * Snapshot the original counts of every stockpile-tile stack. Using a snapshot
+ * (rather than live counts) keeps the strict-ordering rule in the
+ * consolidation pass from flip-flopping as pass-1 reservations bump slots.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @returns {StockpileStack[]}
+ */
+export function snapshotStockpileStacks(world, grid) {
+  /** @type {StockpileStack[]} */
+  const out = [];
+  for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    if (!grid.isStockpile(a.i, a.j)) continue;
+    out.push({
+      itemId: id,
+      i: a.i,
+      j: a.j,
+      kind: components.Item.kind,
+      count: components.Item.count,
+    });
+  }
+  return out;
+}
+
+/**
+ * Pick a consolidation destination for `src`: the nearest stockpile stack of
+ * the same kind with strictly more units (ties broken by itemId so the pair
+ * only posts one direction and never thrashes), and with room left under cap.
+ *
+ * Mutates `slots` to reserve one unit on the chosen tile.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {Map<number, TileSlotState>} slots
+ * @param {StockpileStack[]} snapshot
+ * @param {StockpileStack} src
+ */
+export function findAndReserveMergeTarget(grid, slots, snapshot, src) {
+  const cap = maxStack(src.kind);
+  let bestIdx = null;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const dst of snapshot) {
+    if (dst.itemId === src.itemId) continue;
+    if (dst.kind !== src.kind) continue;
+    // Strict (count, itemId) ordering: src merges INTO the "larger" partner,
+    // and the reverse pair rejects its half, so the two cows never swap.
+    if (dst.count < src.count) continue;
+    if (dst.count === src.count && dst.itemId <= src.itemId) continue;
+    const dstIdx = grid.idx(dst.i, dst.j);
+    const slot = slots.get(dstIdx);
+    if (!slot || slot.count >= cap) continue;
+    const d = Math.max(Math.abs(dst.i - src.i), Math.abs(dst.j - src.j));
+    if (d < bestD) {
+      bestD = d;
+      bestIdx = dstIdx;
+    }
+  }
+  if (bestIdx === null) return null;
+  const slot = /** @type {TileSlotState} */ (slots.get(bestIdx));
+  slot.count += 1;
+  const ti = bestIdx % grid.W;
+  const tj = (bestIdx - ti) / grid.W;
+  return { i: ti, j: tj };
+}
+
+/**
  * Rare-tier system: scan loose items, post haul jobs. A stack of N yields up
- * to N concurrent haul jobs (capped by available slots).
+ * to N concurrent haul jobs (capped by available slots). Also runs a
+ * consolidation pass that moves units between stockpile tiles to merge same-
+ * kind half-stacks into taller ones.
  *
  * @param {import('./board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -141,6 +217,8 @@ export function makeHaulPostingSystem(board, grid) {
     run(world) {
       const slots = computeStockpileSlots(world, grid, board);
       const targetedCounts = buildHaulTargetedCounts(board);
+
+      // Pass 1: loose items off stockpile → stockpile tiles.
       for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
         const a = components.TileAnchor;
         const item = components.Item;
@@ -149,7 +227,7 @@ export function makeHaulPostingSystem(board, grid) {
         let need = item.count - alreadyClaimed;
         while (need > 0) {
           const target = findAndReserveSlot(grid, slots, item.kind, a.i, a.j);
-          if (!target) break; // no slot for this kind; other items may still fit
+          if (!target) break;
           board.post('haul', {
             itemId: id,
             kind: item.kind,
@@ -158,6 +236,29 @@ export function makeHaulPostingSystem(board, grid) {
             toI: target.i,
             toJ: target.j,
           });
+          targetedCounts.set(id, (targetedCounts.get(id) ?? 0) + 1);
+          need--;
+        }
+      }
+
+      // Pass 2: consolidate existing stockpile stacks. Same-kind partial
+      // stacks migrate one unit at a time into the "canonical" larger stack.
+      const snapshot = snapshotStockpileStacks(world, grid);
+      for (const src of snapshot) {
+        const alreadyClaimed = targetedCounts.get(src.itemId) ?? 0;
+        let need = src.count - alreadyClaimed;
+        while (need > 0) {
+          const target = findAndReserveMergeTarget(grid, slots, snapshot, src);
+          if (!target) break;
+          board.post('haul', {
+            itemId: src.itemId,
+            kind: src.kind,
+            fromI: src.i,
+            fromJ: src.j,
+            toI: target.i,
+            toJ: target.j,
+          });
+          targetedCounts.set(src.itemId, (targetedCounts.get(src.itemId) ?? 0) + 1);
           need--;
         }
       }
