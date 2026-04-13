@@ -369,18 +369,43 @@ function spawnItemAt(i, j, kind) {
  * Flip the `drafted` flag on each cow. Mixed selections all go to "drafted"
  * (so one press never silently drafts half the crowd and un-drafts the rest);
  * if everyone is already drafted, the press releases them.
+ *
+ * Cows transitioning INTO drafted stop immediately — path cleared, velocity
+ * zeroed, job reset. Any jobs they'd claimed (chop/haul/eat) get released
+ * back to the board via the brain on its next tick.
  * @param {number[]} cowIds
  */
 function toggleDraft(cowIds) {
-  const cows = [];
+  const ids = [];
   for (const id of cowIds) {
-    const c = world.get(id, 'Cow');
-    if (c) cows.push(c);
+    if (world.get(id, 'Cow')) ids.push(id);
   }
-  if (cows.length === 0) return;
-  const allDrafted = cows.every((c) => c.drafted === true);
+  if (ids.length === 0) return;
+  const allDrafted = ids.every((id) => world.get(id, 'Cow')?.drafted === true);
   const target = !allDrafted;
-  for (const c of cows) c.drafted = target;
+  for (const id of ids) {
+    const c = world.get(id, 'Cow');
+    if (!c) continue;
+    const becomingDrafted = target === true && c.drafted !== true;
+    c.drafted = target;
+    if (becomingDrafted) {
+      // Stop visually this frame: clear the path so cowFollowPath can't give
+      // them fresh velocity, and zero the current velocity so the next
+      // applyVelocity step doesn't carry them forward. Job cleanup (releasing
+      // chop/haul claims, dropping carried items) happens in the brain's
+      // drafted branch on the next tick using the existing code path.
+      const path = world.get(id, 'Path');
+      const vel = world.get(id, 'Velocity');
+      if (path) {
+        path.steps = [];
+        path.index = 0;
+      }
+      if (vel) {
+        vel.x = 0;
+        vel.z = 0;
+      }
+    }
+  }
 }
 
 /** @param {number} count */
