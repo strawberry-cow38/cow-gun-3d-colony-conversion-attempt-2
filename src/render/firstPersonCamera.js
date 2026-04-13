@@ -54,7 +54,7 @@ export class FirstPersonCamera {
     this.mode = 'spectate';
     const vel = this.world.get(cowId, 'Velocity');
     if (vel && Math.hypot(vel.x, vel.z) > 0.01) {
-      this.yaw = Math.atan2(-vel.x, -vel.z);
+      this.yaw = Math.atan2(vel.x, vel.z);
     }
     this.pitch = 0;
     this.onChange();
@@ -140,16 +140,17 @@ export class FirstPersonCamera {
       if (vel) {
         let dx = 0;
         let dz = 0;
-        if (this.keys.has('KeyW')) dz -= 1;
-        if (this.keys.has('KeyS')) dz += 1;
+        if (this.keys.has('KeyW')) dz += 1;
+        if (this.keys.has('KeyS')) dz -= 1;
         if (this.keys.has('KeyA')) dx -= 1;
         if (this.keys.has('KeyD')) dx += 1;
         if (dx !== 0 || dz !== 0) {
           const len = Math.hypot(dx, dz);
           dx /= len;
           dz /= len;
-          // Rotate input into world coords using the camera yaw basis, same
-          // convention as RtsCamera: W forward = -Z in camera-local space.
+          // FP eye looks along (sin(yaw), 0, cos(yaw)) — forward is +Z local,
+          // right is +X local. (Different sign from RtsCamera because that one
+          // sits behind the focus so its ground-forward is -Z local.)
           const cos = Math.cos(this.yaw);
           const sin = Math.sin(this.yaw);
           const wx = dx * cos + dz * sin;
@@ -174,7 +175,7 @@ export class FirstPersonCamera {
     if (this.mode === 'spectate') {
       const vel = this.world.get(this.cowId, 'Velocity');
       if (vel && Math.hypot(vel.x, vel.z) > 0.01) {
-        viewYaw = Math.atan2(-vel.x, -vel.z);
+        viewYaw = Math.atan2(vel.x, vel.z);
         this.yaw = viewYaw; // remember last facing so takeover starts aligned
       }
       viewPitch = 0;
@@ -197,7 +198,7 @@ export class FirstPersonCamera {
     document.addEventListener('mousemove', (e) => {
       if (this.mode !== 'control') return;
       if (document.pointerLockElement !== this.canvas) return;
-      this.yaw -= e.movementX * MOUSE_SENSITIVITY;
+      this.yaw += e.movementX * MOUSE_SENSITIVITY;
       this.pitch = Math.max(
         -MAX_PITCH,
         Math.min(MAX_PITCH, this.pitch - e.movementY * MOUSE_SENSITIVITY),
