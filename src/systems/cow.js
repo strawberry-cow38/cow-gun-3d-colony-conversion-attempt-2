@@ -109,13 +109,13 @@ export function makeCowBrainSystem(deps) {
 
         if (job.kind === 'wander') {
           if (job.state === 'planning') {
-            const goal = pickRandomWalkable(grid, walkable);
+            const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+            const goal = pickRandomWalkable(grid, walkable, { i: si, j: sj });
             if (!goal) {
               job.state = 'idle';
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
               continue;
             }
-            const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
             const route = paths.find({ i: si, j: sj }, goal);
             if (!route || route.length === 0) {
               job.state = 'idle';
