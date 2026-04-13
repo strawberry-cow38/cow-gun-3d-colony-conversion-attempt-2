@@ -511,6 +511,12 @@ addEventListener('keydown', async (e) => {
   // First-person: H toggles FP on/off, Q/E cycle the viewed cow.
   if (e.code === 'KeyH') {
     if (fpCamera.active) {
+      // Recenter overhead on the cow we were just watching so exiting doesn't
+      // dump us back at whatever corner of the map we entered FP from.
+      if (fpCamera.cowId !== null) {
+        const viewedPos = world.get(fpCamera.cowId, 'Position');
+        if (viewedPos) rts.focus.set(viewedPos.x, viewedPos.y, viewedPos.z);
+      }
       fpCamera.exit();
     } else if (primaryCow !== null) {
       fpCamera.enter(primaryCow);
