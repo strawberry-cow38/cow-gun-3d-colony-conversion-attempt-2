@@ -154,6 +154,41 @@ export function playThunder(ctx, dest) {
   return dur;
 }
 
+/**
+ * Wooden door creak. A short bandpass-noise burst with the filter center
+ * sweeping up slightly — suggests a hinge rotating under load. Tight Q keeps
+ * it clearly pitched so it reads as "door", not just more world noise.
+ *
+ * @type {SfxGenerator}
+ */
+export function playDoor(ctx, dest) {
+  const now = ctx.currentTime;
+  const dur = 0.36;
+  const SR = ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, Math.ceil(SR * dur), SR);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.Q.value = 12;
+  bp.frequency.setValueAtTime(260, now);
+  bp.frequency.exponentialRampToValueAtTime(440, now + dur);
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.55, now + 0.035);
+  env.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  src.connect(bp).connect(env).connect(dest);
+  src.start(now);
+  src.stop(now + dur);
+  return dur;
+}
+
 /** @type {SfxGenerator} */
 export function playFootfall(ctx, dest) {
   const now = ctx.currentTime;
