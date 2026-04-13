@@ -128,7 +128,7 @@ export function makeCowBrainSystem(deps) {
           // selection viz stops drawing markers for already-reached steps.
           const waypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
           const legEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
-          while (legEnds.length > 0 && path.index > legEnds[0]) {
+          while (legEnds.length > 0 && path.index >= legEnds[0]) {
             waypoints.shift();
             legEnds.shift();
           }
@@ -275,13 +275,12 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
   const { jobId, itemId, toI, toJ } =
     /** @type {{ jobId: number, itemId: number, toI: number, toJ: number }} */ (job.payload);
 
-  // Target stockpile tile got undesignated mid-haul → release + bail.
+  // Target stockpile tile got undesignated mid-haul → complete + bail.
   if (!grid.isStockpile(toI, toJ)) {
     if (inv.itemKind !== null) {
       dropCarriedItem(world, grid, inv, pos);
       deps.onItemChange();
     }
-    board.release(jobId);
     board.complete(jobId);
     job.kind = 'none';
     job.state = 'idle';
@@ -296,7 +295,6 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
     const anchor = world.get(itemId, 'TileAnchor');
     const item = world.get(itemId, 'Item');
     if (!anchor || !item) {
-      board.release(jobId);
       board.complete(jobId);
       job.kind = 'none';
       job.state = 'idle';
@@ -334,7 +332,6 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
     if (remaining <= 0) {
       const item = world.get(itemId, 'Item');
       if (!item) {
-        board.release(jobId);
         board.complete(jobId);
         job.kind = 'none';
         job.state = 'idle';
@@ -356,7 +353,6 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
       // Can't get there; drop where we stand, let the poster re-route later.
       dropCarriedItem(world, grid, inv, pos);
       deps.onItemChange();
-      board.release(jobId);
       board.complete(jobId);
       job.kind = 'none';
       job.state = 'idle';
@@ -383,16 +379,19 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
     const remaining = (job.payload.ticksRemaining ?? DROP_TICKS) - 1;
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
-      const kind = inv.itemKind ?? 'wood';
-      const w = tileToWorld(toI, toJ, grid.W, grid.H);
-      world.spawn({
-        Item: { kind },
-        ItemViz: {},
-        TileAnchor: { i: toI, j: toJ },
-        Position: { x: w.x, y: grid.getElevation(toI, toJ), z: w.z },
-      });
-      inv.itemKind = null;
-      deps.onItemChange();
+      // If another code path already cleared the inventory (e.g. emergency
+      // drop), skip spawning a phantom item.
+      if (inv.itemKind !== null) {
+        const w = tileToWorld(toI, toJ, grid.W, grid.H);
+        world.spawn({
+          Item: { kind: inv.itemKind },
+          ItemViz: {},
+          TileAnchor: { i: toI, j: toJ },
+          Position: { x: w.x, y: grid.getElevation(toI, toJ), z: w.z },
+        });
+        inv.itemKind = null;
+        deps.onItemChange();
+      }
       board.complete(jobId);
       job.kind = 'none';
       job.state = 'idle';

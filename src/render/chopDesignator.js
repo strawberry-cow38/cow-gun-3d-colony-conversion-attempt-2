@@ -80,7 +80,6 @@ export class ChopDesignator {
     const tree = this.world.get(treeId, 'Tree');
     if (!tree) return;
     if (tree.markedJobId > 0) {
-      this.board.release(tree.markedJobId);
       this.board.complete(tree.markedJobId);
       tree.markedJobId = 0;
       tree.progress = 0;

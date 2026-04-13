@@ -104,7 +104,7 @@ export class StockpileDesignator {
 
   /** @param {MouseEvent} e */
   #onMove(e) {
-    if (!this.mousedown) return;
+    if (!this.active || !this.mousedown) return;
     const tile = this.#pickTile(e);
     if (!tile) return;
     this.curTile = tile;

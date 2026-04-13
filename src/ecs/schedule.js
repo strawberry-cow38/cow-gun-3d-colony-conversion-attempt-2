@@ -77,11 +77,13 @@ export class Scheduler {
     if (def.tier === 'dirty' && !def.dirtyTag) {
       throw new Error(`dirty system ${def.name} needs a dirtyTag`);
     }
-    if (def.offset === undefined) {
-      const sameTier = this.systems.filter((s) => s.tier === def.tier).length;
-      def.offset = sameTier;
+    // Don't mutate the caller's def: compute offset locally so the same def
+    // can be registered in a fresh scheduler without carrying stale state.
+    let offset = def.offset;
+    if (offset === undefined) {
+      offset = this.systems.filter((s) => s.tier === def.tier).length;
     }
-    this.systems.push(def);
+    this.systems.push({ ...def, offset });
   }
 
   /**

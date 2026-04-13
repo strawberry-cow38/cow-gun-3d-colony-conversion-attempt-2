@@ -103,6 +103,9 @@ export function createTreeInstancer(scene, capacity = 2048) {
     if (!dirty) return;
     let i = 0;
     slotToEntity.length = 0;
+    // _quat is shared with updateMarkers which spins it — reset to identity
+    // so static trees render upright regardless of frame order.
+    _quat.identity();
     for (const { id, components } of world.query(['Tree', 'TileAnchor', 'TreeViz'])) {
       if (i >= capacity) break;
       const anchor = components.TileAnchor;

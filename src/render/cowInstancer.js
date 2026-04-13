@@ -131,7 +131,7 @@ export function createCowInstancer(scene, capacity = 256) {
       i++;
 
       const carrying = components.Inventory.itemKind;
-      if (carrying) {
+      if (carrying && c < capacity) {
         _euler.set(0, yaw, 0);
         _quat.setFromEuler(_euler);
         _position.set(x, y + COW_HEIGHT + CARRY_OFFSET_Y, z);
@@ -145,7 +145,9 @@ export function createCowInstancer(scene, capacity = 256) {
     mesh.instanceMatrix.needsUpdate = true;
     carryMesh.count = c;
     carryMesh.instanceMatrix.needsUpdate = true;
-    if (carryMesh.instanceColor) carryMesh.instanceColor.needsUpdate = true;
+    // setColorAt lazily creates instanceColor on first call; guard AFTER so we
+    // set needsUpdate even on the frame the attribute was just born.
+    if (carryMesh.instanceColor && c > 0) carryMesh.instanceColor.needsUpdate = true;
     // Drop yaw entries for cows that went away so the map doesn't leak.
     if (lastYaw.size > seen.size) {
       for (const entId of lastYaw.keys()) {

@@ -368,7 +368,7 @@ function updateHud() {
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
     `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
     `render: ${measuredFps.toFixed(0)} fps`,
-    `entities: ${world.entityCount}  cows=${countCows()}  trees=${countComp('Tree')}  wood=${countComp('Item')}`,
+    `entities: ${world.entityCount}  cows=${countComp('Cow')}  trees=${countComp('Tree')}  wood=${countComp('Item')}`,
     `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
     pickStr,
     ...cowLines,
@@ -416,74 +416,72 @@ addEventListener('keydown', async (e) => {
     }
   }
   if (e.code === 'KeyL') {
-    const b64 =
-      localStorage.getItem('save:v5') ??
-      localStorage.getItem('save:v4') ??
-      localStorage.getItem('save:v3') ??
-      localStorage.getItem('save:v2');
-    if (!b64) {
-      console.warn('[load] no save in localStorage');
-      return;
+    try {
+      const b64 =
+        localStorage.getItem('save:v5') ??
+        localStorage.getItem('save:v4') ??
+        localStorage.getItem('save:v3') ??
+        localStorage.getItem('save:v2');
+      if (!b64) {
+        console.warn('[load] no save in localStorage');
+        return;
+      }
+      const bin = base64ToBytes(b64);
+      const json = await gunzipBytes(bin);
+      const parsed = JSON.parse(json);
+      const migrated = loadState(parsed);
+      const loaded = hydrateTileGrid(migrated);
+      tileGrid.elevation.set(loaded.elevation);
+      tileGrid.biome.set(loaded.biome);
+      tileGrid.stockpile.set(loaded.stockpile);
+      tileGrid.occupancy.fill(0);
+      pathCache.clear();
+      despawnAllComp(world, 'Cow');
+      despawnAllComp(world, 'Tree');
+      despawnAllComp(world, 'Item');
+      jobBoard.jobs.length = 0;
+      if (migrated.trees.length === 0) {
+        // Pre-v5 save had no tree list — seed a fresh scatter so the world
+        // isn't bare.
+        spawnInitialTrees(world, tileGrid, treeCount);
+      } else {
+        hydrateTrees(world, tileGrid, jobBoard, migrated);
+      }
+      hydrateItems(world, tileGrid, migrated);
+      treeInstancer.markDirty();
+      itemInstancer.markDirty();
+      stockpileOverlay.markDirty();
+      hydrateCows(world, migrated);
+      // Job board was cleared above; any serialized cow job references are
+      // stale. Reset so the brain re-picks from the fresh board.
+      for (const { components } of world.query(['Cow', 'Job', 'Path'])) {
+        components.Job.kind = 'none';
+        components.Job.state = 'idle';
+        components.Job.payload = {};
+        components.Path.steps.length = 0;
+        components.Path.index = 0;
+      }
+      const fresh = buildTileMesh(tileGrid);
+      scene.remove(tileMesh);
+      tileMesh.geometry.dispose();
+      tileMesh = fresh;
+      scene.add(tileMesh);
+      selectedCows.clear();
+      primaryCow = null;
+      console.log(
+        '[load] restored',
+        tileGrid.W,
+        'x',
+        tileGrid.H,
+        'tiles, cows:',
+        migrated.cows.length,
+      );
+      updateHud();
+    } catch (err) {
+      console.error('[load] failed:', err);
     }
-    const bin = base64ToBytes(b64);
-    const json = await gunzipBytes(bin);
-    const parsed = JSON.parse(json);
-    const migrated = loadState(parsed);
-    const loaded = hydrateTileGrid(migrated);
-    tileGrid.elevation.set(loaded.elevation);
-    tileGrid.biome.set(loaded.biome);
-    tileGrid.stockpile.set(loaded.stockpile);
-    tileGrid.occupancy.fill(0);
-    pathCache.clear();
-    despawnAllCows(world);
-    despawnAllComp(world, 'Tree');
-    despawnAllComp(world, 'Item');
-    jobBoard.jobs.length = 0;
-    if (migrated.trees.length === 0) {
-      // Pre-v5 save had no tree list — seed a fresh scatter so the world
-      // isn't bare.
-      spawnInitialTrees(world, tileGrid, treeCount);
-    } else {
-      hydrateTrees(world, tileGrid, jobBoard, migrated);
-    }
-    hydrateItems(world, tileGrid, migrated);
-    treeInstancer.markDirty();
-    itemInstancer.markDirty();
-    stockpileOverlay.markDirty();
-    hydrateCows(world, migrated);
-    // Job board was cleared above; any serialized cow job references are
-    // stale. Reset so the brain re-picks from the fresh board.
-    for (const { components } of world.query(['Cow', 'Job', 'Path'])) {
-      components.Job.kind = 'none';
-      components.Job.state = 'idle';
-      components.Job.payload = {};
-      components.Path.steps.length = 0;
-      components.Path.index = 0;
-    }
-    const fresh = buildTileMesh(tileGrid);
-    scene.remove(tileMesh);
-    tileMesh.geometry.dispose();
-    tileMesh = fresh;
-    scene.add(tileMesh);
-    selectedCows.clear();
-    primaryCow = null;
-    console.log(
-      '[load] restored',
-      tileGrid.W,
-      'x',
-      tileGrid.H,
-      'tiles, cows:',
-      migrated.cows.length,
-    );
-    updateHud();
   }
 });
-
-function countCows() {
-  let n = 0;
-  for (const _ of world.query(['Cow'])) n++;
-  return n;
-}
 
 /** @param {string} component */
 function countComp(component) {
@@ -500,13 +498,6 @@ function pruneStaleSelections() {
     primaryCow =
       selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
   }
-}
-
-/** @param {import('./ecs/world.js').World} w */
-function despawnAllCows(w) {
-  const ids = [];
-  for (const { id } of w.query(['Cow'])) ids.push(id);
-  for (const id of ids) w.despawn(id);
 }
 
 /** @param {import('./ecs/world.js').World} w @param {string} comp */
