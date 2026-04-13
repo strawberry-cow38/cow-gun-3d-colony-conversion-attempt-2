@@ -24,6 +24,14 @@ const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arriv
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
 const EAT_TICKS = 18;
 
+// Soft cow-cow avoidance: cows nudge sideways when another cow is ~ahead of
+// them, and slow to 70% speed if they can't steer around it. Tuned in tile-
+// world units (1 tile = 43u).
+const COW_SENSE_RADIUS_SQ = 32 * 32; // notice neighbors within ~0.75 tile
+const COW_PERSONAL_SPACE_SQ = 20 * 20; // head-on crowding → slow down
+const AVOID_STRENGTH = 0.45; // lateral nudge weight before re-normalizing
+const SLOW_FACTOR = 0.7; // "excuse me, fellow cow" speed when blocked
+
 /**
  * @typedef PathDeps
  * @property {import('../world/tileGrid.js').TileGrid} grid
@@ -582,10 +590,20 @@ export function makeCowFollowPathSystem(deps) {
     name: 'cowFollowPath',
     tier: 'every',
     run(world) {
+      // Snapshot cow positions so each cow can steer around the others cheaply
+      // (O(N²) scan is fine at colony scale — swap in a spatial hash later).
+      /** @type {{ pos: {x:number,y:number,z:number}, vel: {x:number,y:number,z:number}, path: any }[]} */
+      const herd = [];
       for (const { components } of world.query(['Cow', 'Position', 'Velocity', 'Path'])) {
-        const pos = components.Position;
-        const vel = components.Velocity;
-        const path = components.Path;
+        herd.push({
+          pos: components.Position,
+          vel: components.Velocity,
+          path: components.Path,
+        });
+      }
+
+      for (const self of herd) {
+        const { pos, vel, path } = self;
 
         if (path.index >= path.steps.length) {
           vel.x = 0;
@@ -607,8 +625,45 @@ export function makeCowFollowPathSystem(deps) {
         }
 
         const dist = Math.sqrt(distSq);
-        vel.x = (dx / dist) * COW_SPEED_UNITS_PER_SEC;
-        vel.z = (dz / dist) * COW_SPEED_UNITS_PER_SEC;
+        let nx = dx / dist;
+        let nz = dz / dist;
+
+        // Soft avoidance: nudge sideways when a neighbor sits roughly ahead of
+        // us, slow down when one is crowding our personal space head-on.
+        let nudgeX = 0;
+        let nudgeZ = 0;
+        let crowded = false;
+        for (const other of herd) {
+          if (other === self) continue;
+          const ex = other.pos.x - pos.x;
+          const ez = other.pos.z - pos.z;
+          const d2 = ex * ex + ez * ez;
+          if (d2 < 0.001 || d2 > COW_SENSE_RADIUS_SQ) continue;
+          const d = Math.sqrt(d2);
+          // Only react to neighbors roughly in the direction we're going.
+          const fwdDot = (ex * nx + ez * nz) / d;
+          if (fwdDot < 0.2) continue;
+          const weight = 1 - d / Math.sqrt(COW_SENSE_RADIUS_SQ);
+          // Nudge perpendicular to our desired heading, flipping side based on
+          // which side the other cow sits so we drift around them.
+          const cross = nx * ez - nz * ex;
+          const side = cross >= 0 ? 1 : -1;
+          nudgeX += -nz * side * weight;
+          nudgeZ += nx * side * weight;
+          if (d2 < COW_PERSONAL_SPACE_SQ && fwdDot > 0.5) crowded = true;
+        }
+
+        nx += nudgeX * AVOID_STRENGTH;
+        nz += nudgeZ * AVOID_STRENGTH;
+        const mag = Math.hypot(nx, nz);
+        if (mag > 0.0001) {
+          nx /= mag;
+          nz /= mag;
+        }
+
+        const speed = crowded ? COW_SPEED_UNITS_PER_SEC * SLOW_FACTOR : COW_SPEED_UNITS_PER_SEC;
+        vel.x = nx * speed;
+        vel.z = nz * speed;
         vel.y = 0;
         // Snap y to the elevation of the tile we currently stand on so cows
         // don't float when crossing terrain.
