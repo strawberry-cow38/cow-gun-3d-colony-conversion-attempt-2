@@ -44,6 +44,8 @@ import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from '.
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { TileGrid } from './world/tileGrid.js';
+import { createTimeOfDay } from './world/timeOfDay.js';
+import { createWeather } from './world/weather.js';
 
 const { stressCount, cowCount, treeCount, gridW, gridH } = readBootParams();
 
@@ -104,8 +106,10 @@ spawnInitialTrees(world, tileGrid, treeCount);
 spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
-const { renderer, scene, camera } = createScene(canvas);
+const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
+const timeOfDay = createTimeOfDay({ sun, hemi, sky });
+const weather = createWeather({ scene, timeOfDay });
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
@@ -314,6 +318,8 @@ const loop = new SimLoop({
       rts.update(rdt);
     }
     audio.update();
+    timeOfDay.update(rdt);
+    weather.update(rdt, camera.position);
     cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
@@ -359,6 +365,8 @@ hudApi = createHud({
   itemLabels,
   stockpileOverlay,
   pickTileOverlay,
+  timeOfDay,
+  weather,
   getFps: () => measuredFps,
 });
 
@@ -378,6 +386,8 @@ installKeyboard({
   gridH,
   state,
   audio,
+  timeOfDay,
+  weather,
   applyDebugVisibility: hudApi.applyDebugVisibility,
   updateHud: hudApi.updateHud,
 });

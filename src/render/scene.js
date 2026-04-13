@@ -28,10 +28,12 @@ export function createScene(canvas) {
   camera.position.set(15, 18, 22);
   camera.lookAt(0, 0, 0);
 
-  scene.add(buildSky());
+  const sky = buildSky();
+  scene.add(sky);
 
-  // Sunset palette: warm peach from the sun direction, cool purple fill.
-  scene.add(new THREE.HemisphereLight(0xffb27a, 0x2a1a3a, 0.65));
+  // Sunset palette at construction — time-of-day system retints every frame.
+  const hemi = new THREE.HemisphereLight(0xffb27a, 0x2a1a3a, 0.65);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffb46b, 1.0);
   sun.position.set(4000, 1600, -2500);
   scene.add(sun);
@@ -42,7 +44,7 @@ export function createScene(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
   });
 
-  return { renderer, scene, camera };
+  return { renderer, scene, camera, sun, hemi, sky };
 }
 
 function buildSky() {

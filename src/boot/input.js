@@ -61,6 +61,8 @@ const PAN_KEYS = new Set([
  * @property {number} gridH
  * @property {BootState} state
  * @property {{ play: (kind: string) => void }} audio
+ * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
+ * @property {import('../world/weather.js').Weather} weather
  * @property {() => void} applyDebugVisibility
  * @property {() => void} updateHud
  */
@@ -200,6 +202,20 @@ async function handleKey(ctx, e) {
   }
   if (e.code === 'KeyL') {
     await loadGame(ctx);
+    return;
+  }
+  // T/Shift+T scrub time of day; Y cycles weather. Both debug-only (this
+  // branch is guarded by `state.debugEnabled` above).
+  if (e.code === 'KeyT') {
+    ctx.timeOfDay.offsetHours(e.shiftKey ? -2 : 2);
+    ctx.audio.play('cycle');
+    ctx.updateHud();
+    return;
+  }
+  if (e.code === 'KeyY') {
+    ctx.weather.cycle(1);
+    ctx.audio.play('toggle_on');
+    ctx.updateHud();
   }
 }
 

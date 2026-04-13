@@ -37,6 +37,8 @@ const BIOME_NAMES = /** @type {Record<number, string>} */ ({
  * @property {{ setVisible(v: boolean): void }} itemLabels
  * @property {{ setVisible(v: boolean): void }} stockpileOverlay
  * @property {{ setVisible(v: boolean): void }} pickTileOverlay
+ * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
+ * @property {import('../world/weather.js').Weather} weather
  * @property {() => number} getFps
  *
  * @typedef {Object} HudApi
@@ -135,6 +137,7 @@ export function createHud(ctx) {
       `render: ${ctx.getFps().toFixed(0)} fps`,
       `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
       `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
+      `time: ${ctx.timeOfDay.getHHMM()}  weather: ${ctx.weather.getCurrent()}`,
       pickStr,
       ...cowLines,
       '',
@@ -173,6 +176,7 @@ export function createHud(ctx) {
       'P = toggle debug menu  (also disables the debug-only keys below)',
       'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',
       'K = save, L = load',
+      'T = time +2h (Shift+T = -2h),  Y = cycle weather',
     );
     hud.innerText = lines.join('\n');
   }
