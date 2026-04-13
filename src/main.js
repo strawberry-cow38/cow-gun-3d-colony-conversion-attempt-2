@@ -173,6 +173,7 @@ new SelectionBox(canvas, camera, world, (ids, additive) => {
     state.selectedCows.add(id);
     state.primaryCow = id;
   }
+  if (ids.length > 0) audio.play('command');
   updateHud();
 });
 
@@ -202,10 +203,12 @@ new CowSelector(
         state.selectedCows.add(id);
         state.primaryCow = id;
       }
+      audio.play('click');
     } else {
       state.selectedCows.clear();
       state.selectedCows.add(id);
       state.primaryCow = id;
+      audio.play('click');
     }
     updateHud();
   },
@@ -231,14 +234,23 @@ new CowMoveCommand(
   world,
   () => state.selectedCows,
   scene,
+  audio,
 );
 
 /** @type {StockpileDesignator | null} */
 let stockpileDesignatorRef = null;
-const chopDesignator = new ChopDesignator(canvas, camera, treeInstancer, world, jobBoard, () => {
-  if (chopDesignator.active && stockpileDesignatorRef) stockpileDesignatorRef.deactivate();
-  updateHud();
-});
+const chopDesignator = new ChopDesignator(
+  canvas,
+  camera,
+  treeInstancer,
+  world,
+  jobBoard,
+  () => {
+    if (chopDesignator.active && stockpileDesignatorRef) stockpileDesignatorRef.deactivate();
+    updateHud();
+  },
+  audio,
+);
 
 const stockpileDesignator = new StockpileDesignator(
   canvas,
@@ -251,6 +263,7 @@ const stockpileDesignator = new StockpileDesignator(
     if (stockpileDesignator.active) chopDesignator.deactivate();
     updateHud();
   },
+  audio,
 );
 stockpileDesignatorRef = stockpileDesignator;
 
@@ -364,6 +377,7 @@ installKeyboard({
   gridW,
   gridH,
   state,
+  audio,
   applyDebugVisibility: hudApi.applyDebugVisibility,
   updateHud: hudApi.updateHud,
 });

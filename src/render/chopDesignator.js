@@ -20,14 +20,16 @@ export class ChopDesignator {
    * @param {import('../ecs/world.js').World} world
    * @param {import('../jobs/board.js').JobBoard} board
    * @param {() => void} onStateChanged  called whenever mode toggles or a tree is marked
+   * @param {{ play: (kind: string) => void }} [audio]
    */
-  constructor(dom, camera, treeInstancer, world, board, onStateChanged) {
+  constructor(dom, camera, treeInstancer, world, board, onStateChanged, audio) {
     this.dom = dom;
     this.camera = camera;
     this.trees = treeInstancer;
     this.world = world;
     this.board = board;
     this.onStateChanged = onStateChanged;
+    this.audio = audio;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
 
@@ -39,9 +41,11 @@ export class ChopDesignator {
   #onKey(e) {
     if (e.code === 'KeyC') {
       this.active = !this.active;
+      this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
       this.onStateChanged();
     } else if (e.code === 'Escape' && this.active) {
       this.active = false;
+      this.audio?.play('toggle_off');
       this.onStateChanged();
     }
   }
@@ -49,6 +53,7 @@ export class ChopDesignator {
   deactivate() {
     if (!this.active) return;
     this.active = false;
+    this.audio?.play('toggle_off');
     this.onStateChanged();
   }
 
@@ -90,6 +95,7 @@ export class ChopDesignator {
       tree.markedJobId = job.id;
       tree.progress = 0;
     }
+    this.audio?.play('command');
     this.trees.markDirty();
     this.onStateChanged();
   }

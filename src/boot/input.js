@@ -60,6 +60,7 @@ const PAN_KEYS = new Set([
  * @property {number} gridW
  * @property {number} gridH
  * @property {BootState} state
+ * @property {{ play: (kind: string) => void }} audio
  * @property {() => void} applyDebugVisibility
  * @property {() => void} updateHud
  */
@@ -77,6 +78,7 @@ async function handleKey(ctx, e) {
 
   if (e.code === 'KeyP') {
     state.debugEnabled = !state.debugEnabled;
+    ctx.audio.play(state.debugEnabled ? 'toggle_on' : 'toggle_off');
     ctx.applyDebugVisibility();
     ctx.updateHud();
     return;
@@ -91,13 +93,18 @@ async function handleKey(ctx, e) {
         if (viewedPos) rts.focus.set(viewedPos.x, viewedPos.y, viewedPos.z);
       }
       fpCamera.exit();
+      ctx.audio.play('toggle_off');
     } else if (state.primaryCow !== null) {
       fpCamera.enter(state.primaryCow);
+      ctx.audio.play('toggle_on');
+    } else {
+      ctx.audio.play('deny');
     }
     return;
   }
   if (fpCamera.active && (e.code === 'KeyQ' || e.code === 'KeyE')) {
     fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
+    ctx.audio.play('cycle');
     return;
   }
   // F toggles follow mode. Follow tracks whoever is `primaryCow` every frame,
@@ -106,6 +113,7 @@ async function handleKey(ctx, e) {
   if (e.code === 'KeyF') {
     if (state.followEnabled) {
       state.followEnabled = false;
+      ctx.audio.play('toggle_off');
     } else {
       if (state.primaryCow === null) {
         const first = allCowIds(world)[0] ?? null;
@@ -116,6 +124,7 @@ async function handleKey(ctx, e) {
         }
       }
       state.followEnabled = state.primaryCow !== null;
+      ctx.audio.play(state.followEnabled ? 'toggle_on' : 'deny');
     }
     ctx.updateHud();
     return;
@@ -132,6 +141,7 @@ async function handleKey(ctx, e) {
       state.selectedCows.clear();
       state.selectedCows.add(next);
       state.primaryCow = next;
+      ctx.audio.play('cycle');
     }
     ctx.updateHud();
     return;
@@ -149,12 +159,19 @@ async function handleKey(ctx, e) {
   if (e.code === 'KeyR') {
     if (fpCamera.active && fpCamera.cowId !== null) {
       toggleDraft(world, [fpCamera.cowId]);
+      const cow = world.get(fpCamera.cowId, 'Cow');
+      ctx.audio.play(cow?.drafted ? 'draft' : 'undraft');
       ctx.updateHud();
       return;
     }
     if (state.selectedCows.size > 0) {
       toggleDraft(world, [...state.selectedCows]);
+      // Post-toggle, primary's state reflects the new majority target.
+      const primary = state.primaryCow !== null ? world.get(state.primaryCow, 'Cow') : null;
+      ctx.audio.play(primary?.drafted ? 'draft' : 'undraft');
       ctx.updateHud();
+    } else {
+      ctx.audio.play('deny');
     }
     return;
   }
@@ -164,6 +181,7 @@ async function handleKey(ctx, e) {
   if (e.code === 'KeyN') {
     const tile = state.lastPick ?? { i: Math.floor(ctx.gridW / 2), j: Math.floor(ctx.gridH / 2) };
     spawnCowAt(world, ctx.tileGrid, tile.i, tile.j);
+    ctx.audio.play('spawn');
     ctx.updateHud();
     return;
   }
@@ -172,6 +190,7 @@ async function handleKey(ctx, e) {
     const kind = e.code === 'KeyG' ? 'stone' : 'food';
     addItemToTile(world, ctx.tileGrid, kind, tile.i, tile.j);
     ctx.itemInstancer.markDirty();
+    ctx.audio.play('drop');
     ctx.updateHud();
     return;
   }
@@ -200,8 +219,10 @@ async function saveGame(ctx) {
       'gz bytes:',
       gz.length,
     );
+    ctx.audio.play('save');
   } catch (err) {
     console.error('[save] failed:', err);
+    ctx.audio.play('deny');
   }
 }
 
@@ -226,6 +247,7 @@ async function loadGame(ctx) {
     }
     if (!b64) {
       console.warn('[load] no save in localStorage');
+      ctx.audio.play('deny');
       return;
     }
     const bin = base64ToBytes(b64);
@@ -278,8 +300,10 @@ async function loadGame(ctx) {
       'tiles, cows:',
       migrated.cows.length,
     );
+    ctx.audio.play('load');
     ctx.updateHud();
   } catch (err) {
     console.error('[load] failed:', err);
+    ctx.audio.play('deny');
   }
 }

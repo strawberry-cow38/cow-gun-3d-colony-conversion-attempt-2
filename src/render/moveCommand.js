@@ -43,6 +43,7 @@ export class CowMoveCommand {
    * @param {import('../ecs/world.js').World} world
    * @param {() => Iterable<number>} getSelectedCows
    * @param {THREE.Scene} scene
+   * @param {{ play: (kind: string) => void }} [audio]
    */
   constructor(
     dom,
@@ -54,6 +55,7 @@ export class CowMoveCommand {
     world,
     getSelectedCows,
     scene,
+    audio,
   ) {
     this.dom = dom;
     this.camera = camera;
@@ -63,6 +65,7 @@ export class CowMoveCommand {
     this.walkable = walkable;
     this.world = world;
     this.getSelectedCows = getSelectedCows;
+    this.audio = audio;
     this.raycaster = new THREE.Raycaster();
 
     this.rmbDown = false;
@@ -129,11 +132,14 @@ export class CowMoveCommand {
         : spreadTargets(this.tileGrid, this.walkable, endTile, ids.length);
 
     const assignment = matchCowsToTargets(this.world, ids, targets, this.tileGrid);
+    let issued = 0;
     for (let k = 0; k < ids.length; k++) {
       const t = assignment[k];
       if (t < 0) continue;
-      this.#issue(ids[k], targets[t], this.shiftAtDown);
+      if (this.#issue(ids[k], targets[t], this.shiftAtDown)) issued++;
     }
+    if (issued > 0) this.audio?.play('command');
+    else this.audio?.play('deny');
   }
 
   /** @param {MouseEvent} e */
@@ -223,12 +229,13 @@ export class CowMoveCommand {
    * @param {number} id
    * @param {{ i: number, j: number }} goal
    * @param {boolean} shiftKey
+   * @returns {boolean} true if a path was issued
    */
   #issue(id, goal, shiftKey) {
     const pos = this.world.get(id, 'Position');
     const path = this.world.get(id, 'Path');
     const job = this.world.get(id, 'Job');
-    if (!pos || !path || !job) return;
+    if (!pos || !path || !job) return false;
 
     const existingWaypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
     const existingLegEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
@@ -243,27 +250,28 @@ export class CowMoveCommand {
       const leg = this.pathCache.find(lastWp, goal);
       if (!leg || leg.length === 0) {
         console.log('[move] no path to new waypoint:', goal, 'for cow', id);
-        return;
+        return false;
       }
       for (let k = 1; k < leg.length; k++) path.steps.push(leg[k]);
       existingLegEnds.push(path.steps.length - 1);
       existingWaypoints.push(goal);
       job.payload.waypoints = existingWaypoints;
       job.payload.legEnds = existingLegEnds;
-      return;
+      return true;
     }
 
     const start = worldToTileClamp(pos.x, pos.z, this.tileGrid.W, this.tileGrid.H);
     const route = this.pathCache.find(start, goal);
     if (!route || route.length === 0) {
       console.log('[move] no path to', goal, 'for cow', id);
-      return;
+      return false;
     }
     path.steps = route;
     path.index = 0;
     job.kind = 'move';
     job.state = 'moving';
     job.payload = { waypoints: [goal], legEnds: [route.length - 1] };
+    return true;
   }
 }
 

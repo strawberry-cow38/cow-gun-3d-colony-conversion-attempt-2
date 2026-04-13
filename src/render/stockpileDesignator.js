@@ -26,14 +26,16 @@ export class StockpileDesignator {
    * @param {{ markDirty: () => void }} overlay
    * @param {THREE.Scene} scene
    * @param {() => void} onStateChanged
+   * @param {{ play: (kind: string) => void }} [audio]
    */
-  constructor(dom, camera, getTileMesh, tileGrid, overlay, scene, onStateChanged) {
+  constructor(dom, camera, getTileMesh, tileGrid, overlay, scene, onStateChanged, audio) {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
     this.tileGrid = tileGrid;
     this.overlay = overlay;
     this.onStateChanged = onStateChanged;
+    this.audio = audio;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
@@ -66,10 +68,12 @@ export class StockpileDesignator {
     if (e.code === 'KeyB') {
       this.active = !this.active;
       if (!this.active) this.#cancelDrag();
+      this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
       this.onStateChanged();
     } else if (e.code === 'Escape' && this.active) {
       this.active = false;
       this.#cancelDrag();
+      this.audio?.play('toggle_off');
       this.onStateChanged();
     }
   }
@@ -78,6 +82,7 @@ export class StockpileDesignator {
     if (!this.active) return;
     this.active = false;
     this.#cancelDrag();
+    this.audio?.play('toggle_off');
     this.onStateChanged();
   }
 
@@ -150,6 +155,7 @@ export class StockpileDesignator {
       }
     }
     if (any) {
+      this.audio?.play('command');
       this.overlay.markDirty();
       this.onStateChanged();
     }

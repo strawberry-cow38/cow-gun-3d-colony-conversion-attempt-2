@@ -20,6 +20,20 @@
 
 import * as THREE from 'three';
 import { playChop, playFootfall, playMunch } from './sfx.js';
+import {
+  playClick,
+  playCommand,
+  playCycle,
+  playDeny,
+  playDraft,
+  playDrop,
+  playLoad,
+  playSave,
+  playSpawn,
+  playToggleOff,
+  playToggleOn,
+  playUndraft,
+} from './uisfx.js';
 
 /**
  * @typedef {Object} SfxEntry
@@ -33,6 +47,31 @@ const SFX = {
   munch: { gen: playMunch, maxConcurrent: 6 },
   footfall: { gen: playFootfall, maxConcurrent: 8 },
 };
+
+/**
+ * Non-spatial UI sounds — no panner, fed directly into the master gain.
+ * Lighter concurrency cap than spatial SFX because UI events cluster in
+ * bursts (e.g. rapid-clicking cows) and we don't want them to stack into
+ * a wall of sound.
+ *
+ * @type {Record<string, import('./uisfx.js').UiSfxGenerator>}
+ */
+const UI_SFX = {
+  click: playClick,
+  command: playCommand,
+  toggle_on: playToggleOn,
+  toggle_off: playToggleOff,
+  save: playSave,
+  load: playLoad,
+  draft: playDraft,
+  undraft: playUndraft,
+  spawn: playSpawn,
+  drop: playDrop,
+  cycle: playCycle,
+  deny: playDeny,
+};
+
+const UI_MAX_CONCURRENT = 6;
 
 const MASTER_GAIN = 0.35;
 const MAX_HEAR_DIST = 400; // units (≈ 9 tiles) — beyond this we don't allocate
@@ -48,6 +87,7 @@ export function createAudio({ camera }) {
 
   const active = /** @type {Record<string, number>} */ ({});
   for (const k of Object.keys(SFX)) active[k] = 0;
+  let uiActive = 0;
 
   const _camPos = new THREE.Vector3();
   const _camFwd = new THREE.Vector3();
@@ -147,5 +187,27 @@ export function createAudio({ camera }) {
     );
   }
 
-  return { update, playAt };
+  /**
+   * Non-spatial UI one-shot. Feeds the master gain directly — no panning,
+   * no distance cull. Use for sounds tied to player input (clicks, toggles,
+   * mode transitions, save/load) where the "source" is the UI itself.
+   *
+   * @param {string} kind
+   */
+  function play(kind) {
+    if (!ctx || !master) return;
+    const gen = UI_SFX[kind];
+    if (!gen) return;
+    if (uiActive >= UI_MAX_CONCURRENT) return;
+    uiActive++;
+    const dur = gen(ctx, master);
+    setTimeout(
+      () => {
+        uiActive--;
+      },
+      (dur + 0.05) * 1000,
+    );
+  }
+
+  return { update, playAt, play };
 }
