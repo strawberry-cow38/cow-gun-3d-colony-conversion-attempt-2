@@ -29,15 +29,28 @@ const NBRS = [
  * findAdjacentWalkable in chop.js — kept separate so the two call sites can
  * diverge later (e.g. builders care about reach orientation, choppers don't).
  *
+ * If `blueprintTiles` (keyed by `j*W + i`) is provided, adjacent tiles that
+ * are themselves pending blueprints are tried only as a last resort — keeps
+ * builders from planting themselves on a neighbor wall's tile unless no
+ * clean stand-spot exists.
+ *
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
  * @param {number} i @param {number} j
+ * @param {Set<number>} [blueprintTiles]
  */
-export function findBuildStandTile(grid, walkable, i, j) {
+export function findBuildStandTile(grid, walkable, i, j, blueprintTiles) {
+  /** @type {{ i: number, j: number } | null} */
+  let fallback = null;
   for (const [di, dj] of NBRS) {
     const ni = i + di;
     const nj = j + dj;
-    if (grid.inBounds(ni, nj) && walkable(grid, ni, nj)) return { i: ni, j: nj };
+    if (!grid.inBounds(ni, nj) || !walkable(grid, ni, nj)) continue;
+    if (blueprintTiles?.has(nj * grid.W + ni)) {
+      if (!fallback) fallback = { i: ni, j: nj };
+      continue;
+    }
+    return { i: ni, j: nj };
   }
-  return null;
+  return fallback;
 }

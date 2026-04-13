@@ -457,7 +457,8 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
 
   if (job.state === 'pathing') {
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    const adj = findBuildStandTile(grid, walkable, job.payload.i, job.payload.j);
+    const blueprintTiles = collectBlueprintTiles(world, grid, siteId);
+    const adj = findBuildStandTile(grid, walkable, job.payload.i, job.payload.j, blueprintTiles);
     if (!adj) {
       board.release(jobId);
       job.kind = 'none';
@@ -742,6 +743,26 @@ function findBuildSiteAt(world, i, j) {
 }
 
 /**
+ * Set of tile-indices (`j*W + i`) that currently host a pending BuildSite,
+ * except for `excludeSiteId` (the site being built right now — its own tile
+ * is the goal, not a stand-tile). Used to steer builders off neighboring
+ * blueprints when picking where to stand.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} excludeSiteId
+ */
+function collectBlueprintTiles(world, grid, excludeSiteId) {
+  const tiles = new Set();
+  for (const { id, components } of world.query(['BuildSite', 'TileAnchor'])) {
+    if (id === excludeSiteId) continue;
+    const a = components.TileAnchor;
+    tiles.add(a.j * grid.W + a.i);
+  }
+  return tiles;
+}
+
+/**
  * State machine for the self-assigned eat job: walk to food → consume one unit
  * → restore hunger. Bails if the food vanishes mid-trip.
  *
@@ -921,6 +942,31 @@ export function makeCowFollowPathSystem(deps) {
         if (id === drivenId) continue;
 
         if (path.index >= path.steps.length) {
+          vel.x = 0;
+          vel.z = 0;
+          continue;
+        }
+
+        // Freshly-built walls invalidate cached paths: the cow's stored steps
+        // still include a tile that's now solid. Peek the current + next step
+        // and if either is unwalkable, bail the job back to idle so the brain
+        // re-plans next tick. Cheaper than re-running A* inline and avoids
+        // the "cow butts into new wall" visual.
+        const curStep = path.steps[path.index];
+        const nextStep = path.steps[path.index + 1];
+        const curBlocked = !deps.walkable(grid, curStep.i, curStep.j);
+        const nextBlocked = nextStep && !deps.walkable(grid, nextStep.i, nextStep.j);
+        if (curBlocked || nextBlocked) {
+          const job = world.get(id, 'Job');
+          const brain = world.get(id, 'Brain');
+          if (job) {
+            job.kind = 'none';
+            job.state = 'idle';
+            job.payload = {};
+          }
+          if (brain) brain.jobDirty = true;
+          path.steps = [];
+          path.index = 0;
           vel.x = 0;
           vel.z = 0;
           continue;
