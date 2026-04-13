@@ -138,25 +138,24 @@ export class FirstPersonCamera {
     if (this.mode === 'control') {
       const vel = this.world.get(this.cowId, 'Velocity');
       if (vel) {
-        let dx = 0;
-        let dz = 0;
-        if (this.keys.has('KeyW')) dz += 1;
-        if (this.keys.has('KeyS')) dz -= 1;
-        if (this.keys.has('KeyA')) dx -= 1;
-        if (this.keys.has('KeyD')) dx += 1;
-        if (dx !== 0 || dz !== 0) {
-          const len = Math.hypot(dx, dz);
-          dx /= len;
-          dz /= len;
-          // FP eye looks along (sin(yaw), 0, cos(yaw)) — forward is +Z local,
-          // right is +X local. (Different sign from RtsCamera because that one
-          // sits behind the focus so its ground-forward is -Z local.)
-          const cos = Math.cos(this.yaw);
-          const sin = Math.sin(this.yaw);
-          const wx = dx * cos + dz * sin;
-          const wz = -dx * sin + dz * cos;
-          vel.x = wx * DRIVE_SPEED;
-          vel.z = wz * DRIVE_SPEED;
+        let f = 0;
+        let r = 0;
+        if (this.keys.has('KeyW')) f += 1;
+        if (this.keys.has('KeyS')) f -= 1;
+        if (this.keys.has('KeyD')) r += 1;
+        if (this.keys.has('KeyA')) r -= 1;
+        if (f !== 0 || r !== 0) {
+          const len = Math.hypot(f, r);
+          f /= len;
+          r /= len;
+          // Look dir F = (sin y, 0, cos y). Screen-right R = (-cos y, 0, sin y)
+          // — world -X at yaw=0, because a three.js camera doing lookAt(+Z)
+          // is rotated 180° around Y vs its default, so its local +X (screen
+          // right) maps to world -X.
+          const sinY = Math.sin(this.yaw);
+          const cosY = Math.cos(this.yaw);
+          vel.x = (f * sinY - r * cosY) * DRIVE_SPEED;
+          vel.z = (f * cosY + r * sinY) * DRIVE_SPEED;
           vel.y = 0;
         } else {
           vel.x = 0;
@@ -198,7 +197,9 @@ export class FirstPersonCamera {
     document.addEventListener('mousemove', (e) => {
       if (this.mode !== 'control') return;
       if (document.pointerLockElement !== this.canvas) return;
-      this.yaw += e.movementX * MOUSE_SENSITIVITY;
+      // Mouse right (+movementX) should turn the view right. World right at
+      // yaw=0 is -X, reached by sin(yaw)<0 ⟹ yaw decreases.
+      this.yaw -= e.movementX * MOUSE_SENSITIVITY;
       this.pitch = Math.max(
         -MAX_PITCH,
         Math.min(MAX_PITCH, this.pitch - e.movementY * MOUSE_SENSITIVITY),
