@@ -15,6 +15,7 @@ import { CowSelector } from './render/cowSelector.js';
 import { TilePicker } from './render/picker.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
+import { createSelectionViz } from './render/selectionViz.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { SimLoop } from './sim/loop.js';
@@ -100,6 +101,7 @@ let tileMesh = buildTileMesh(tileGrid);
 scene.add(tileMesh);
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
+const selectionViz = createSelectionViz(scene);
 
 let selectedCow = /** @type {number | null} */ (null);
 new CowSelector(canvas, camera, cowInstancer, tileMesh, world, (id) => {
@@ -131,7 +133,9 @@ const loop = new SimLoop({
     lastRenderClock = now;
     rts.update(rdt);
     if (stressInstancer) stressInstancer.update(world, alpha);
-    cowInstancer.update(world, alpha, (now - startClock) / 1000);
+    const tSec = (now - startClock) / 1000;
+    cowInstancer.update(world, alpha, tSec);
+    selectionViz.update(world, selectedCow, alpha, tSec, { W: gridW, H: gridH });
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
