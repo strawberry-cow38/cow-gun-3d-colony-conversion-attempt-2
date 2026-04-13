@@ -15,11 +15,7 @@
 
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
-import {
-  HUNGER_CRITICAL_THRESHOLD,
-  HUNGER_PREEMPT_TIER,
-  tierFor,
-} from '../jobs/tiers.js';
+import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
@@ -28,6 +24,15 @@ const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
 const EAT_TICKS = 18;
+
+// Staggered brain evaluation: when the board changes, we don't want every
+// cow to re-scan it the same tick. Each cow is bucketed by id and only runs
+// the (expensive) decide block on its own bucket's tick phase. Urgent
+// signals — a job just ended, or hunger crossed a threshold — bypass the
+// stagger, so starving or idle cows still react immediately. At 30Hz the
+// worst-case latency from a board post to a cow noticing is ~133ms, which
+// is invisible to the player.
+const BRAIN_STAGGER_BUCKETS = 4;
 
 // Soft cow-cow avoidance: cows nudge sideways when another cow is ~ahead of
 // them, and slow to 70% speed if they can't steer around it. Tuned in tile-
@@ -148,10 +153,7 @@ export function makeCowBrainSystem(deps) {
         // next tick's decide block will self-assign an eat job. Jobs below
         // HUNGER_PREEMPT_TIER (eat itself) are already urgent enough to let
         // run to completion.
-        if (
-          hunger.value < HUNGER_CRITICAL_THRESHOLD &&
-          tierFor(job.kind) >= HUNGER_PREEMPT_TIER
-        ) {
+        if (hunger.value < HUNGER_CRITICAL_THRESHOLD && tierFor(job.kind) >= HUNGER_PREEMPT_TIER) {
           if (job.payload?.jobId != null) board.release(job.payload.jobId);
           if (inv.itemKind !== null) {
             dropCarriedItem(world, grid, inv, pos);
@@ -166,11 +168,15 @@ export function makeCowBrainSystem(deps) {
           brain.vitalsDirty = true;
         }
 
-        // Dirty gate: skip the expensive decide block unless something that
-        // could change this cow's plan has happened — job finished, hunger
-        // dropped, or the job board has new/released work since we last looked.
-        const needsDecide =
-          brain.jobDirty || brain.vitalsDirty || brain.lastBoardVersion !== board.version;
+        // Dirty gate + staggered eval: skip the expensive decide block unless
+        // something changed this cow's plan — job finished, hunger dropped,
+        // or the board shifted AND this cow's bucket matches the current tick
+        // phase. Urgent signals (jobDirty/vitalsDirty) bypass the stagger so
+        // a starving cow doesn't wait up to BRAIN_STAGGER_BUCKETS ticks to
+        // re-plan.
+        const boardChanged = brain.lastBoardVersion !== board.version;
+        const myTurn = ctx.tick % BRAIN_STAGGER_BUCKETS === id % BRAIN_STAGGER_BUCKETS;
+        const needsDecide = brain.jobDirty || brain.vitalsDirty || (boardChanged && myTurn);
 
         if (needsDecide) {
           if (job.kind === 'wander' || job.kind === 'none') {
