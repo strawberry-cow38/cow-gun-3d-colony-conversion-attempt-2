@@ -1,12 +1,14 @@
 /**
- * Door designation mode.
+ * Shared blueprint-designator (walls + doors).
  *
- * Press `M` to enter; LMB drag a rectangle of tiles to designate wood doors.
- * Each tile spawns a BuildSite with `kind: 'door'`. Haulers deliver wood;
- * once delivered a builder erects it. The finished door does NOT set the
- * wall bit — pathing routes cows right through it — but it does set the
- * door bit so this designator (and the wall one) can reject duplicates.
- * Shift+drag cancels. Press `M` or `Escape` to exit.
+ * Press the configured key to enter; LMB drag a rectangle of tiles to spawn
+ * BuildSite entities of the configured kind. Shift+drag cancels — each config
+ * only cancels its own kind so wall and door modes never clobber each other's
+ * blueprints. Press the same key or `Escape` to exit.
+ *
+ * Tiles that are blocked (tree, rock), already a door, or stockpile tiles are
+ * skipped on ADD. Cancel pass ignores the blocked check so half-placed sites
+ * can always be cleared.
  */
 
 import * as THREE from 'three';
@@ -14,11 +16,39 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/c
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
-const PREVIEW_COLOR_ADD = 0xffb070;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
+const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
-export class DoorDesignator {
+/**
+ * @typedef {Object} BuildDesignatorConfig
+ * @property {string} keyCode - KeyboardEvent.code that toggles this mode
+ * @property {'wall' | 'door'} kind - BuildSite.kind to spawn
+ * @property {number} previewColorAdd - hex color for ADD preview line + label border
+ * @property {string} addVerb - label verb on add ("build", "door")
+ * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
+ */
+
+/** @type {BuildDesignatorConfig} */
+export const WALL_DESIGNATOR_CONFIG = {
+  keyCode: 'KeyV',
+  kind: 'wall',
+  previewColorAdd: 0xe9d477,
+  addVerb: 'build',
+  cancelVerb: 'cancel',
+};
+
+/** @type {BuildDesignatorConfig} */
+export const DOOR_DESIGNATOR_CONFIG = {
+  keyCode: 'KeyM',
+  kind: 'door',
+  previewColorAdd: 0xffb070,
+  addVerb: 'door',
+  cancelVerb: 'cancel door',
+};
+
+export class BuildDesignator {
   /**
+   * @param {BuildDesignatorConfig} config
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
    * @param {() => THREE.Mesh} getTileMesh
@@ -31,6 +61,7 @@ export class DoorDesignator {
    * @param {{ play: (kind: string) => void }} [audio]
    */
   constructor(
+    config,
     dom,
     camera,
     getTileMesh,
@@ -42,6 +73,7 @@ export class DoorDesignator {
     onStateChanged,
     audio,
   ) {
+    this.config = config;
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
@@ -60,8 +92,8 @@ export class DoorDesignator {
     /** @type {{ i: number, j: number } | null} */
     this.curTile = null;
 
-    this.preview = buildPreview(scene);
-    this.sizeLabel = buildSizeLabel();
+    this.preview = buildPreview(scene, config.previewColorAdd);
+    this.sizeLabel = buildSizeLabel(colorToCss(config.previewColorAdd));
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -81,7 +113,7 @@ export class DoorDesignator {
 
   /** @param {KeyboardEvent} e */
   #onKey(e) {
-    if (e.code === 'KeyM') {
+    if (e.code === this.config.keyCode) {
       this.active = !this.active;
       if (!this.active) this.#cancelDrag();
       this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
@@ -188,7 +220,7 @@ export class DoorDesignator {
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({
       BuildSite: {
-        kind: 'door',
+        kind: this.config.kind,
         requiredKind: 'wood',
         required: 1,
         delivered: 0,
@@ -207,10 +239,11 @@ export class DoorDesignator {
     const id = this.#findSiteAt(i, j);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
-    // Only cancel door blueprints — leave wall blueprints alone so M+Shift
-    // doesn't accidentally nuke wall work on shared tiles.
-    if (!site || site.kind !== 'door') return false;
+    // Only cancel blueprints of our own kind so wall/door modes don't step on
+    // each other's pending work on shared tiles.
+    if (!site || site.kind !== this.config.kind) return false;
     if (site.buildJobId > 0) this.board.complete(site.buildJobId);
+    // Drop any delivered units back as a loose stack so they aren't lost.
     if (site.delivered > 0) {
       const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
       this.world.spawn({
@@ -272,7 +305,7 @@ export class DoorDesignator {
     p[14] = z0;
     this.preview.geo.attributes.position.needsUpdate = true;
     const mat = /** @type {THREE.LineBasicMaterial} */ (this.preview.line.material);
-    mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : PREVIEW_COLOR_ADD);
+    mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : this.config.previewColorAdd);
     this.preview.line.visible = true;
   }
 
@@ -291,11 +324,13 @@ export class DoorDesignator {
     const meters = TILE_SIZE / UNITS_PER_METER;
     const wm = (w * meters).toFixed(1);
     const hm = (h * meters).toFixed(1);
-    const verb = this.removing ? 'cancel door' : 'door';
+    const verb = this.removing ? this.config.cancelVerb : this.config.addVerb;
     this.sizeLabel.textContent = `${verb}: ${w} × ${h} tiles (${wm}m × ${hm}m, ${w * h})`;
     this.sizeLabel.style.left = `${e.clientX + 16}px`;
     this.sizeLabel.style.top = `${e.clientY + 16}px`;
-    this.sizeLabel.style.borderColor = this.removing ? '#ff6a4a' : '#ffb070';
+    this.sizeLabel.style.borderColor = this.removing
+      ? PREVIEW_COLOR_REMOVE_CSS
+      : colorToCss(this.config.previewColorAdd);
     this.sizeLabel.style.display = 'block';
   }
 
@@ -321,19 +356,28 @@ export class DoorDesignator {
   }
 }
 
-/** @param {THREE.Scene} scene */
-function buildPreview(scene) {
+/** @param {number} hex */
+function colorToCss(hex) {
+  return `#${hex.toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * @param {THREE.Scene} scene
+ * @param {number} color
+ */
+function buildPreview(scene, color) {
   const geo = new THREE.BufferGeometry();
   const positions = new Float32Array(5 * 3);
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: PREVIEW_COLOR_ADD }));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
   line.frustumCulled = false;
   line.visible = false;
   scene.add(line);
   return { geo, positions, line };
 }
 
-function buildSizeLabel() {
+/** @param {string} borderCss */
+function buildSizeLabel(borderCss) {
   const el = document.createElement('div');
   el.style.position = 'fixed';
   el.style.display = 'none';
@@ -342,7 +386,7 @@ function buildSizeLabel() {
   el.style.color = '#ffffff';
   el.style.font = '12px/1.2 system-ui, -apple-system, Segoe UI, sans-serif';
   el.style.fontWeight = '600';
-  el.style.border = '1px solid #ffb070';
+  el.style.border = `1px solid ${borderCss}`;
   el.style.borderRadius = '3px';
   el.style.pointerEvents = 'none';
   el.style.zIndex = '50';

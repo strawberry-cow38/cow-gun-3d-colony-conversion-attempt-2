@@ -5,7 +5,7 @@
  * the rect for chopping (posts a chop job, sets `tree.markedJobId`). Shift+drag
  * cancels existing chop jobs inside the rect. Press `C` or `Escape` to exit.
  *
- * The drag interaction mirrors StockpileDesignator/WallDesignator: mousedown/
+ * The drag interaction mirrors StockpileDesignator/BuildDesignator: mousedown/
  * move/up captured at the dom+window level so CowSelector/SelectionBox/
  * CowMoveCommand don't react while active. A live wire-rectangle preview
  * traces the current drag range.

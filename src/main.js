@@ -15,6 +15,11 @@ import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { makeHaulPostingSystem } from './jobs/haul.js';
+import {
+  BuildDesignator,
+  DOOR_DESIGNATOR_CONFIG,
+  WALL_DESIGNATOR_CONFIG,
+} from './render/buildDesignator.js';
 import { createBuildSiteInstancer } from './render/buildSiteInstancer.js';
 import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
@@ -22,7 +27,6 @@ import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
-import { DoorDesignator } from './render/doorDesignator.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
@@ -40,7 +44,6 @@ import { createStockpileOverlay } from './render/stockpileOverlay.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { createTreeInstancer } from './render/treeInstancer.js';
-import { WallDesignator } from './render/wallDesignator.js';
 import { createWallInstancer } from './render/wallInstancer.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
@@ -158,7 +161,6 @@ onWorldCowHammer = (pos) => {
 };
 onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
-  doorInstancer.markDirty();
   buildSiteInstancer.markDirty();
   pathCache.clear();
   audio.playAt('hammer', pos);
@@ -274,9 +276,9 @@ new CowMoveCommand(
 
 /** @type {StockpileDesignator | null} */
 let stockpileDesignatorRef = null;
-/** @type {WallDesignator | null} */
+/** @type {BuildDesignator | null} */
 let wallDesignatorRef = null;
-/** @type {DoorDesignator | null} */
+/** @type {BuildDesignator | null} */
 let doorDesignatorRef = null;
 const chopDesignator = new ChopDesignator(
   canvas,
@@ -317,7 +319,8 @@ const stockpileDesignator = new StockpileDesignator(
 );
 stockpileDesignatorRef = stockpileDesignator;
 
-const wallDesignator = new WallDesignator(
+const wallDesignator = new BuildDesignator(
+  WALL_DESIGNATOR_CONFIG,
   canvas,
   camera,
   () => state.tileMesh,
@@ -338,7 +341,8 @@ const wallDesignator = new WallDesignator(
 );
 wallDesignatorRef = wallDesignator;
 
-const doorDesignator = new DoorDesignator(
+const doorDesignator = new BuildDesignator(
+  DOOR_DESIGNATOR_CONFIG,
   canvas,
   camera,
   () => state.tileMesh,
@@ -474,7 +478,6 @@ installKeyboard({
   stockpileOverlay,
   buildSiteInstancer,
   wallInstancer,
-  doorInstancer,
   treeCount,
   gridW,
   gridH,

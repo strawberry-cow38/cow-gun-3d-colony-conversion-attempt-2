@@ -68,7 +68,6 @@ const PAN_KEYS = new Set([
  * @property {any} stockpileOverlay
  * @property {{ markDirty: () => void } | null} [buildSiteInstancer]
  * @property {{ markDirty: () => void } | null} [wallInstancer]
- * @property {{ markDirty: () => void } | null} [doorInstancer]
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH
@@ -329,7 +328,6 @@ async function loadGame(ctx) {
     stockpileOverlay.markDirty();
     ctx.buildSiteInstancer?.markDirty();
     ctx.wallInstancer?.markDirty();
-    ctx.doorInstancer?.markDirty();
     hydrateCows(world, migrated);
     // Job board was cleared above; any serialized cow job references are
     // stale. Reset so the brain re-picks from the fresh board.

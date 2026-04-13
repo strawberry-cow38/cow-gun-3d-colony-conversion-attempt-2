@@ -47,7 +47,7 @@ export function createDoorInstancer(scene, capacity, audio) {
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, flatShading: true });
 
   // Slab geometry: hinge at +X edge at origin, bottom at y=0. Default axis
-  // runs along -X (door spans from hinge at x=0 to the far edge at x=-TILE_SIZE).
+  // runs along -X (door spans from hinge at x=0 to x=-TILE_SIZE).
   const slabGeo = new THREE.BoxGeometry(TILE_SIZE, DOOR_HEIGHT, DOOR_THICKNESS);
   slabGeo.translate(-TILE_SIZE * 0.5, DOOR_HEIGHT * 0.5, 0);
   const slab = new THREE.InstancedMesh(slabGeo, slabMat, capacity);
@@ -55,8 +55,6 @@ export function createDoorInstancer(scene, capacity, audio) {
   slab.frustumCulled = false;
   scene.add(slab);
 
-  // Top frame: full tile footprint, sits from DOOR_HEIGHT up to WALL_HEIGHT.
-  // Centered on tile so no hinge-offset adjustment is needed.
   const frameGeo = new THREE.BoxGeometry(TILE_SIZE, TOP_FRAME_HEIGHT, TILE_SIZE);
   frameGeo.translate(0, DOOR_HEIGHT + TOP_FRAME_HEIGHT * 0.5, 0);
   const frame = new THREE.InstancedMesh(frameGeo, frameMat, capacity);
@@ -67,10 +65,6 @@ export function createDoorInstancer(scene, capacity, audio) {
   /** @type {Map<number, { open: number, emittedSfx: boolean }>} */
   const state = new Map();
   let lastNow = performance.now();
-  // Dirty flag exists to force a recompute when doors are added/removed/
-  // hydrated — the animation loop keeps running every frame regardless, this
-  // is really a hook so callers don't have to care about internal bookkeeping.
-  let _dirty = true;
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -183,12 +177,7 @@ export function createDoorInstancer(scene, capacity, audio) {
     frame.count = nFrame;
     slab.instanceMatrix.needsUpdate = true;
     frame.instanceMatrix.needsUpdate = true;
-    _dirty = false;
   }
 
-  function markDirty() {
-    _dirty = true;
-  }
-
-  return { update, markDirty };
+  return { update };
 }
