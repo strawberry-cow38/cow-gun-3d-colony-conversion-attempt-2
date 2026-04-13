@@ -16,6 +16,7 @@ import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
+import { SelectionBox } from './render/selectionBox.js';
 import { createSelectionViz } from './render/selectionViz.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
@@ -106,6 +107,20 @@ const selectionViz = createSelectionViz(scene);
 
 const selectedCows = /** @type {Set<number>} */ (new Set());
 let primaryCow = /** @type {number | null} */ (null);
+
+// Marquee BEFORE CowSelector so its capture-phase handler swallows the post-drag click first.
+new SelectionBox(canvas, camera, world, (ids, additive) => {
+  if (!additive) {
+    selectedCows.clear();
+    primaryCow = null;
+  }
+  for (const id of ids) {
+    selectedCows.add(id);
+    primaryCow = id;
+  }
+  updateHud();
+});
+
 new CowSelector(canvas, camera, cowInstancer, tileMesh, world, (id, additive) => {
   if (id === null) {
     // Empty-space click: plain clears, shift preserves the current set.

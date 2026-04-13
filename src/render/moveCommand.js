@@ -64,8 +64,11 @@ export class CowMoveCommand {
       return;
     }
 
-    for (const id of ids) {
-      this.#issue(id, goal, e.shiftKey);
+    // Spread cows across distinct walkable tiles radiating out from `goal` so
+    // they don't all stack onto the same square.
+    const targets = spreadTargets(this.tileGrid, this.walkable, goal, ids.length);
+    for (let k = 0; k < ids.length; k++) {
+      this.#issue(ids[k], targets[k], e.shiftKey);
     }
   }
 
@@ -125,4 +128,50 @@ function clampToGrid(x, z, grid) {
   const i = Math.floor(x / TILE_SIZE + grid.W / 2);
   const j = Math.floor(z / TILE_SIZE + grid.H / 2);
   return { i: Math.max(0, Math.min(grid.W - 1, i)), j: Math.max(0, Math.min(grid.H - 1, j)) };
+}
+
+/**
+ * BFS outward from `goal` to pick `count` distinct walkable tiles. Caller
+ * guarantees `goal` is in-bounds and walkable, so the result is non-empty.
+ * If we run out of reachable walkable tiles, remaining slots reuse `goal`.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {{ i: number, j: number }} goal
+ * @param {number} count
+ * @returns {{ i: number, j: number }[]}
+ */
+function spreadTargets(grid, walkable, goal, count) {
+  /** @type {{ i: number, j: number }[]} */
+  const out = [];
+  const seen = new Uint8Array(grid.W * grid.H);
+  /** @type {{ i: number, j: number }[]} */
+  const queue = [{ i: goal.i, j: goal.j }];
+  seen[goal.j * grid.W + goal.i] = 1;
+  const nbrs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ];
+  let head = 0;
+  while (out.length < count && head < queue.length) {
+    const t = queue[head++];
+    if (walkable(grid, t.i, t.j)) out.push(t);
+    for (const [di, dj] of nbrs) {
+      const ni = t.i + di;
+      const nj = t.j + dj;
+      if (ni < 0 || ni >= grid.W || nj < 0 || nj >= grid.H) continue;
+      const idx = nj * grid.W + ni;
+      if (seen[idx]) continue;
+      seen[idx] = 1;
+      queue.push({ i: ni, j: nj });
+    }
+  }
+  while (out.length < count) out.push({ i: goal.i, j: goal.j });
+  return out;
 }
