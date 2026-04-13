@@ -211,10 +211,71 @@ export function findAndReserveMergeTarget(grid, slots, snapshot, src) {
 }
 
 /**
+ * Count open haul jobs whose target tile is a BuildSite. Returned as a map
+ * tileIdx → pending deliveries so the poster knows how many more to dispatch.
+ *
+ * @param {import('./board.js').JobBoard} board
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @returns {Map<number, number>}
+ */
+export function buildSiteInFlight(board, grid) {
+  /** @type {Map<number, number>} */
+  const out = new Map();
+  for (const j of board.jobs) {
+    if (j.completed || j.kind !== 'haul') continue;
+    if (j.payload.toBuildSite !== true) continue;
+    const idx = grid.idx(j.payload.toI, j.payload.toJ);
+    out.set(idx, (out.get(idx) ?? 0) + 1);
+  }
+  return out;
+}
+
+/**
+ * Pick the nearest item stack of `kind` with at least one unclaimed unit.
+ * Prefers loose items over stockpile stacks so we don't gut the stockpile
+ * before the ground has been cleared.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {Map<number, number>} claimed  itemId → already-claimed units (mutated)
+ * @param {string} kind
+ * @param {number} i @param {number} j
+ */
+export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
+  let bestLoose = null;
+  let bestLooseD = Number.POSITIVE_INFINITY;
+  let bestStock = null;
+  let bestStockD = Number.POSITIVE_INFINITY;
+  for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
+    const item = components.Item;
+    if (item.kind !== kind) continue;
+    const avail = item.count - (claimed.get(id) ?? 0);
+    if (avail <= 0) continue;
+    const a = components.TileAnchor;
+    const d = Math.max(Math.abs(a.i - i), Math.abs(a.j - j));
+    if (grid.isStockpile(a.i, a.j)) {
+      if (d < bestStockD) {
+        bestStockD = d;
+        bestStock = { id, i: a.i, j: a.j };
+      }
+    } else if (d < bestLooseD) {
+      bestLooseD = d;
+      bestLoose = { id, i: a.i, j: a.j };
+    }
+  }
+  return bestLoose ?? bestStock;
+}
+
+/**
  * Rare-tier system: scan loose items, post haul jobs. A stack of N yields up
  * to N concurrent haul jobs (capped by available slots). Also runs a
  * consolidation pass that moves units between stockpile tiles to merge same-
  * kind half-stacks into taller ones.
+ *
+ * BuildSites get first dibs: any site short on materials queues haul-to-site
+ * jobs before the stockpile passes run. Once a site is fully delivered and
+ * doesn't already have one, a `build` job is posted so a cow comes to erect
+ * the wall.
  *
  * @param {import('./board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -227,6 +288,47 @@ export function makeHaulPostingSystem(board, grid) {
     run(world) {
       const slots = computeStockpileSlots(world, grid, board);
       const targetedCounts = buildHaulTargetedCounts(world, board);
+      const siteInFlight = buildSiteInFlight(board, grid);
+
+      // Pass 0a: BuildSites short on materials. Post one haul-to-site per
+      // deficit unit, picking the nearest available stack of requiredKind.
+      for (const { id: siteId, components } of world.query(['BuildSite', 'TileAnchor'])) {
+        const site = components.BuildSite;
+        const a = components.TileAnchor;
+        const idx = grid.idx(a.i, a.j);
+        const pending = siteInFlight.get(idx) ?? 0;
+        let need = site.required - site.delivered - pending;
+        while (need > 0) {
+          const src = findNearestAvailableItem(
+            world,
+            grid,
+            targetedCounts,
+            site.requiredKind,
+            a.i,
+            a.j,
+          );
+          if (!src) break;
+          board.post('haul', {
+            itemId: src.id,
+            kind: site.requiredKind,
+            fromI: src.i,
+            fromJ: src.j,
+            toI: a.i,
+            toJ: a.j,
+            toBuildSite: true,
+            siteId,
+          });
+          targetedCounts.set(src.id, (targetedCounts.get(src.id) ?? 0) + 1);
+          siteInFlight.set(idx, (siteInFlight.get(idx) ?? 0) + 1);
+          need--;
+        }
+
+        // Pass 0b: fully-delivered sites with no build job yet → post one.
+        if (site.delivered >= site.required && site.buildJobId === 0) {
+          const job = board.post('build', { siteId, i: a.i, j: a.j });
+          site.buildJobId = job.id;
+        }
+      }
 
       // Pass 1: loose items off stockpile → stockpile tiles.
       for (const { id, components } of world.query(['Item', 'TileAnchor'])) {

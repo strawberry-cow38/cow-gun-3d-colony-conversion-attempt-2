@@ -15,6 +15,7 @@ import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { makeHaulPostingSystem } from './jobs/haul.js';
+import { createBuildSiteInstancer } from './render/buildSiteInstancer.js';
 import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
@@ -37,6 +38,8 @@ import { createStockpileOverlay } from './render/stockpileOverlay.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { createTreeInstancer } from './render/treeInstancer.js';
+import { WallDesignator } from './render/wallDesignator.js';
+import { createWallInstancer } from './render/wallInstancer.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
@@ -68,6 +71,10 @@ let onWorldChopComplete = () => {};
 let onWorldCowEat = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldCowStep = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldCowHammer = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldBuildComplete = () => {};
 let onWorldItemChange = () => {};
 // Forward-declared so cowFollowPath can ask the FP camera for the currently
 // driven cow without a construction-order tangle.
@@ -84,6 +91,8 @@ scheduler.add(
     board: jobBoard,
     onChopComplete: (pos) => onWorldChopComplete(pos),
     onCowEat: (pos) => onWorldCowEat(pos),
+    onCowHammer: (pos) => onWorldCowHammer(pos),
+    onBuildComplete: (pos) => onWorldBuildComplete(pos),
     onItemChange: () => onWorldItemChange(),
   }),
 );
@@ -116,6 +125,8 @@ const cowNameTags = createCowNameTags(scene);
 const cowThoughtBubbles = createCowThoughtBubbles(scene);
 const selectionViz = createSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
+const wallInstancer = createWallInstancer(scene, 2048);
+const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
@@ -133,8 +144,18 @@ onWorldCowEat = (pos) => {
 onWorldCowStep = (pos) => {
   audio.playAt('footfall', pos);
 };
+onWorldCowHammer = (pos) => {
+  audio.playAt('hammer', pos);
+};
+onWorldBuildComplete = (pos) => {
+  wallInstancer.markDirty();
+  buildSiteInstancer.markDirty();
+  pathCache.clear();
+  audio.playAt('hammer', pos);
+};
 onWorldItemChange = () => {
   itemInstancer.markDirty();
+  buildSiteInstancer.markDirty();
 };
 
 /**
@@ -243,6 +264,8 @@ new CowMoveCommand(
 
 /** @type {StockpileDesignator | null} */
 let stockpileDesignatorRef = null;
+/** @type {WallDesignator | null} */
+let wallDesignatorRef = null;
 const chopDesignator = new ChopDesignator(
   canvas,
   camera,
@@ -250,7 +273,10 @@ const chopDesignator = new ChopDesignator(
   world,
   jobBoard,
   () => {
-    if (chopDesignator.active && stockpileDesignatorRef) stockpileDesignatorRef.deactivate();
+    if (chopDesignator.active) {
+      stockpileDesignatorRef?.deactivate();
+      wallDesignatorRef?.deactivate();
+    }
     updateHud();
   },
   audio,
@@ -264,12 +290,35 @@ const stockpileDesignator = new StockpileDesignator(
   stockpileOverlay,
   scene,
   () => {
-    if (stockpileDesignator.active) chopDesignator.deactivate();
+    if (stockpileDesignator.active) {
+      chopDesignator.deactivate();
+      wallDesignatorRef?.deactivate();
+    }
     updateHud();
   },
   audio,
 );
 stockpileDesignatorRef = stockpileDesignator;
+
+const wallDesignator = new WallDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    if (wallDesignator.active) {
+      chopDesignator.deactivate();
+      stockpileDesignatorRef?.deactivate();
+    }
+    updateHud();
+  },
+  audio,
+);
+wallDesignatorRef = wallDesignator;
 
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
 getDrivingCowId = () => fpCamera.drivingCowId;
@@ -330,6 +379,8 @@ const loop = new SimLoop({
     draftBadge.update(world, tSec);
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
+    wallInstancer.update(world, tileGrid);
+    buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
@@ -381,6 +432,8 @@ installKeyboard({
   itemInstancer,
   treeInstancer,
   stockpileOverlay,
+  buildSiteInstancer,
+  wallInstancer,
   treeCount,
   gridW,
   gridH,

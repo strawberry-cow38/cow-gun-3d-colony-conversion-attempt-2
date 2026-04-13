@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 import { playRainLoop } from './ambient.js';
-import { playChop, playFootfall, playMunch } from './sfx.js';
+import { playChop, playFootfall, playHammer, playMunch } from './sfx.js';
 import {
   playClick,
   playCommand,
@@ -45,6 +45,7 @@ import {
 /** @type {Record<string, SfxEntry>} */
 const SFX = {
   chop: { gen: playChop, maxConcurrent: 4 },
+  hammer: { gen: playHammer, maxConcurrent: 4 },
   munch: { gen: playMunch, maxConcurrent: 6 },
   footfall: { gen: playFootfall, maxConcurrent: 8 },
 };

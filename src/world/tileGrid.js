@@ -7,6 +7,9 @@
  * - occupancy: uint8; nonzero = a world entity (tree, rock, building) blocks the tile.
  *              Transient — NOT serialized; rebuilt from entities on load.
  * - stockpile: uint8; nonzero = player-designated stockpile tile. Serialized.
+ * - wall:      uint8; nonzero = finished wall blocks the tile. Serialized.
+ *              Separate from occupancy so we can differentiate "wall" vs
+ *              "tree" in pathing + hydration without entity lookups.
  */
 
 export const BIOME = Object.freeze({
@@ -28,11 +31,13 @@ export class TileGrid {
     this.biome = new Uint8Array(W * H);
     this.occupancy = new Uint8Array(W * H);
     this.stockpile = new Uint8Array(W * H);
+    this.wall = new Uint8Array(W * H);
   }
 
   /** @param {number} i @param {number} j */
   isBlocked(i, j) {
-    return this.occupancy[this.idx(i, j)] !== 0;
+    const k = this.idx(i, j);
+    return this.occupancy[k] !== 0 || this.wall[k] !== 0;
   }
 
   /** @param {number} i @param {number} j */
@@ -53,6 +58,16 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setStockpile(i, j, v) {
     this.stockpile[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isWall(i, j) {
+    return this.wall[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setWall(i, j, v) {
+    this.wall[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /**

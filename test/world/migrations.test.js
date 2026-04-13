@@ -124,6 +124,21 @@ describe('migration runner', () => {
     expect(out.cows[0].inventory).toEqual({ itemKind: null });
   });
 
+  it('upgrades a v7 save by adding empty walls/buildSites + zero wall bitmap', () => {
+    const v7 = {
+      version: 7,
+      tileGrid: { W: 2, H: 1, elevation: [0, 0], biome: [0, 0], stockpile: [0, 0] },
+      cows: [],
+      trees: [],
+      items: [],
+    };
+    const out = runMigrations(v7);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.tileGrid.wall).toEqual([0, 0]);
+    expect(out.buildSites).toEqual([]);
+    expect(out.walls).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

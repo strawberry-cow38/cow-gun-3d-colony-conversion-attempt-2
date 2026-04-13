@@ -27,6 +27,15 @@
  *                                   when count reaches 0 the entity is despawned.
  * ItemViz                            tag — item instancer renders these
  * Inventory    { itemKind: string|null } — one-slot carry for cows hauling items.
+ *
+ * BuildSite    { kind, requiredKind, delivered, required, buildJobId, progress }
+ *              A designated-but-unfinished wall. `delivered` counts wood stacks
+ *              dropped on the tile by haulers; when `delivered >= required` a
+ *              `build` job opens on the board and a cow comes to erect it.
+ *              `progress` 0..1 drives the in-progress visual.
+ * Wall         {} — tag for finished wall entities. The tile's wall bit in
+ *              TileGrid is the source of truth for walkability; this entity
+ *              just owns the instance slot for rendering + save/load.
  */
 
 /**
@@ -66,4 +75,15 @@ export function registerComponents(world) {
     /** @type {string | null} */
     itemKind: null,
   }));
+  world.defineComponent('BuildSite', () => ({
+    kind: 'wall',
+    requiredKind: 'wood',
+    required: 1,
+    delivered: 0,
+    buildJobId: 0,
+    progress: 0,
+  }));
+  world.defineComponent('BuildSiteViz', () => ({}));
+  world.defineComponent('Wall', () => ({}));
+  world.defineComponent('WallViz', () => ({}));
 }

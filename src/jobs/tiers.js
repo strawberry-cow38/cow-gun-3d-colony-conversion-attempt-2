@@ -23,6 +23,7 @@ export const JOB_TIERS = {
   eat: 1,
   chop: 2,
   move: 2,
+  build: 2,
   haul: 3,
   wander: 4,
   none: 5,

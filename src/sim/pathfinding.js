@@ -36,14 +36,16 @@ function octile(ax, ay, bx, by) {
 }
 
 /**
- * Default walkability: tile must be in-bounds and not marked blocked in the
- * grid's occupancy array (trees, rocks, buildings). Biome-based walls come
- * later when we add e.g. lava/water.
+ * Default walkability: tile must be in-bounds, not in the occupancy array
+ * (trees/rocks), and not flagged as a finished wall. BuildSites deliberately
+ * do NOT block — haulers walk onto them to deliver materials — only the
+ * erected Wall does. Biome-based walls come later when we add e.g. lava/water.
  * @param {TileGrid} grid @param {number} i @param {number} j
  */
 export function defaultWalkable(grid, i, j) {
   if (!grid.inBounds(i, j)) return false;
-  return grid.occupancy[grid.idx(i, j)] === 0;
+  const k = grid.idx(i, j);
+  return grid.occupancy[k] === 0 && grid.wall[k] === 0;
 }
 
 // Module-scoped scratch buffers sized to the largest grid we've seen so far.

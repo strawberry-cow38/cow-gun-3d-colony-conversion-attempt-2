@@ -170,7 +170,7 @@ export function createHud(ctx) {
       `drafted: ${draftedCount}`,
       'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
       'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-      'C = chop designate,  B = stockpile designate',
+      'C = chop designate,  B = stockpile designate,  V = wall designate',
       'F = toggle follow (tracks selected cow; Q/E cycle, WASD releases),  H = first-person',
       'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
       'P = toggle debug menu  (also disables the debug-only keys below)',

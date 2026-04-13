@@ -64,6 +64,35 @@ export function playMunch(ctx, dest) {
 }
 
 /** @type {SfxGenerator} */
+export function playHammer(ctx, dest) {
+  const now = ctx.currentTime;
+  const dur = 0.14;
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+
+  // Tight bandpass around ~1500Hz gives the metallic "tink" of a hammer, well
+  // clear of chop's 850Hz wood thud so the two don't blur together.
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 1500;
+  bp.Q.value = 8;
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.9, now + 0.003);
+  env.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  src.connect(bp).connect(env).connect(dest);
+  src.start(now);
+  src.stop(now + dur);
+  return dur;
+}
+
+/** @type {SfxGenerator} */
 export function playFootfall(ctx, dest) {
   const now = ctx.currentTime;
   const dur = 0.11;

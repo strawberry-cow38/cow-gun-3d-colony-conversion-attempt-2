@@ -1,17 +1,19 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v7):
+ * Format (v8):
  * {
- *   version: 7,
- *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[] },
+ *   version: 8,
+ *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
  *     inventory: { itemKind: string | null }
  *   } ],
  *   trees: [ { i, j, marked: boolean, progress: number } ],
- *   items: [ { i, j, kind: string, count: number, capacity: number } ]
+ *   items: [ { i, j, kind: string, count: number, capacity: number } ],
+ *   buildSites: [ { i, j, kind, requiredKind, required, delivered, progress } ],
+ *   walls: [ { i, j } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -50,6 +52,23 @@ import { TileGrid } from './tileGrid.js';
  * @property {string} kind
  * @property {number} count
  * @property {number} capacity
+ */
+
+/**
+ * @typedef SerializedBuildSite
+ * @property {number} i
+ * @property {number} j
+ * @property {string} kind
+ * @property {string} requiredKind
+ * @property {number} required
+ * @property {number} delivered
+ * @property {number} progress
+ */
+
+/**
+ * @typedef SerializedWall
+ * @property {number} i
+ * @property {number} j
  */
 
 /**
@@ -106,6 +125,24 @@ export function serializeState(tileGrid, world) {
       capacity: components.Item.capacity,
     });
   }
+  /** @type {SerializedBuildSite[]} */
+  const buildSites = [];
+  for (const { components } of world.query(['BuildSite', 'TileAnchor'])) {
+    buildSites.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      kind: components.BuildSite.kind,
+      requiredKind: components.BuildSite.requiredKind,
+      required: components.BuildSite.required,
+      delivered: components.BuildSite.delivered,
+      progress: components.BuildSite.progress,
+    });
+  }
+  /** @type {SerializedWall[]} */
+  const walls = [];
+  for (const { components } of world.query(['Wall', 'TileAnchor'])) {
+    walls.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -114,21 +151,25 @@ export function serializeState(tileGrid, world) {
       elevation: Array.from(tileGrid.elevation),
       biome: Array.from(tileGrid.biome),
       stockpile: Array.from(tileGrid.stockpile),
+      wall: Array.from(tileGrid.wall),
     },
     cows,
     trees,
     items,
+    buildSites,
+    walls,
   };
 }
 
 /**
- * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[] } }} state
+ * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[] } }} state
  */
 export function hydrateTileGrid(state) {
   const tg = new TileGrid(state.tileGrid.W, state.tileGrid.H);
   tg.elevation.set(state.tileGrid.elevation);
   tg.biome.set(state.tileGrid.biome);
   if (state.tileGrid.stockpile) tg.stockpile.set(state.tileGrid.stockpile);
+  if (state.tileGrid.wall) tg.wall.set(state.tileGrid.wall);
   return tg;
 }
 
@@ -214,10 +255,66 @@ export function hydrateItems(world, grid, state) {
 }
 
 /**
+ * Spawn BuildSite entities from a (migrated) save state. Tiles holding a
+ * BuildSite do NOT get their wall bit set — the blueprint stays walkable so
+ * haulers can deliver. Any outstanding board jobs for these sites (haul /
+ * build) are re-posted by the regular rare-tier poster next tick, so we don't
+ * snapshot job state here.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {{ buildSites?: SerializedBuildSite[] }} state
+ */
+export function hydrateBuildSites(world, grid, state) {
+  const sites = state.buildSites ?? [];
+  for (const s of sites) {
+    if (!grid.inBounds(s.i, s.j)) continue;
+    const w = tileToWorld(s.i, s.j, grid.W, grid.H);
+    world.spawn({
+      BuildSite: {
+        kind: s.kind,
+        requiredKind: s.requiredKind,
+        required: s.required,
+        delivered: s.delivered,
+        buildJobId: 0,
+        progress: s.progress ?? 0,
+      },
+      BuildSiteViz: {},
+      TileAnchor: { i: s.i, j: s.j },
+      Position: { x: w.x, y: grid.getElevation(s.i, s.j), z: w.z },
+    });
+  }
+}
+
+/**
+ * Spawn Wall entities from a (migrated) save state. The grid's wall bitmap is
+ * authoritative for pathing (it's set directly from state.tileGrid.wall in
+ * hydrateTileGrid); Wall entities just own the instance slot for rendering
+ * and round-tripping.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {{ walls?: SerializedWall[] }} state
+ */
+export function hydrateWalls(world, grid, state) {
+  const walls = state.walls ?? [];
+  for (const wdata of walls) {
+    if (!grid.inBounds(wdata.i, wdata.j)) continue;
+    const w = tileToWorld(wdata.i, wdata.j, grid.W, grid.H);
+    world.spawn({
+      Wall: {},
+      WallViz: {},
+      TileAnchor: { i: wdata.i, j: wdata.j },
+      Position: { x: w.x, y: grid.getElevation(wdata.i, wdata.j), z: w.z },
+    });
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

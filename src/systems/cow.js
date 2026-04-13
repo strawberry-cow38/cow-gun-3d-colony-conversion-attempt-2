@@ -13,6 +13,7 @@
  * with an Eat job that walks to the nearest food stack and consumes one unit.
  */
 
+import { BUILD_TICKS, findBuildStandTile } from '../jobs/build.js';
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
@@ -68,6 +69,8 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  *   board: import('../jobs/board.js').JobBoard,
  *   onChopComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onCowEat: (pos: {x:number,y:number,z:number}) => void,
+ *   onCowHammer: (pos: {x:number,y:number,z:number}) => void,
+ *   onBuildComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onItemChange: () => void,
  * }} BrainDeps
  */
@@ -115,7 +118,12 @@ export function makeCowBrainSystem(deps) {
         // Release any work they'd claimed and drop whatever they carry so it
         // re-enters the haul pool.
         if (cow.drafted) {
-          if (job.kind === 'chop' || job.kind === 'haul' || job.kind === 'eat') {
+          if (
+            job.kind === 'chop' ||
+            job.kind === 'haul' ||
+            job.kind === 'eat' ||
+            job.kind === 'build'
+          ) {
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
             job.state = 'idle';
@@ -230,6 +238,18 @@ export function makeCowBrainSystem(deps) {
                   fromJ: candidate.payload.fromJ,
                   toI: candidate.payload.toI,
                   toJ: candidate.payload.toJ,
+                  toBuildSite: candidate.payload.toBuildSite === true,
+                };
+                path.steps = [];
+                path.index = 0;
+              } else if (candidate && candidate.kind === 'build' && board.claim(candidate.id, id)) {
+                job.kind = 'build';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  siteId: candidate.payload.siteId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
                 };
                 path.steps = [];
                 path.index = 0;
@@ -253,6 +273,8 @@ export function makeCowBrainSystem(deps) {
 
         if (job.kind === 'chop') {
           runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
+        } else if (job.kind === 'build') {
+          runBuildJob(world, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'haul') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -397,6 +419,118 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
 }
 
 /**
+ * State machine for the build job. Mirrors runChopJob: walk adjacent to the
+ * build site, hammer for BUILD_TICKS, then convert the BuildSite into a Wall.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runBuildJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+  const { siteId, jobId } = /** @type {{ siteId: number, jobId: number }} */ (job.payload);
+
+  // Site despawned (player cancelled the blueprint) OR the board job was
+  // completed externally → bail cleanly.
+  const site = world.get(siteId, 'BuildSite');
+  const boardJob = board.jobs.find((j) => j.id === jobId);
+  if (!site || !boardJob || boardJob.completed) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    if (site) site.progress = 0;
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const adj = findBuildStandTile(grid, walkable, job.payload.i, job.payload.j);
+    if (!adj) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const route = paths.find(start, adj);
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'building';
+      job.payload.ticksRemaining = BUILD_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'building') {
+    const remaining = (job.payload.ticksRemaining ?? BUILD_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    site.progress = 1 - remaining / BUILD_TICKS;
+    // Hammer audio lands every ~18 ticks so a 4-second build gives ~6 strikes
+    // — rhythmic without drowning out other cows' work.
+    if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
+    if (remaining <= 0) {
+      deps.onBuildComplete(pos);
+      finishBuild(world, grid, siteId, jobId, board);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * Convert a BuildSite entity into a Wall, flip the tile's wall bit so pathing
+ * routes around it, and mark the job complete.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} siteId
+ * @param {number} jobId
+ * @param {import('../jobs/board.js').JobBoard} board
+ */
+function finishBuild(world, grid, siteId, jobId, board) {
+  const anchor = world.get(siteId, 'TileAnchor');
+  const site = world.get(siteId, 'BuildSite');
+  if (!anchor || !site) {
+    board.complete(jobId);
+    return;
+  }
+  grid.setWall(anchor.i, anchor.j, 1);
+  const pos = world.get(siteId, 'Position');
+  world.spawn({
+    Wall: {},
+    WallViz: {},
+    TileAnchor: { i: anchor.i, j: anchor.j },
+    Position: pos ? { ...pos } : { x: 0, y: 0, z: 0 },
+  });
+  world.despawn(siteId);
+  board.complete(jobId);
+}
+
+/**
  * State machine for the haul job: walk to the item → pick up → walk to drop
  * tile → drop. Any step that can no longer be satisfied bails gracefully,
  * returning the cow to `none` so the brain can repick.
@@ -412,11 +546,18 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
  * @param {BrainDeps} deps
  */
 function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
-  const { jobId, itemId, toI, toJ } =
-    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number }} */ (job.payload);
+  const { jobId, itemId, toI, toJ, toBuildSite } =
+    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number, toBuildSite?: boolean }} */ (
+      job.payload
+    );
 
-  // Target stockpile tile got undesignated mid-haul → complete + bail.
-  if (!grid.isStockpile(toI, toJ)) {
+  // Target tile stopped being a valid drop (stockpile undesignated, or
+  // BuildSite cancelled/already built) → complete + bail. Delivery to a
+  // BuildSite uses the site's existence at that tile, not the stockpile bit.
+  const targetGone = toBuildSite
+    ? findBuildSiteAt(world, toI, toJ) === null
+    : !grid.isStockpile(toI, toJ);
+  if (targetGone) {
     if (inv.itemKind !== null) {
       dropCarriedItem(world, grid, inv, pos);
       deps.onItemChange();
@@ -523,8 +664,24 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       // If another code path already cleared the inventory (e.g. emergency
       // drop), skip spawning a phantom item.
       if (inv.itemKind !== null) {
-        addItemToTile(world, grid, inv.itemKind, toI, toJ);
-        inv.itemKind = null;
+        if (toBuildSite) {
+          // Delivery: consume the carried unit into the BuildSite instead of
+          // spawning a loose item stack. If the site vanished under us while
+          // we were dropping, fall back to dumping the wood on the tile so it
+          // re-enters the haul pool.
+          const siteId = findBuildSiteAt(world, toI, toJ);
+          const site = siteId !== null ? world.get(siteId, 'BuildSite') : null;
+          if (site && site.delivered < site.required) {
+            site.delivered += 1;
+            inv.itemKind = null;
+          } else {
+            addItemToTile(world, grid, inv.itemKind, toI, toJ);
+            inv.itemKind = null;
+          }
+        } else {
+          addItemToTile(world, grid, inv.itemKind, toI, toJ);
+          inv.itemKind = null;
+        }
         deps.onItemChange();
       }
       board.complete(jobId);
@@ -533,6 +690,20 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       job.payload = {};
     }
   }
+}
+
+/**
+ * Find the BuildSite entity anchored at (i, j), if any. Returns its entity
+ * id or null. O(sites) scan — site count stays small in practice.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} i @param {number} j
+ */
+function findBuildSiteAt(world, i, j) {
+  for (const { id, components } of world.query(['BuildSite', 'TileAnchor'])) {
+    if (components.TileAnchor.i === i && components.TileAnchor.j === j) return id;
+  }
+  return null;
 }
 
 /**
