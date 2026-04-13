@@ -8,9 +8,9 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
-const WALL_HEIGHT = 1.6 * UNITS_PER_METER;
-const WALL_WIDTH = TILE_SIZE * 0.9;
-const WALL_DEPTH = TILE_SIZE * 0.9;
+const WALL_HEIGHT = 3 * UNITS_PER_METER;
+const WALL_WIDTH = TILE_SIZE;
+const WALL_DEPTH = TILE_SIZE;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();

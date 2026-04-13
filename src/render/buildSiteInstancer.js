@@ -9,9 +9,9 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
-const FRAME_HEIGHT = 1.6 * UNITS_PER_METER;
-const FRAME_WIDTH = TILE_SIZE * 0.9;
-const FRAME_DEPTH = TILE_SIZE * 0.9;
+const FRAME_HEIGHT = 3 * UNITS_PER_METER;
+const FRAME_WIDTH = TILE_SIZE;
+const FRAME_DEPTH = TILE_SIZE;
 const MIN_DELIVERED_FRAC = 0.15;
 
 const COLOR_WAITING = new THREE.Color(0x9ad0ff);
