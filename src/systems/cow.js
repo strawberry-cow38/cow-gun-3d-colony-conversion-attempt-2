@@ -47,6 +47,17 @@ export function makeCowBrainSystem(deps) {
           job.payload = {};
         }
 
+        if (job.kind === 'move') {
+          // Player-issued move: FollowPath consumes Path.steps; when empty
+          // we clear the job so wander resumes.
+          if (path.index >= path.steps.length) {
+            job.kind = 'none';
+            job.state = 'idle';
+            job.payload = {};
+          }
+          continue;
+        }
+
         if (job.kind === 'wander') {
           if (job.state === 'planning') {
             const goal = pickRandomWalkable(grid, walkable);

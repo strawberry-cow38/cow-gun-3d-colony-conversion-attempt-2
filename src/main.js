@@ -12,6 +12,7 @@ import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { CowSelector } from './render/cowSelector.js';
+import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
@@ -113,6 +114,17 @@ let lastPick = /** @type {{ i: number, j: number } | null} */ (null);
 new TilePicker(canvas, camera, tileMesh, { W: gridW, H: gridH }, (hit) => {
   lastPick = hit;
 });
+
+new CowMoveCommand(
+  canvas,
+  camera,
+  () => tileMesh,
+  tileGrid,
+  pathCache,
+  defaultWalkable,
+  world,
+  () => selectedCow,
+);
 
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
@@ -216,6 +228,7 @@ function updateHud() {
     ...cowLines,
     '',
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
+    'LMB = select cow/tile, RMB (with cow selected) = move-to tile',
     'N = spawn cow at last clicked tile',
     'K = save, L = load',
   ];
