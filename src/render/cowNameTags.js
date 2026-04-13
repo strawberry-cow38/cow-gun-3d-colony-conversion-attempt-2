@@ -31,6 +31,7 @@ export function createCowNameTags(scene) {
    * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, texture: THREE.CanvasTexture, name: string }>}
    */
   const tags = new Map();
+  let visible = true;
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -38,6 +39,7 @@ export function createCowNameTags(scene) {
    * @param {number} alpha
    */
   function update(world, camera, alpha) {
+    if (!visible) return;
     camera.getWorldPosition(_camPos);
     camera.getWorldDirection(_camFwd);
 
@@ -89,7 +91,14 @@ export function createCowNameTags(scene) {
     tags.clear();
   }
 
-  return { update, dispose };
+  /** @param {boolean} v */
+  function setVisible(v) {
+    if (v === visible) return;
+    visible = v;
+    for (const tag of tags.values()) tag.sprite.visible = v;
+  }
+
+  return { update, dispose, setVisible };
 }
 
 /**

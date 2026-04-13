@@ -29,6 +29,7 @@ export function createItemLabels(scene) {
    * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, texture: THREE.CanvasTexture, text: string }>}
    */
   const tags = new Map();
+  let visible = true;
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -36,6 +37,7 @@ export function createItemLabels(scene) {
    * @param {import('../world/tileGrid.js').TileGrid} grid
    */
   function update(world, camera, grid) {
+    if (!visible) return;
     camera.getWorldPosition(_camPos);
     camera.getWorldDirection(_camFwd);
 
@@ -86,7 +88,14 @@ export function createItemLabels(scene) {
     tags.clear();
   }
 
-  return { update, dispose };
+  /** @param {boolean} v */
+  function setVisible(v) {
+    if (v === visible) return;
+    visible = v;
+    for (const tag of tags.values()) tag.sprite.visible = v;
+  }
+
+  return { update, dispose, setVisible };
 }
 
 /**

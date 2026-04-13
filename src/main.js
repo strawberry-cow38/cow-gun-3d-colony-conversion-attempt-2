@@ -266,7 +266,8 @@ const loop = new SimLoop({
     cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
-    cowInstancer.update(world, alpha, tSec, tileGrid);
+    const hiddenCowId = fpCamera.active ? fpCamera.cowId : null;
+    cowInstancer.update(world, alpha, tSec, tileGrid, hiddenCowId);
     cowNameTags.update(world, camera, alpha);
     draftBadge.update(world, tSec);
     treeInstancer.update(world, tileGrid);
@@ -503,6 +504,7 @@ function updateHud() {
 addEventListener('keydown', async (e) => {
   if (e.code === 'KeyP') {
     debugEnabled = !debugEnabled;
+    applyDebugVisibility();
     updateHud();
     return;
   }
@@ -644,6 +646,17 @@ function countComp(component) {
   let n = 0;
   for (const _ of world.query([component])) n++;
   return n;
+}
+
+/**
+ * Mirror the debug flag out to the world-space overlays. Kept as one place
+ * so a future overlay just needs to add a line here instead of chasing the
+ * flag through the keydown handler.
+ */
+function applyDebugVisibility() {
+  cowNameTags.setVisible(debugEnabled);
+  itemLabels.setVisible(debugEnabled);
+  stockpileOverlay.setVisible(debugEnabled);
 }
 
 function countDrafted() {

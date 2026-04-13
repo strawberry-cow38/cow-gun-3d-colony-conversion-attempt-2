@@ -66,5 +66,10 @@ export function createStockpileOverlay(scene, capacity = 4096) {
     dirty = true;
   }
 
-  return { mesh, update, markDirty };
+  /** @param {boolean} v */
+  function setVisible(v) {
+    mesh.visible = v;
+  }
+
+  return { mesh, update, markDirty, setVisible };
 }

@@ -72,8 +72,11 @@ export function createCowInstancer(scene, capacity = 256) {
    * @param {number} alpha
    * @param {number} timeSec
    * @param {import('../world/tileGrid.js').TileGrid} [grid] required for chop-facing yaw
+   * @param {number | null} [hideId] cow to skip drawing entirely — used by the
+   *   FP camera so the viewed cow's own model doesn't block the view. The
+   *   cow still simulates normally, we just don't write an instance matrix.
    */
-  function update(world, alpha, timeSec, grid) {
+  function update(world, alpha, timeSec, grid, hideId = null) {
     let i = 0;
     let c = 0;
     slotToEntity.length = 0;
@@ -88,6 +91,7 @@ export function createCowInstancer(scene, capacity = 256) {
       'CowViz',
     ])) {
       if (i >= capacity) break;
+      if (id === hideId) continue;
       const p = components.Position;
       const pp = components.PrevPosition;
       const v = components.Velocity;
