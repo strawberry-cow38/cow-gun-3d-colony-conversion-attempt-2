@@ -57,7 +57,10 @@ export function makeCowBrainSystem(deps) {
         const path = components.Path;
         const pos = components.Position;
 
-        if (job.kind === 'none') {
+        // Preempt a wander when chop work appears — without this a cow that
+        // already rolled into wander never re-checks the board and will happily
+        // ignore freshly designated trees.
+        if (job.kind === 'wander' || job.kind === 'none') {
           const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
           const candidate = board.findUnclaimed(near);
           if (candidate && candidate.kind === 'chop' && board.claim(candidate.id, id)) {
@@ -69,11 +72,16 @@ export function makeCowBrainSystem(deps) {
               i: candidate.payload.i,
               j: candidate.payload.j,
             };
-          } else {
-            job.kind = 'wander';
-            job.state = 'planning';
-            job.payload = {};
+            path.steps = [];
+            path.index = 0;
           }
+        }
+
+        if (job.kind === 'none') {
+          // No work claimed above → fall back to wander.
+          job.kind = 'wander';
+          job.state = 'planning';
+          job.payload = {};
         }
 
         if (job.kind === 'chop') {
