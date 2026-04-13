@@ -30,7 +30,38 @@ import {
   loadState,
   serializeState,
 } from './world/persist.js';
-import { TileGrid } from './world/tileGrid.js';
+import { BIOME, TileGrid } from './world/tileGrid.js';
+
+const BIOME_NAMES = /** @type {Record<number, string>} */ ({
+  [BIOME.GRASS]: 'grass',
+  [BIOME.DIRT]: 'dirt',
+  [BIOME.STONE]: 'stone',
+  [BIOME.SAND]: 'sand',
+});
+
+/**
+ * Chunked base64 of a byte array. `btoa(String.fromCharCode(...bytes))` throws
+ * `Maximum call stack size exceeded` once `bytes` grows past ~100k because
+ * spread passes every element as a separate argument. Chunked path is safe
+ * for arbitrarily large buffers.
+ * @param {Uint8Array} bytes
+ */
+function bytesToBase64(bytes) {
+  const chunk = 0x8000;
+  let str = '';
+  for (let i = 0; i < bytes.length; i += chunk) {
+    str += String.fromCharCode.apply(null, /** @type {any} */ (bytes.subarray(i, i + chunk)));
+  }
+  return btoa(str);
+}
+
+/** @param {string} b64 */
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
 const params = new URLSearchParams(location.search);
 const stressCount = Number.parseInt(params.get('stress') ?? '0', 10);
@@ -162,7 +193,14 @@ function updateHud() {
       selectedCow = null;
     }
   }
-  const pickStr = lastPick ? `pick: i=${lastPick.i} j=${lastPick.j}` : 'pick: (click a tile)';
+  let pickStr = 'pick: (click a tile)';
+  if (lastPick && tileGrid.inBounds(lastPick.i, lastPick.j)) {
+    const elev = tileGrid.getElevation(lastPick.i, lastPick.j);
+    const biomeId = tileGrid.getBiome(lastPick.i, lastPick.j);
+    const biomeName = BIOME_NAMES[biomeId] ?? `biome#${biomeId}`;
+    const walk = defaultWalkable(tileGrid, lastPick.i, lastPick.j) ? 'yes' : 'no';
+    pickStr = `pick: i=${lastPick.i} j=${lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
+  }
   const lines = [
     'phase 3: cows + pathfinding + jobs',
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
@@ -173,7 +211,7 @@ function updateHud() {
     pickStr,
     ...cowLines,
     '',
-    'WASD/arrows = pan, MMB-drag = orbit, wheel = zoom',
+    'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'N = spawn cow at last clicked tile',
     'K = save, L = load',
   ];
@@ -188,12 +226,23 @@ addEventListener('keydown', async (e) => {
     return;
   }
   if (e.code === 'KeyK') {
-    const state = serializeState(tileGrid, world);
-    const json = JSON.stringify(state);
-    const gz = await gzipString(json);
-    const b64 = btoa(String.fromCharCode(...gz));
-    localStorage.setItem('save:v2', b64);
-    console.log('[save] cows:', state.cows.length, 'gzipped bytes:', gz.length);
+    try {
+      const state = serializeState(tileGrid, world);
+      const json = JSON.stringify(state);
+      const gz = await gzipString(json);
+      const b64 = bytesToBase64(gz);
+      localStorage.setItem('save:v2', b64);
+      console.log(
+        '[save] ok — tiles:',
+        tileGrid.W * tileGrid.H,
+        'cows:',
+        state.cows.length,
+        'gz bytes:',
+        gz.length,
+      );
+    } catch (err) {
+      console.error('[save] failed:', err);
+    }
   }
   if (e.code === 'KeyL') {
     const b64 = localStorage.getItem('save:v2') ?? localStorage.getItem('save:v1');
@@ -201,7 +250,7 @@ addEventListener('keydown', async (e) => {
       console.warn('[load] no save in localStorage');
       return;
     }
-    const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const bin = base64ToBytes(b64);
     const json = await gunzipBytes(bin);
     const parsed = JSON.parse(json);
     const migrated = loadState(parsed);

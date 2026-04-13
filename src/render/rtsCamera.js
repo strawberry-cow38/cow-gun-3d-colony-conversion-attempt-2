@@ -73,7 +73,8 @@ export class RtsCamera {
       const sin = Math.sin(this.yaw);
       const wx = dx * cos + dz * sin;
       const wz = -dx * sin + dz * cos;
-      const speed = this.panSpeedUnits * (this.distance / this.panReferenceDistance);
+      const fastMult = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 2 : 1;
+      const speed = this.panSpeedUnits * (this.distance / this.panReferenceDistance) * fastMult;
       this.focus.x += wx * speed * dt;
       this.focus.z += wz * speed * dt;
     }
