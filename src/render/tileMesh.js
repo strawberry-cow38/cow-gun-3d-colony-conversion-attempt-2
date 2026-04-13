@@ -73,12 +73,14 @@ export function buildTileMesh(tileGrid) {
         colors[o + 2] = b;
       }
 
+      // Counter-clockwise winding when viewed from above (+Y) so normals
+      // face up and the mesh is visible from the camera, not just from below.
       indices[ix++] = baseV;
+      indices[ix++] = baseV + 2;
       indices[ix++] = baseV + 1;
-      indices[ix++] = baseV + 2;
       indices[ix++] = baseV;
-      indices[ix++] = baseV + 2;
       indices[ix++] = baseV + 3;
+      indices[ix++] = baseV + 2;
     }
   }
 

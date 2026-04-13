@@ -18,21 +18,19 @@ export function createScene(canvas) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x14161c);
 
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+  // Far plane sized for a 200×200 grid at 1.5m tiles (~8570u across).
+  const camera = new THREE.PerspectiveCamera(
+    60,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    50000,
+  );
   camera.position.set(15, 18, 22);
   camera.lookAt(0, 0, 0);
 
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, 80),
-    new THREE.MeshStandardMaterial({ color: 0x222632 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.05;
-  scene.add(ground);
-
   scene.add(new THREE.AmbientLight(0xffffff, 0.45));
   const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-  sun.position.set(10, 20, 10);
+  sun.position.set(3000, 5000, 2000);
   scene.add(sun);
 
   window.addEventListener('resize', () => {

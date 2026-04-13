@@ -10,6 +10,7 @@
  */
 
 import * as THREE from 'three';
+import { UNITS_PER_METER } from '../world/coords.js';
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
@@ -17,8 +18,11 @@ const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
-const COW_BODY = 1.6;
-const COW_BOB_AMPLITUDE = 0.6;
+// Rough cow dimensions in meters. Low-poly placeholder — real mesh comes later.
+const COW_WIDTH = 0.8 * UNITS_PER_METER;
+const COW_HEIGHT = 1.0 * UNITS_PER_METER;
+const COW_LENGTH = 1.8 * UNITS_PER_METER;
+const COW_BOB_AMPLITUDE = 0.08 * UNITS_PER_METER;
 const COW_BOB_FREQ_HZ = 6;
 
 /**
@@ -26,8 +30,9 @@ const COW_BOB_FREQ_HZ = 6;
  * @param {number} capacity
  */
 export function createCowInstancer(scene, capacity = 256) {
-  // Body is a flattened brown box. Real low-poly cow comes later.
-  const geometry = new THREE.BoxGeometry(COW_BODY, COW_BODY * 0.7, COW_BODY * 1.4);
+  // Body is a brown box sized to real-ish cow dimensions. Real low-poly cow
+  // mesh comes later.
+  const geometry = new THREE.BoxGeometry(COW_WIDTH, COW_HEIGHT, COW_LENGTH);
   const material = new THREE.MeshStandardMaterial({ color: 0x7a4a2a, flatShading: true });
   const mesh = new THREE.InstancedMesh(geometry, material, capacity);
   mesh.count = 0;
@@ -67,7 +72,7 @@ export function createCowInstancer(scene, capacity = 256) {
         ? COW_BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * COW_BOB_FREQ_HZ * Math.PI))
         : 0;
 
-      _position.set(x, y + COW_BODY * 0.5 + bob, z);
+      _position.set(x, y + COW_HEIGHT * 0.5 + bob, z);
       const yaw = moving ? Math.atan2(v.x, v.z) : 0;
       _euler.set(0, yaw, 0);
       _quat.setFromEuler(_euler);

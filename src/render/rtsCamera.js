@@ -11,6 +11,7 @@
  */
 
 import * as THREE from 'three';
+import { TILE_SIZE } from '../world/coords.js';
 
 const _v = new THREE.Vector3();
 
@@ -23,13 +24,14 @@ export class RtsCamera {
     this.camera = camera;
     this.dom = dom;
     this.focus = new THREE.Vector3(0, 0, 0);
-    this.distance = 35;
+    // Defaults scale to tile size so the whole grid is framed sensibly.
+    this.distance = TILE_SIZE * 20;
     this.yaw = Math.PI * 0.25;
     this.pitch = Math.PI * 0.32;
     this.minPitch = 0.15;
     this.maxPitch = Math.PI * 0.49;
-    this.minDistance = 5;
-    this.maxDistance = 400;
+    this.minDistance = TILE_SIZE * 0.5;
+    this.maxDistance = TILE_SIZE * 200;
 
     /** @type {Set<string>} */
     this.keys = new Set();
@@ -37,7 +39,10 @@ export class RtsCamera {
     /** @type {{ x: number, y: number } | null} */
     this.lastMouse = null;
 
-    this.panSpeedUnits = 30;
+    // Pan speed scales with zoom level inside update(); base is ~10 tiles/sec
+    // at the default distance.
+    this.panSpeedUnits = TILE_SIZE * 10;
+    this.panReferenceDistance = this.distance;
     this.orbitSpeed = 0.005;
     this.zoomFactor = 1.15;
 
@@ -61,7 +66,7 @@ export class RtsCamera {
       const sin = Math.sin(this.yaw);
       const wx = dx * cos - dz * sin;
       const wz = dx * sin + dz * cos;
-      const speed = this.panSpeedUnits * (this.distance / 35);
+      const speed = this.panSpeedUnits * (this.distance / this.panReferenceDistance);
       this.focus.x += wx * speed * dt;
       this.focus.z += wz * speed * dt;
     }
