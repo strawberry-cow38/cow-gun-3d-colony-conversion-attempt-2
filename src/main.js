@@ -20,6 +20,7 @@ import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
+import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createItemInstancer } from './render/itemInstancer.js';
@@ -108,6 +109,7 @@ const audio = createAudio({ camera });
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
+const cowThoughtBubbles = createCowThoughtBubbles(scene);
 const selectionViz = createSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
 const itemInstancer = createItemInstancer(scene, 1024);
@@ -305,6 +307,7 @@ const loop = new SimLoop({
     const hiddenCowId = fpCamera.active ? fpCamera.cowId : null;
     cowInstancer.update(world, alpha, tSec, tileGrid, hiddenCowId);
     cowNameTags.update(world, camera, alpha);
+    cowThoughtBubbles.update(world, camera, alpha);
     draftBadge.update(world, tSec);
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
@@ -339,6 +342,7 @@ hudApi = createHud({
   chopDesignator,
   stockpileDesignator,
   cowNameTags,
+  cowThoughtBubbles,
   itemLabels,
   stockpileOverlay,
   pickTileOverlay,
