@@ -63,18 +63,28 @@ export function computeStockpileSlots(world, grid, board) {
 }
 
 /**
- * Count haul-job units already targeting each item entity so a stack can have
- * multiple concurrent haulers (one per unit) without double-claiming.
+ * Count open claims against each item entity — both haul jobs on the board
+ * and in-flight cow eat jobs. A stack of N can have up to N concurrent
+ * haulers, but an eater walking to it also reserves one unit so the haul
+ * poster doesn't strip food out from under a hungry cow.
  *
+ * @param {import('../ecs/world.js').World} world
  * @param {import('./board.js').JobBoard} board
  * @returns {Map<number, number>}  itemId → units claimed
  */
-export function buildHaulTargetedCounts(board) {
+export function buildHaulTargetedCounts(world, board) {
   /** @type {Map<number, number>} */
   const counts = new Map();
   for (const j of board.jobs) {
     if (j.completed || j.kind !== 'haul') continue;
     const id = j.payload.itemId;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  for (const { components } of world.query(['Cow', 'Job'])) {
+    const job = components.Job;
+    if (job.kind !== 'eat') continue;
+    const id = job.payload.itemId;
+    if (typeof id !== 'number') continue;
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   return counts;
@@ -216,7 +226,7 @@ export function makeHaulPostingSystem(board, grid) {
     tier: 'rare',
     run(world) {
       const slots = computeStockpileSlots(world, grid, board);
-      const targetedCounts = buildHaulTargetedCounts(board);
+      const targetedCounts = buildHaulTargetedCounts(world, board);
 
       // Pass 1: loose items off stockpile → stockpile tiles.
       for (const { id, components } of world.query(['Item', 'TileAnchor'])) {

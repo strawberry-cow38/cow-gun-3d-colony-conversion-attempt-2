@@ -3,6 +3,8 @@
  * render color per item kind. Systems import from here instead of hardcoding.
  */
 
+import { tileToWorld } from './coords.js';
+
 export const ITEM_KINDS = /** @type {const} */ (['wood', 'stone', 'food']);
 
 /** @type {Record<string, number>} */
@@ -28,4 +30,34 @@ export const KIND_COLOR = {
 /** @param {string} kind */
 export function maxStack(kind) {
   return MAX_STACK[kind] ?? 1;
+}
+
+/**
+ * Drop one unit of `kind` at (i, j), merging into an existing same-kind stack
+ * with room if one is there, else spawning a fresh stack with count=1.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {string} kind
+ * @param {number} i
+ * @param {number} j
+ */
+export function addItemToTile(world, grid, kind, i, j) {
+  if (!grid.inBounds(i, j)) return;
+  const cap = maxStack(kind);
+  for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    const it = components.Item;
+    if (a.i === i && a.j === j && it.kind === kind && it.count < cap) {
+      it.count += 1;
+      return;
+    }
+  }
+  const w = tileToWorld(i, j, grid.W, grid.H);
+  world.spawn({
+    Item: { kind, count: 1, capacity: cap },
+    ItemViz: {},
+    TileAnchor: { i, j },
+    Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
+  });
 }

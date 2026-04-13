@@ -39,7 +39,8 @@ import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { DEFAULT_GRID_H, DEFAULT_GRID_W, tileToWorld } from './world/coords.js';
 import { pickCowName } from './world/cowNames.js';
-import { ITEM_KINDS, maxStack } from './world/items.js';
+import { ITEM_KINDS, addItemToTile } from './world/items.js';
+import { CURRENT_VERSION } from './world/migrations/index.js';
 import {
   gunzipBytes,
   gzipString,
@@ -389,31 +390,6 @@ function nearestFreeTile(i, j) {
 }
 
 /**
- * Drop one unit of `kind` at (i, j), merging into an existing same-kind stack
- * if one is already there. Used by the G/F debug keys.
- * @param {number} i @param {number} j @param {string} kind
- */
-function spawnItemAt(i, j, kind) {
-  if (!tileGrid.inBounds(i, j)) return;
-  const cap = maxStack(kind);
-  for (const { components } of world.query(['Item', 'TileAnchor'])) {
-    const a = components.TileAnchor;
-    const it = components.Item;
-    if (a.i === i && a.j === j && it.kind === kind && it.count < cap) {
-      it.count += 1;
-      return;
-    }
-  }
-  const w = tileToWorld(i, j, gridW, gridH);
-  world.spawn({
-    Item: { kind, count: 1, capacity: cap },
-    ItemViz: {},
-    TileAnchor: { i, j },
-    Position: { x: w.x, y: tileGrid.getElevation(i, j), z: w.z },
-  });
-}
-
-/**
  * Flip the `drafted` flag on each cow. Mixed selections all go to "drafted"
  * (so one press never silently drafts half the crowd and un-drafts the rest);
  * if everyone is already drafted, the press releases them.
@@ -664,7 +640,7 @@ addEventListener('keydown', async (e) => {
   if (e.code === 'KeyG' || e.code === 'KeyJ') {
     const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
     const kind = e.code === 'KeyG' ? 'stone' : 'food';
-    spawnItemAt(tile.i, tile.j, kind);
+    addItemToTile(world, tileGrid, kind, tile.i, tile.j);
     itemInstancer.markDirty();
     updateHud();
     return;
@@ -675,7 +651,7 @@ addEventListener('keydown', async (e) => {
       const json = JSON.stringify(state);
       const gz = await gzipString(json);
       const b64 = bytesToBase64(gz);
-      localStorage.setItem('save:v7', b64);
+      localStorage.setItem(`save:v${CURRENT_VERSION}`, b64);
       console.log(
         '[save] ok — tiles:',
         tileGrid.W * tileGrid.H,
@@ -690,13 +666,11 @@ addEventListener('keydown', async (e) => {
   }
   if (e.code === 'KeyL') {
     try {
-      const b64 =
-        localStorage.getItem('save:v7') ??
-        localStorage.getItem('save:v6') ??
-        localStorage.getItem('save:v5') ??
-        localStorage.getItem('save:v4') ??
-        localStorage.getItem('save:v3') ??
-        localStorage.getItem('save:v2');
+      let b64 = null;
+      for (let v = CURRENT_VERSION; v >= 2; v--) {
+        b64 = localStorage.getItem(`save:v${v}`);
+        if (b64) break;
+      }
       if (!b64) {
         console.warn('[load] no save in localStorage');
         return;

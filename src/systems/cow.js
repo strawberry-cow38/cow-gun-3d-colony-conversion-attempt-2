@@ -17,7 +17,7 @@ import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
-import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, maxStack } from '../world/items.js';
+import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
 
 const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
@@ -583,34 +583,6 @@ function findNearestFood(world, near) {
     }
   }
   return best;
-}
-
-/**
- * Drop one unit of `kind` on tile (i, j), merging into an existing same-kind
- * stack with room if one is there, else spawning a fresh stack with count=1.
- *
- * @param {import('../ecs/world.js').World} world
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {string} kind
- * @param {number} i @param {number} j
- */
-function addItemToTile(world, grid, kind, i, j) {
-  const cap = maxStack(kind);
-  for (const { components } of world.query(['Item', 'TileAnchor'])) {
-    const a = components.TileAnchor;
-    const it = components.Item;
-    if (a.i === i && a.j === j && it.kind === kind && it.count < cap) {
-      it.count += 1;
-      return;
-    }
-  }
-  const w = tileToWorld(i, j, grid.W, grid.H);
-  world.spawn({
-    Item: { kind, count: 1, capacity: cap },
-    ItemViz: {},
-    TileAnchor: { i, j },
-    Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
-  });
 }
 
 /**
