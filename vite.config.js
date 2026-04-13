@@ -9,7 +9,7 @@ export default defineConfig({
   preview: {
     host: '0.0.0.0',
     port: 4173,
-    allowedHosts: ['.lhr.life', '.trycloudflare.com', '.serveo.net'],
+    allowedHosts: ['.lhr.life', '.trycloudflare.com', '.serveo.net', '.cowtools.uk'],
   },
   build: {
     target: 'es2022',
