@@ -133,7 +133,7 @@ export function createHud(ctx) {
     const lines = [
       'phase 4: trees + chop + stacks + eat',
       `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
-      `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
+      `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/${30 * loop.speed}  speed=${loop.speed}x  steps/frame=${loop.lastSteps}`,
       `render: ${ctx.getFps().toFixed(0)} fps`,
       `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
       `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
@@ -176,7 +176,7 @@ export function createHud(ctx) {
       'P = toggle debug menu  (also disables the debug-only keys below)',
       'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',
       'K = save, L = load',
-      'T = time +2h (Shift+T = -2h),  Y = cycle weather',
+      'T = time +2h (Shift+T = -2h),  Y = cycle weather,  1/2/3 = sim speed',
     );
     hud.innerText = lines.join('\n');
   }

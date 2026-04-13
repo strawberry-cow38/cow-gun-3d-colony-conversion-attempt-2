@@ -67,6 +67,7 @@ const PAN_KEYS = new Set([
  * @property {{ play: (kind: string) => void }} audio
  * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
  * @property {import('../world/weather.js').Weather} weather
+ * @property {import('../sim/loop.js').SimLoop} loop
  * @property {() => void} applyDebugVisibility
  * @property {() => void} updateHud
  */
@@ -183,6 +184,17 @@ async function handleKey(ctx, e) {
     } else {
       ctx.audio.play('deny');
     }
+    return;
+  }
+
+  // 1/2/3 set sim speed multiplier. Player-facing so it's NOT debug-gated.
+  // Keys map directly to multipliers; anything outside the allowed set is
+  // ignored so stray number presses don't crank the sim to unintended speeds.
+  if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+    const mult = Number(e.code.slice(5));
+    ctx.loop.setSpeed(mult);
+    ctx.audio.play('cycle');
+    ctx.updateHud();
     return;
   }
 

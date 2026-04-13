@@ -14,6 +14,7 @@
 export const SIM_HZ = 30;
 export const SIM_DT = 1 / SIM_HZ;
 const MAX_STEPS_PER_FRAME = 5;
+export const SPEED_STEPS = /** @type {const} */ ([1, 2, 3]);
 
 /**
  * @typedef SimLoopOpts
@@ -36,8 +37,15 @@ export class SimLoop {
     this.measuredHz = 0;
     /** Steps per render frame, last frame. */
     this.lastSteps = 0;
+    /** Tick-rate multiplier. 1 = normal 30Hz, 2 = 60Hz, 3 = 90Hz. */
+    this.speed = 1;
     /** @type {number | null} */
     this.rafId = null;
+  }
+
+  /** @param {number} mult */
+  setSpeed(mult) {
+    this.speed = mult;
   }
 
   start() {
@@ -51,10 +59,15 @@ export class SimLoop {
       let frameTime = (t - this.lastTime) / 1000;
       if (frameTime > 0.25) frameTime = 0.25;
       this.lastTime = t;
-      this.accumulator += frameTime;
+      // Speed multiplier is applied to the accumulator so higher speeds just
+      // drain more sim ticks per render frame. Same SIM_DT everywhere keeps
+      // per-tick math (hunger drain, chop ticks, etc.) untouched.
+      this.accumulator += frameTime * this.speed;
 
+      // Scale the catch-up cap with speed so 3x doesn't starve at busy tabs.
+      const maxSteps = MAX_STEPS_PER_FRAME * Math.max(1, Math.ceil(this.speed));
       let steps = 0;
-      while (this.accumulator >= SIM_DT && steps < MAX_STEPS_PER_FRAME) {
+      while (this.accumulator >= SIM_DT && steps < maxSteps) {
         this.step(SIM_DT, this.tick);
         this.tick++;
         this.accumulator -= SIM_DT;

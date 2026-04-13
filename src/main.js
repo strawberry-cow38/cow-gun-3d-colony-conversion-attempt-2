@@ -450,6 +450,7 @@ installKeyboard({
   audio,
   timeOfDay,
   weather,
+  loop,
   applyDebugVisibility: hudApi.applyDebugVisibility,
   updateHud: hudApi.updateHud,
 });
