@@ -5,6 +5,16 @@
  * (default 10).
  */
 
+import { countDrafted, toggleDraft } from './boot/drafting.js';
+import { readBootParams } from './boot/params.js';
+import { spawnCowAt, spawnInitialCows } from './boot/spawn.js';
+import {
+  allCowIds,
+  base64ToBytes,
+  bytesToBase64,
+  countComp,
+  despawnAllComp,
+} from './boot/utils.js';
 import { registerComponents } from './components/index.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
@@ -37,8 +47,7 @@ import { spawnStressEntities, stressBounce } from './stress.js';
 import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from './systems/cow.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
-import { DEFAULT_GRID_H, DEFAULT_GRID_W, tileToWorld } from './world/coords.js';
-import { pickCowName } from './world/cowNames.js';
+import { tileToWorld } from './world/coords.js';
 import { ITEM_KINDS, addItemToTile } from './world/items.js';
 import { CURRENT_VERSION } from './world/migrations/index.js';
 import {
@@ -60,36 +69,7 @@ const BIOME_NAMES = /** @type {Record<number, string>} */ ({
   [BIOME.SAND]: 'sand',
 });
 
-/**
- * Chunked base64 of a byte array. `btoa(String.fromCharCode(...bytes))` throws
- * `Maximum call stack size exceeded` once `bytes` grows past ~100k because
- * spread passes every element as a separate argument. Chunked path is safe
- * for arbitrarily large buffers.
- * @param {Uint8Array} bytes
- */
-function bytesToBase64(bytes) {
-  const chunk = 0x8000;
-  let str = '';
-  for (let i = 0; i < bytes.length; i += chunk) {
-    str += String.fromCharCode.apply(null, /** @type {any} */ (bytes.subarray(i, i + chunk)));
-  }
-  return btoa(str);
-}
-
-/** @param {string} b64 */
-function base64ToBytes(b64) {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-const params = new URLSearchParams(location.search);
-const stressCount = Number.parseInt(params.get('stress') ?? '0', 10);
-const cowCount = Number.parseInt(params.get('cows') ?? '10', 10);
-const treeCount = Number.parseInt(params.get('trees') ?? '60', 10);
-const gridW = Number.parseInt(params.get('w') ?? `${DEFAULT_GRID_W}`, 10);
-const gridH = Number.parseInt(params.get('h') ?? `${DEFAULT_GRID_H}`, 10);
+const { stressCount, cowCount, treeCount, gridW, gridH } = readBootParams();
 
 const tileGrid = new TileGrid(gridW, gridH);
 tileGrid.generateSimpleHeightmap(8);
@@ -136,7 +116,7 @@ scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
 
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialTrees(world, tileGrid, treeCount);
-spawnInitialCows(cowCount);
+spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
 const { renderer, scene, camera } = createScene(canvas);
@@ -336,115 +316,6 @@ const loop = new SimLoop({
   },
 });
 
-/** @param {number} i @param {number} j */
-function spawnCowAt(i, j) {
-  if (!tileGrid.inBounds(i, j)) return;
-  const placed = nearestFreeTile(i, j);
-  if (!placed) return;
-  const w = tileToWorld(placed.i, placed.j, gridW, gridH);
-  const y = tileGrid.getElevation(placed.i, placed.j);
-  world.spawn({
-    Cow: { drafted: false },
-    Position: { x: w.x, y, z: w.z },
-    PrevPosition: { x: w.x, y, z: w.z },
-    Velocity: { x: 0, y: 0, z: 0 },
-    Hunger: { value: 1 },
-    Brain: { name: pickCowName() },
-    Job: { kind: 'none', state: 'idle', payload: {} },
-    Path: { steps: [], index: 0 },
-    Inventory: { itemKind: null },
-    CowViz: {},
-  });
-}
-
-/**
- * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
- * cow spawn never lands on a tree/rock. Returns null only if the whole grid
- * is blocked, which shouldn't happen.
- * @param {number} i @param {number} j
- */
-function nearestFreeTile(i, j) {
-  const seen = new Uint8Array(gridW * gridH);
-  const queue = [{ i, j }];
-  seen[j * gridW + i] = 1;
-  let head = 0;
-  while (head < queue.length) {
-    const t = queue[head++];
-    if (tileGrid.inBounds(t.i, t.j) && !tileGrid.isBlocked(t.i, t.j)) return t;
-    for (const [di, dj] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
-      const ni = t.i + di;
-      const nj = t.j + dj;
-      if (ni < 0 || nj < 0 || ni >= gridW || nj >= gridH) continue;
-      const idx = nj * gridW + ni;
-      if (seen[idx]) continue;
-      seen[idx] = 1;
-      queue.push({ i: ni, j: nj });
-    }
-  }
-  return null;
-}
-
-/**
- * Flip the `drafted` flag on each cow. Mixed selections all go to "drafted"
- * (so one press never silently drafts half the crowd and un-drafts the rest);
- * if everyone is already drafted, the press releases them.
- *
- * Cows transitioning INTO drafted stop immediately — path cleared, velocity
- * zeroed, job reset. Any jobs they'd claimed (chop/haul/eat) get released
- * back to the board via the brain on its next tick.
- * @param {number[]} cowIds
- */
-function toggleDraft(cowIds) {
-  const ids = [];
-  for (const id of cowIds) {
-    if (world.get(id, 'Cow')) ids.push(id);
-  }
-  if (ids.length === 0) return;
-  const allDrafted = ids.every((id) => world.get(id, 'Cow')?.drafted === true);
-  const target = !allDrafted;
-  for (const id of ids) {
-    const c = world.get(id, 'Cow');
-    if (!c) continue;
-    const becomingDrafted = target === true && c.drafted !== true;
-    c.drafted = target;
-    // Either direction wakes the brain so it notices the flip next tick —
-    // drafted-becoming runs the cleanup branch, released cows re-evaluate.
-    const brain = world.get(id, 'Brain');
-    if (brain) brain.jobDirty = true;
-    if (becomingDrafted) {
-      // Stop visually this frame: clear the path so cowFollowPath can't give
-      // them fresh velocity, and zero the current velocity so the next
-      // applyVelocity step doesn't carry them forward. Job cleanup (releasing
-      // chop/haul claims, dropping carried items) happens in the brain's
-      // drafted branch on the next tick using the existing code path.
-      const path = world.get(id, 'Path');
-      const vel = world.get(id, 'Velocity');
-      if (path) {
-        path.steps = [];
-        path.index = 0;
-      }
-      if (vel) {
-        vel.x = 0;
-        vel.z = 0;
-      }
-    }
-  }
-}
-
-/** @param {number} count */
-function spawnInitialCows(count) {
-  for (let n = 0; n < count; n++) {
-    const i = Math.floor(gridW / 2 + (Math.random() * 6 - 3));
-    const j = Math.floor(gridH / 2 + (Math.random() * 6 - 3));
-    spawnCowAt(i, j);
-  }
-}
-
 function updateHud() {
   if (!debugEnabled) {
     hud.style.display = 'none';
@@ -492,7 +363,7 @@ function updateHud() {
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
     `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
     `render: ${measuredFps.toFixed(0)} fps`,
-    `entities: ${world.entityCount}  cows=${countComp('Cow')}  trees=${countComp('Tree')}  ${itemCountsStr()}`,
+    `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
     `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
     pickStr,
     ...cowLines,
@@ -519,7 +390,7 @@ function updateHud() {
   } else if (followEnabled) {
     lines.push('** FOLLOW MODE — click a cow to lock onto them (F to disable) **');
   }
-  const draftedCount = countDrafted();
+  const draftedCount = countDrafted(world);
   lines.push(
     `drafted: ${draftedCount}`,
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
@@ -568,7 +439,7 @@ addEventListener('keydown', async (e) => {
       followEnabled = false;
     } else {
       if (primaryCow === null) {
-        const first = allCowIds()[0] ?? null;
+        const first = allCowIds(world)[0] ?? null;
         if (first !== null) {
           selectedCows.clear();
           selectedCows.add(first);
@@ -583,7 +454,7 @@ addEventListener('keydown', async (e) => {
   // Q/E cycle the primary cow while follow is engaged. The camera follows
   // primary so cycling primary auto-hands off the camera too.
   if (followEnabled && (e.code === 'KeyQ' || e.code === 'KeyE')) {
-    const cows = allCowIds();
+    const cows = allCowIds(world);
     if (cows.length > 0) {
       const curIdx = primaryCow !== null ? cows.indexOf(primaryCow) : -1;
       const dir = e.code === 'KeyE' ? 1 : -1;
@@ -619,12 +490,12 @@ addEventListener('keydown', async (e) => {
   // selection drafts rather than thrash).
   if (e.code === 'KeyR') {
     if (fpCamera.active && fpCamera.cowId !== null) {
-      toggleDraft([fpCamera.cowId]);
+      toggleDraft(world, [fpCamera.cowId]);
       updateHud();
       return;
     }
     if (selectedCows.size > 0) {
-      toggleDraft([...selectedCows]);
+      toggleDraft(world, [...selectedCows]);
       updateHud();
       return;
     }
@@ -633,7 +504,7 @@ addEventListener('keydown', async (e) => {
   if (!debugEnabled) return;
   if (e.code === 'KeyN') {
     const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
-    spawnCowAt(tile.i, tile.j);
+    spawnCowAt(world, tileGrid, tile.i, tile.j);
     updateHud();
     return;
   }
@@ -732,20 +603,6 @@ addEventListener('keydown', async (e) => {
   }
 });
 
-/** @param {string} component */
-function countComp(component) {
-  let n = 0;
-  for (const _ of world.query([component])) n++;
-  return n;
-}
-
-/** @returns {number[]} every cow id in spawn order (what query returns) */
-function allCowIds() {
-  const ids = [];
-  for (const { id } of world.query(['Cow', 'Position'])) ids.push(id);
-  return ids;
-}
-
 /**
  * Mirror the debug flag out to the world-space overlays. Kept as one place
  * so a future overlay just needs to add a line here instead of chasing the
@@ -756,14 +613,6 @@ function applyDebugVisibility() {
   itemLabels.setVisible(debugEnabled);
   stockpileOverlay.setVisible(debugEnabled);
   pickTileOverlay.setVisible(debugEnabled);
-}
-
-function countDrafted() {
-  let n = 0;
-  for (const { components } of world.query(['Cow'])) {
-    if (components.Cow.drafted) n++;
-  }
-  return n;
 }
 
 function itemCountsStr() {
@@ -784,13 +633,6 @@ function pruneStaleSelections() {
     primaryCow =
       selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
   }
-}
-
-/** @param {import('./ecs/world.js').World} w @param {string} comp */
-function despawnAllComp(w, comp) {
-  const ids = [];
-  for (const { id } of w.query([comp])) ids.push(id);
-  for (const id of ids) w.despawn(id);
 }
 
 loop.start();

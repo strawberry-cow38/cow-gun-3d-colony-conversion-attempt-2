@@ -14,7 +14,11 @@ import { World } from '../src/ecs/world.js';
 import { JobBoard } from '../src/jobs/board.js';
 import { makeHaulPostingSystem } from '../src/jobs/haul.js';
 import { PathCache, defaultWalkable } from '../src/sim/pathfinding.js';
-import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from '../src/systems/cow.js';
+import {
+  makeCowBrainSystem,
+  makeCowFollowPathSystem,
+  makeHungerSystem,
+} from '../src/systems/cow.js';
 import { applyVelocity, snapshotPositions } from '../src/systems/movement.js';
 import { spawnInitialTrees } from '../src/systems/trees.js';
 import { tileToWorld } from '../src/world/coords.js';
@@ -89,7 +93,7 @@ const p = (q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q
 const avg = samples.reduce((s, v) => s + v, 0) / samples.length;
 
 console.log(`\ncows=${count} ticks=${ticks} grid=${W}x${H}`);
-console.log(`tick budget @ 30 Hz = 33.33 ms`);
+console.log('tick budget @ 30 Hz = 33.33 ms');
 console.log(`tick avg   = ${avg.toFixed(2)} ms`);
 console.log(`tick p50   = ${p(0.5).toFixed(2)} ms`);
 console.log(`tick p95   = ${p(0.95).toFixed(2)} ms`);
@@ -98,6 +102,6 @@ console.log(`tick max   = ${sorted[sorted.length - 1].toFixed(2)} ms`);
 console.log(`wall total = ${totalMs.toFixed(0)} ms (${ticks} ticks)`);
 console.log(`headroom   = ${(33.33 / avg).toFixed(2)}x real-time`);
 
-console.log(`\nper-system avg ms (EWMA):`);
+console.log('\nper-system avg ms (EWMA):');
 const rows = Array.from(scheduler.avgMs.entries()).sort((a, b) => b[1] - a[1]);
 for (const [name, ms] of rows) console.log(`  ${name.padEnd(18)} ${ms.toFixed(3)} ms`);
