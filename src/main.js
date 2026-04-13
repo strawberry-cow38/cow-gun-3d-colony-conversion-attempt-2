@@ -110,24 +110,33 @@ const loop = new SimLoop({
   },
 });
 
+let cowsSpawned = 0;
+
+/** @param {number} i @param {number} j */
+function spawnCowAt(i, j) {
+  if (!tileGrid.inBounds(i, j)) return;
+  const w = tileToWorld(i, j, gridW, gridH);
+  const y = tileGrid.getElevation(i, j);
+  cowsSpawned += 1;
+  world.spawn({
+    Cow: {},
+    Position: { x: w.x, y, z: w.z },
+    PrevPosition: { x: w.x, y, z: w.z },
+    Velocity: { x: 0, y: 0, z: 0 },
+    Hunger: { value: 1 },
+    Brain: { name: `cow#${cowsSpawned}` },
+    Job: { kind: 'none', state: 'idle', payload: {} },
+    Path: { steps: [], index: 0 },
+    CowViz: {},
+  });
+}
+
 /** @param {number} count */
 function spawnInitialCows(count) {
   for (let n = 0; n < count; n++) {
     const i = Math.floor(gridW / 2 + (Math.random() * 6 - 3));
     const j = Math.floor(gridH / 2 + (Math.random() * 6 - 3));
-    const w = tileToWorld(i, j, gridW, gridH);
-    const y = tileGrid.getElevation(i, j);
-    world.spawn({
-      Cow: {},
-      Position: { x: w.x, y, z: w.z },
-      PrevPosition: { x: w.x, y, z: w.z },
-      Velocity: { x: 0, y: 0, z: 0 },
-      Hunger: { value: 1 },
-      Brain: { name: `cow#${n + 1}` },
-      Job: { kind: 'none', state: 'idle', payload: {} },
-      Path: { steps: [], index: 0 },
-      CowViz: {},
-    });
+    spawnCowAt(i, j);
   }
 }
 
@@ -159,18 +168,25 @@ function updateHud() {
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
     `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
     `render: ${measuredFps.toFixed(0)} fps`,
-    `entities: ${world.entityCount}  cows=${cowCount}  stress=${stressCount}`,
+    `entities: ${world.entityCount}  cows=${countCows()}  stress=${stressCount}`,
     `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
     pickStr,
     ...cowLines,
     '',
     'WASD/arrows = pan, RMB-drag = orbit, wheel = zoom',
+    'N = spawn cow at last clicked tile',
     'F5 = save, F9 = load',
   ];
   hud.innerText = lines.join('\n');
 }
 
 addEventListener('keydown', async (e) => {
+  if (e.code === 'KeyN') {
+    const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
+    spawnCowAt(tile.i, tile.j);
+    updateHud();
+    return;
+  }
   if (e.code === 'F5') {
     e.preventDefault();
     const state = serializeState(tileGrid, world);
@@ -214,6 +230,12 @@ addEventListener('keydown', async (e) => {
     updateHud();
   }
 });
+
+function countCows() {
+  let n = 0;
+  for (const _ of world.query(['Cow'])) n++;
+  return n;
+}
 
 /** @param {import('./ecs/world.js').World} w */
 function despawnAllCows(w) {
