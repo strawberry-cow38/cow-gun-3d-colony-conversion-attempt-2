@@ -29,9 +29,9 @@ export class CowMoveCommand {
    * @param {import('../sim/pathfinding.js').PathCache} pathCache
    * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
    * @param {import('../ecs/world.js').World} world
-   * @param {() => (number | null)} getSelectedCow
+   * @param {() => Iterable<number>} getSelectedCows
    */
-  constructor(dom, camera, getTileMesh, tileGrid, pathCache, walkable, world, getSelectedCow) {
+  constructor(dom, camera, getTileMesh, tileGrid, pathCache, walkable, world, getSelectedCows) {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
@@ -39,19 +39,15 @@ export class CowMoveCommand {
     this.pathCache = pathCache;
     this.walkable = walkable;
     this.world = world;
-    this.getSelectedCow = getSelectedCow;
+    this.getSelectedCows = getSelectedCows;
     this.raycaster = new THREE.Raycaster();
     dom.addEventListener('contextmenu', (e) => this.#handle(e));
   }
 
   /** @param {MouseEvent} e */
   #handle(e) {
-    const id = this.getSelectedCow();
-    if (id === null) return;
-    const pos = this.world.get(id, 'Position');
-    const path = this.world.get(id, 'Path');
-    const job = this.world.get(id, 'Job');
-    if (!pos || !path || !job) return;
+    const ids = [...this.getSelectedCows()];
+    if (ids.length === 0) return;
 
     const rect = this.dom.getBoundingClientRect();
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -68,25 +64,37 @@ export class CowMoveCommand {
       return;
     }
 
+    for (const id of ids) {
+      this.#issue(id, goal, e.shiftKey);
+    }
+  }
+
+  /**
+   * @param {number} id
+   * @param {{ i: number, j: number }} goal
+   * @param {boolean} shiftKey
+   */
+  #issue(id, goal, shiftKey) {
+    const pos = this.world.get(id, 'Position');
+    const path = this.world.get(id, 'Path');
+    const job = this.world.get(id, 'Job');
+    if (!pos || !path || !job) return;
+
     const existingWaypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
     const existingLegEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
     const canQueue =
-      e.shiftKey &&
+      shiftKey &&
       job.kind === 'move' &&
       existingWaypoints.length > 0 &&
       path.index < path.steps.length;
 
     if (canQueue) {
-      // Append-only: A* from the last queued waypoint to the new goal and
-      // concat onto the existing path without touching path.index or
-      // existing steps.
       const lastWp = existingWaypoints[existingWaypoints.length - 1];
       const leg = this.pathCache.find(lastWp, goal);
       if (!leg || leg.length === 0) {
-        console.log('[move] no path to new waypoint:', goal);
+        console.log('[move] no path to new waypoint:', goal, 'for cow', id);
         return;
       }
-      // leg[0] duplicates lastWp, which already sits at the end of path.steps.
       for (let k = 1; k < leg.length; k++) path.steps.push(leg[k]);
       existingLegEnds.push(path.steps.length - 1);
       existingWaypoints.push(goal);
@@ -95,11 +103,10 @@ export class CowMoveCommand {
       return;
     }
 
-    // Fresh move: plan from the cow's current tile to the single goal.
     const start = clampToGrid(pos.x, pos.z, this.tileGrid);
     const route = this.pathCache.find(start, goal);
     if (!route || route.length === 0) {
-      console.log('[move] no path to', goal);
+      console.log('[move] no path to', goal, 'for cow', id);
       return;
     }
     path.steps = route;

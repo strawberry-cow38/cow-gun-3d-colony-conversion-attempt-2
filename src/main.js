@@ -104,9 +104,31 @@ const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const selectionViz = createSelectionViz(scene);
 
-let selectedCow = /** @type {number | null} */ (null);
-new CowSelector(canvas, camera, cowInstancer, tileMesh, world, (id) => {
-  selectedCow = id;
+const selectedCows = /** @type {Set<number>} */ (new Set());
+let primaryCow = /** @type {number | null} */ (null);
+new CowSelector(canvas, camera, cowInstancer, tileMesh, world, (id, additive) => {
+  if (id === null) {
+    // Empty-space click: plain clears, shift preserves the current set.
+    if (!additive) {
+      selectedCows.clear();
+      primaryCow = null;
+    }
+  } else if (additive) {
+    if (selectedCows.has(id)) {
+      selectedCows.delete(id);
+      if (primaryCow === id) {
+        primaryCow =
+          selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
+      }
+    } else {
+      selectedCows.add(id);
+      primaryCow = id;
+    }
+  } else {
+    selectedCows.clear();
+    selectedCows.add(id);
+    primaryCow = id;
+  }
   updateHud();
 });
 
@@ -123,7 +145,7 @@ new CowMoveCommand(
   pathCache,
   defaultWalkable,
   world,
-  () => selectedCow,
+  () => selectedCows,
 );
 
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
@@ -147,7 +169,8 @@ const loop = new SimLoop({
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec);
-    selectionViz.update(world, selectedCow, alpha, tSec, tileGrid);
+    pruneStaleSelections();
+    selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
@@ -189,16 +212,21 @@ function spawnInitialCows(count) {
 
 function updateHud() {
   let cowLines = ['', 'click a cow to inspect'];
-  if (selectedCow !== null) {
-    const brain = world.get(selectedCow, 'Brain');
-    const hunger = world.get(selectedCow, 'Hunger');
-    const job = world.get(selectedCow, 'Job');
-    const path = world.get(selectedCow, 'Path');
-    const pos = world.get(selectedCow, 'Position');
+  const selCount = selectedCows.size;
+  if (selCount > 0 && primaryCow !== null) {
+    const brain = world.get(primaryCow, 'Brain');
+    const hunger = world.get(primaryCow, 'Hunger');
+    const job = world.get(primaryCow, 'Job');
+    const path = world.get(primaryCow, 'Path');
+    const pos = world.get(primaryCow, 'Position');
     if (brain) {
+      const header =
+        selCount === 1
+          ? `selected: ${brain.name}`
+          : `selected: ${selCount} cows (primary: ${brain.name})`;
       cowLines = [
         '',
-        `selected: ${brain.name}`,
+        header,
         `  pos: x=${pos.x.toFixed(1)} z=${pos.z.toFixed(1)}`,
         `  hunger: ${(hunger.value * 100).toFixed(0)}%`,
         `  job: ${job.kind} / ${job.state}`,
@@ -206,7 +234,9 @@ function updateHud() {
       ];
     } else {
       cowLines = ['', 'selected cow despawned'];
-      selectedCow = null;
+      selectedCows.delete(primaryCow);
+      primaryCow =
+        selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
     }
   }
   let pickStr = 'pick: (click a tile)';
@@ -228,7 +258,7 @@ function updateHud() {
     ...cowLines,
     '',
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
-    'LMB = select cow/tile, RMB = move-to, Shift+RMB = queue waypoint',
+    'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
     'N = spawn cow at last clicked tile',
     'K = save, L = load',
   ];
@@ -282,7 +312,8 @@ addEventListener('keydown', async (e) => {
     tileMesh.geometry.dispose();
     tileMesh = fresh;
     scene.add(tileMesh);
-    selectedCow = null;
+    selectedCows.clear();
+    primaryCow = null;
     console.log(
       '[load] restored',
       tileGrid.W,
@@ -299,6 +330,16 @@ function countCows() {
   let n = 0;
   for (const _ of world.query(['Cow'])) n++;
   return n;
+}
+
+function pruneStaleSelections() {
+  for (const id of selectedCows) {
+    if (!world.get(id, 'Position')) selectedCows.delete(id);
+  }
+  if (primaryCow !== null && !selectedCows.has(primaryCow)) {
+    primaryCow =
+      selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
+  }
 }
 
 /** @param {import('./ecs/world.js').World} w */

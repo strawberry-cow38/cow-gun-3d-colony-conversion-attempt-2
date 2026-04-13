@@ -9,6 +9,14 @@
  *
  * Listens with `capture: true` so it runs before the TilePicker; on a hit it
  * calls `stopImmediatePropagation` to prevent the tile click from also firing.
+ *
+ * Selection semantics:
+ *   - Plain LMB on cow      → replace selection with that cow.
+ *   - Shift+LMB on cow      → toggle that cow in the current selection.
+ *   - Plain LMB on empty    → clear selection.
+ *   - Shift+LMB on empty    → no change.
+ * The callback receives `(entityId | null, additive)` and the consumer
+ * decides how to merge.
  */
 
 import * as THREE from 'three';
@@ -23,7 +31,7 @@ export class CowSelector {
    * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} instancer
    * @param {THREE.Mesh} tileMesh
    * @param {import('../ecs/world.js').World} world
-   * @param {(entityId: number | null) => void} onSelect
+   * @param {(entityId: number | null, additive: boolean) => void} onSelect
    * @param {{ pickRadius?: number }} [opts]
    */
   constructor(dom, camera, instancer, tileMesh, world, onSelect, opts = {}) {
@@ -40,6 +48,7 @@ export class CowSelector {
 
   /** @param {MouseEvent} e */
   #handle(e) {
+    const additive = e.shiftKey;
     const rect = this.dom.getBoundingClientRect();
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -50,7 +59,7 @@ export class CowSelector {
     if (direct.length > 0 && direct[0].instanceId !== undefined) {
       const ent = this.instancer.entityFromInstanceId(direct[0].instanceId);
       if (ent !== null) {
-        this.onSelect(ent);
+        this.onSelect(ent, additive);
         e.stopImmediatePropagation();
         return;
       }
@@ -59,7 +68,7 @@ export class CowSelector {
     // 2) fallback: pick nearest cow near the tile we clicked
     const tileHit = this.raycaster.intersectObject(this.tileMesh, false);
     if (tileHit.length === 0) {
-      this.onSelect(null);
+      this.onSelect(null, additive);
       return;
     }
     const p = tileHit[0].point;
@@ -76,10 +85,10 @@ export class CowSelector {
       }
     }
     if (best !== null) {
-      this.onSelect(best);
+      this.onSelect(best, additive);
       e.stopImmediatePropagation();
       return;
     }
-    this.onSelect(null);
+    this.onSelect(null, additive);
   }
 }
