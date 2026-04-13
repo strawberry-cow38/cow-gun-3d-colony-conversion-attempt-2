@@ -2,9 +2,11 @@
  * RTS-style camera: orbits a focus point on the ground.
  *
  * Controls:
- * - WASD / arrow keys → pan focus point along ground plane
- * - Right-click drag  → orbit (yaw + pitch)
- * - Mouse wheel       → zoom (change distance from focus)
+ * - WASD / arrow keys  → pan focus point along ground plane
+ * - Middle-click drag  → orbit (yaw + pitch)
+ * - Mouse wheel        → zoom (change distance from focus)
+ *
+ * Right-click is intentionally reserved for in-world context menus later.
  *
  * The camera object is a THREE.PerspectiveCamera; this class owns its
  * position/lookAt and updates them every frame via update(dt).
@@ -97,9 +99,16 @@ export class RtsCamera {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     this.dom.addEventListener('contextmenu', (e) => e.preventDefault());
     this.dom.addEventListener('mousedown', (e) => {
-      if (e.button !== 2) return;
+      if (e.button !== 1) return;
+      // Middle-click in Firefox opens autoscroll; suppress that.
+      e.preventDefault();
       this.dragging = true;
       this.lastMouse = { x: e.clientX, y: e.clientY };
+    });
+    // Firefox fires `auxclick` on middle-click; prevent it so it doesn't
+    // propagate to opening links or autoscroll.
+    this.dom.addEventListener('auxclick', (e) => {
+      if (e.button === 1) e.preventDefault();
     });
     addEventListener('mouseup', () => {
       this.dragging = false;
@@ -113,7 +122,7 @@ export class RtsCamera {
       this.yaw -= dx * this.orbitSpeed;
       this.pitch = Math.max(
         this.minPitch,
-        Math.min(this.maxPitch, this.pitch - dy * this.orbitSpeed),
+        Math.min(this.maxPitch, this.pitch + dy * this.orbitSpeed),
       );
     });
     this.dom.addEventListener(

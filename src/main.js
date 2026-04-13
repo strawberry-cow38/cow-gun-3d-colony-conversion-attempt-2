@@ -173,9 +173,9 @@ function updateHud() {
     pickStr,
     ...cowLines,
     '',
-    'WASD/arrows = pan, RMB-drag = orbit, wheel = zoom',
+    'WASD/arrows = pan, MMB-drag = orbit, wheel = zoom',
     'N = spawn cow at last clicked tile',
-    'F5 = save, F9 = load',
+    'K = save, L = load',
   ];
   hud.innerText = lines.join('\n');
 }
@@ -187,8 +187,7 @@ addEventListener('keydown', async (e) => {
     updateHud();
     return;
   }
-  if (e.code === 'F5') {
-    e.preventDefault();
+  if (e.code === 'KeyK') {
     const state = serializeState(tileGrid, world);
     const json = JSON.stringify(state);
     const gz = await gzipString(json);
@@ -196,8 +195,7 @@ addEventListener('keydown', async (e) => {
     localStorage.setItem('save:v2', b64);
     console.log('[save] cows:', state.cows.length, 'gzipped bytes:', gz.length);
   }
-  if (e.code === 'F9') {
-    e.preventDefault();
+  if (e.code === 'KeyL') {
     const b64 = localStorage.getItem('save:v2') ?? localStorage.getItem('save:v1');
     if (!b64) {
       console.warn('[load] no save in localStorage');
