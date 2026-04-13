@@ -62,10 +62,15 @@ export class RtsCamera {
       const len = Math.hypot(dx, dz);
       dx /= len;
       dz /= len;
+      // Rotate input into world coords using the camera's right/forward basis:
+      //   right   = ( cos(yaw), 0, -sin(yaw) )
+      //   forward = (-sin(yaw), 0, -cos(yaw) )  (camera → focus projected to ground)
+      // W/S set dz (dz<0 = forward), A/D set dx (dx>0 = right).
+      //   delta = dx*right + (-dz)*forward
       const cos = Math.cos(this.yaw);
       const sin = Math.sin(this.yaw);
-      const wx = dx * cos - dz * sin;
-      const wz = dx * sin + dz * cos;
+      const wx = dx * cos + dz * sin;
+      const wz = -dx * sin + dz * cos;
       const speed = this.panSpeedUnits * (this.distance / this.panReferenceDistance);
       this.focus.x += wx * speed * dt;
       this.focus.z += wz * speed * dt;

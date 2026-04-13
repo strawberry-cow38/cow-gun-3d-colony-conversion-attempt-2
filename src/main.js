@@ -69,7 +69,7 @@ const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 
 let selectedCow = /** @type {number | null} */ (null);
-new CowSelector(canvas, camera, cowInstancer, (id) => {
+new CowSelector(canvas, camera, cowInstancer, tileMesh, world, (id) => {
   selectedCow = id;
   updateHud();
 });

@@ -1,15 +1,18 @@
 /**
  * Click-to-select a cow.
  *
- * Raycasts against the cow InstancedMesh on click. If a hit, looks up the
- * entity id via the instancer's slot map and fires onSelect(entityId). Misses
- * call onSelect(null) so the UI can clear its panel.
+ * Two-stage pick:
+ * 1. Direct raycast against the cow InstancedMesh — exact hit.
+ * 2. Fallback: raycast against the tile mesh and pick the nearest cow within
+ *    `pickRadius` world units of that hit point. Keeps cows selectable at
+ *    default RTS zoom where a 1.8m box is only a few pixels wide.
  *
- * Listens with `capture: true` so it runs before the TilePicker — a click on a
- * cow shouldn't also count as a click on the tile under the cow.
+ * Listens with `capture: true` so it runs before the TilePicker; on a hit it
+ * calls `stopImmediatePropagation` to prevent the tile click from also firing.
  */
 
 import * as THREE from 'three';
+import { TILE_SIZE } from '../world/coords.js';
 
 const _ndc = new THREE.Vector2();
 
@@ -18,13 +21,19 @@ export class CowSelector {
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
    * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} instancer
+   * @param {THREE.Mesh} tileMesh
+   * @param {import('../ecs/world.js').World} world
    * @param {(entityId: number | null) => void} onSelect
+   * @param {{ pickRadius?: number }} [opts]
    */
-  constructor(dom, camera, instancer, onSelect) {
+  constructor(dom, camera, instancer, tileMesh, world, onSelect, opts = {}) {
     this.dom = dom;
     this.camera = camera;
     this.instancer = instancer;
+    this.tileMesh = tileMesh;
+    this.world = world;
     this.onSelect = onSelect;
+    this.pickRadius = opts.pickRadius ?? TILE_SIZE * 1.5;
     this.raycaster = new THREE.Raycaster();
     dom.addEventListener('click', (e) => this.#handle(e), { capture: true });
   }
@@ -35,18 +44,42 @@ export class CowSelector {
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
-    const hits = this.raycaster.intersectObject(this.instancer.mesh, false);
-    if (hits.length === 0) {
+
+    // 1) direct raycast against cows
+    const direct = this.raycaster.intersectObject(this.instancer.mesh, false);
+    if (direct.length > 0 && direct[0].instanceId !== undefined) {
+      const ent = this.instancer.entityFromInstanceId(direct[0].instanceId);
+      if (ent !== null) {
+        this.onSelect(ent);
+        e.stopImmediatePropagation();
+        return;
+      }
+    }
+
+    // 2) fallback: pick nearest cow near the tile we clicked
+    const tileHit = this.raycaster.intersectObject(this.tileMesh, false);
+    if (tileHit.length === 0) {
       this.onSelect(null);
       return;
     }
-    const instanceId = hits[0].instanceId;
-    if (instanceId === undefined) {
-      this.onSelect(null);
+    const p = tileHit[0].point;
+    let best = /** @type {number | null} */ (null);
+    let bestDistSq = this.pickRadius * this.pickRadius;
+    for (const { id, components } of this.world.query(['Cow', 'Position'])) {
+      const pos = components.Position;
+      const dx = pos.x - p.x;
+      const dz = pos.z - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestDistSq) {
+        bestDistSq = d2;
+        best = id;
+      }
+    }
+    if (best !== null) {
+      this.onSelect(best);
+      e.stopImmediatePropagation();
       return;
     }
-    const ent = this.instancer.entityFromInstanceId(instanceId);
-    this.onSelect(ent);
-    e.stopPropagation();
+    this.onSelect(null);
   }
 }
