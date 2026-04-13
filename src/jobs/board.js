@@ -2,9 +2,8 @@
  * Job board.
  *
  * Holds a queue of available jobs. The cow brain system asks for the nearest
- * unclaimed job each tick when a cow has nothing to do. Phase 3 only generates
- * Wander jobs internally (cow brain auto-wanders when idle), but the board
- * is the seam where designated work (chop, haul, build) will plug in later.
+ * unclaimed job each tick when a cow has nothing to do. Chop and haul jobs
+ * post here; wander is synthesized by the brain when the board is empty.
  *
  * A job is { id, kind, payload, claimedBy, completed }. `payload` is opaque to
  * the board; the job's tick handler interprets it.

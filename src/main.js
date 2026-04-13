@@ -1,8 +1,8 @@
 /**
- * Phase 3 entry: tile world + cows + jobs + save/load.
+ * Main entry: tile world + cows + jobs + save/load.
  *
- * Phase 1 stress test stays behind ?stress=N. Phase 3 spawns one cow by
- * default (override with ?cows=N).
+ * Stress test stays behind ?stress=N; cow count overridable via ?cows=N
+ * (default 10).
  */
 
 import { registerComponents } from './components/index.js';
@@ -129,7 +129,7 @@ scheduler.add(
   }),
 );
 scheduler.add(applyVelocity);
-scheduler.add(stressBounce);
+if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
 

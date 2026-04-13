@@ -1,9 +1,8 @@
 /**
  * Wander behavior: pick a random walkable tile, walk there, idle a moment, repeat.
  *
- * This is the cow's *fallback* — it isn't posted on the JobBoard. The cow brain
- * synthesizes a wander goal whenever no real job is claimable. Real jobs (chop,
- * haul, etc.) will arrive via JobBoard in Phase 4.
+ * Wander is the cow's *fallback* — it isn't posted on the JobBoard. The cow
+ * brain synthesizes a wander goal whenever no real job is claimable.
  *
  * State machine on Job.payload:
  *   { stage: 'planning' }              → pick goal, request path, → 'moving'
@@ -15,7 +14,7 @@ import { TileGrid } from '../world/tileGrid.js';
 
 const IDLE_TICKS = 60; // 2 seconds at 30 Hz
 
-export const WANDER_RADIUS_TILES = 20;
+const WANDER_RADIUS_TILES = 20;
 
 /**
  * Pick a random walkable tile. When `center` is provided, the pick is

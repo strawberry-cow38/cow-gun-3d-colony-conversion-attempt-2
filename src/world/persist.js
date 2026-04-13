@@ -21,7 +21,6 @@
  */
 
 import { tileToWorld } from './coords.js';
-import { maxStack } from './items.js';
 import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { TileGrid } from './tileGrid.js';
 
@@ -203,12 +202,10 @@ export function hydrateItems(world, grid, state) {
   const items = state.items ?? [];
   for (const it of items) {
     if (!grid.inBounds(it.i, it.j)) continue;
+    if (it.count <= 0) continue;
     const w = tileToWorld(it.i, it.j, grid.W, grid.H);
-    const cap = typeof it.capacity === 'number' ? it.capacity : maxStack(it.kind);
-    const count = typeof it.count === 'number' ? it.count : 1;
-    if (count <= 0) continue;
     world.spawn({
-      Item: { kind: it.kind, count, capacity: cap },
+      Item: { kind: it.kind, count: it.count, capacity: it.capacity },
       ItemViz: {},
       TileAnchor: { i: it.i, j: it.j },
       Position: { x: w.x, y: grid.getElevation(it.i, it.j), z: w.z },

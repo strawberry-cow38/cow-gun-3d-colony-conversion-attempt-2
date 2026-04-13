@@ -1,24 +1,12 @@
 /**
- * Tree lifecycle:
- *   - `spawnInitialTrees` scatters trees at random walkable tiles on startup,
- *     marking their tiles occupied.
- *   - `spawnTree` / `despawnTree` keep the grid occupancy in sync and tell the
- *     path cache to invalidate (walkability just changed).
- *
- * Helpers are imperative — the renderer reads entity state each frame so there
- * is no per-tick tree system to run.
+ * Tree lifecycle: `spawnInitialTrees` scatters trees at random walkable tiles
+ * on startup, marking their tiles occupied. Helpers are imperative — the
+ * renderer reads entity state each frame so there is no per-tick tree system.
  */
 
 import { tileToWorld } from '../world/coords.js';
 
-/**
- * @param {import('../ecs/world.js').World} world
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {number} i
- * @param {number} j
- * @returns {number} entity id, or -1 if tile was already blocked
- */
-export function spawnTree(world, grid, i, j) {
+function spawnTree(world, grid, i, j) {
   if (!grid.inBounds(i, j) || grid.isBlocked(i, j)) return -1;
   grid.blockTile(i, j);
   const w = tileToWorld(i, j, grid.W, grid.H);
@@ -29,17 +17,6 @@ export function spawnTree(world, grid, i, j) {
     TileAnchor: { i, j },
     Position: { x: w.x, y, z: w.z },
   });
-}
-
-/**
- * @param {import('../ecs/world.js').World} world
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {number} entityId
- */
-export function despawnTree(world, grid, entityId) {
-  const anchor = world.get(entityId, 'TileAnchor');
-  if (anchor) grid.unblockTile(anchor.i, anchor.j);
-  world.despawn(entityId);
 }
 
 /**

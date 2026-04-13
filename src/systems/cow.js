@@ -205,9 +205,9 @@ export function makeCowBrainSystem(deps) {
         const kindBefore = job.kind;
 
         if (job.kind === 'chop') {
-          runChopJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
+          runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'haul') {
-          runHaulJob(world, id, job, path, pos, inv, grid, paths, board, deps);
+          runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
           runEatJob(world, job, path, pos, hunger, grid, paths, deps);
         } else if (job.kind === 'move') {
@@ -272,7 +272,6 @@ export function makeCowBrainSystem(deps) {
  * State machine for the chop job. Broken out so the brain loop stays readable.
  *
  * @param {import('../ecs/world.js').World} world
- * @param {number} cowId
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
  * @param {{ x: number, y: number, z: number }} pos
@@ -283,7 +282,7 @@ export function makeCowBrainSystem(deps) {
  * @param {{ tick: number }} ctx
  * @param {BrainDeps} deps
  */
-function runChopJob(world, cowId, job, path, pos, grid, paths, walkable, board, ctx, deps) {
+function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps) {
   const { treeId, jobId } = /** @type {{ treeId: number, jobId: number }} */ (job.payload);
 
   // Tree went away, OR the board job was cancelled (player unmarked the tree
@@ -356,7 +355,6 @@ function runChopJob(world, cowId, job, path, pos, grid, paths, walkable, board, 
  * returning the cow to `none` so the brain can repick.
  *
  * @param {import('../ecs/world.js').World} world
- * @param {number} cowId
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
  * @param {{ x: number, y: number, z: number }} pos
@@ -366,7 +364,7 @@ function runChopJob(world, cowId, job, path, pos, grid, paths, walkable, board, 
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps) {
+function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
   const { jobId, itemId, toI, toJ } =
     /** @type {{ jobId: number, itemId: number, toI: number, toJ: number }} */ (job.payload);
 
