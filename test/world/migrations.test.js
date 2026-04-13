@@ -24,6 +24,18 @@ describe('migration runner', () => {
     expect(out.tileGrid).toEqual(v1.tileGrid);
   });
 
+  it('upgrades a v2 cow by adding default job + path fields', () => {
+    const v2 = {
+      version: 2,
+      tileGrid: { W: 1, H: 1, elevation: [0], biome: [0] },
+      cows: [{ name: 'bessie', position: { x: 0, y: 0, z: 0 }, hunger: 0.5 }],
+    };
+    const out = runMigrations(v2);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.cows[0].job).toEqual({ kind: 'none', state: 'idle', payload: {} });
+    expect(out.cows[0].path).toEqual({ steps: [], index: 0 });
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

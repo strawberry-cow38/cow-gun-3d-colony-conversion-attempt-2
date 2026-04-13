@@ -13,7 +13,7 @@
  */
 
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
-import { TILE_SIZE, tileToWorld } from '../world/coords.js';
+import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 
 const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
@@ -73,7 +73,7 @@ export function makeCowBrainSystem(deps) {
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
               continue;
             }
-            const { i: si, j: sj } = nearestTile(pos.x, pos.z, grid.W, grid.H);
+            const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
             const route = paths.find({ i: si, j: sj }, goal);
             if (!route || route.length === 0) {
               job.state = 'idle';
@@ -141,7 +141,7 @@ export function makeCowFollowPathSystem(deps) {
         vel.y = 0;
         // Snap y to the elevation of the tile we currently stand on so cows
         // don't float when crossing terrain.
-        const cur = nearestTile(pos.x, pos.z, grid.W, grid.H);
+        const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
         if (grid.inBounds(cur.i, cur.j)) pos.y = grid.getElevation(cur.i, cur.j);
       }
     },
@@ -162,19 +162,3 @@ export function makeHungerSystem() {
     },
   };
 }
-
-/**
- * Same as worldToTile but clamps to grid edges instead of returning (-1,-1) so
- * a cow that briefly drifts off-grid during steering still resolves to a tile.
- * @param {number} x @param {number} z @param {number} W @param {number} H
- */
-function nearestTile(x, z, W, H) {
-  const i = Math.floor(x / TILE_SIZE + W / 2);
-  const j = Math.floor(z / TILE_SIZE + H / 2);
-  return { i: Math.max(0, Math.min(W - 1, i)), j: Math.max(0, Math.min(H - 1, j)) };
-}
-
-export const COW_CONSTANTS = {
-  COW_SPEED_UNITS_PER_SEC,
-  HUNGER_DRAIN_PER_TICK,
-};

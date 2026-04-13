@@ -5,8 +5,7 @@
  * default (override with ?cows=N).
  */
 
-import { registerPhase3Components } from './components/cow.js';
-import { registerPhase1Components } from './components/index.js';
+import { registerComponents } from './components/index.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
@@ -23,8 +22,9 @@ import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
-import { applyVelocity, snapshotPositions, spawnStressEntities, stressBounce } from './stress.js';
+import { spawnStressEntities, stressBounce } from './stress.js';
 import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from './systems/cow.js';
+import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { DEFAULT_GRID_H, DEFAULT_GRID_W, tileToWorld } from './world/coords.js';
 import {
   gunzipBytes,
@@ -77,8 +77,7 @@ const tileGrid = new TileGrid(gridW, gridH);
 tileGrid.generateSimpleHeightmap(8);
 
 const world = new World();
-registerPhase1Components(world);
-registerPhase3Components(world);
+registerComponents(world);
 
 const pathCache = new PathCache(tileGrid, defaultWalkable);
 const jobBoard = new JobBoard();
@@ -297,7 +296,7 @@ addEventListener('keydown', async (e) => {
       const json = JSON.stringify(state);
       const gz = await gzipString(json);
       const b64 = bytesToBase64(gz);
-      localStorage.setItem('save:v2', b64);
+      localStorage.setItem('save:v3', b64);
       console.log(
         '[save] ok — tiles:',
         tileGrid.W * tileGrid.H,
@@ -311,7 +310,7 @@ addEventListener('keydown', async (e) => {
     }
   }
   if (e.code === 'KeyL') {
-    const b64 = localStorage.getItem('save:v2') ?? localStorage.getItem('save:v1');
+    const b64 = localStorage.getItem('save:v3') ?? localStorage.getItem('save:v2');
     if (!b64) {
       console.warn('[load] no save in localStorage');
       return;

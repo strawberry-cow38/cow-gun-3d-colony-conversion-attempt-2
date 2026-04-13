@@ -3,8 +3,6 @@
  * stress test. Velocities reflect off a bounding cube so they stay on screen.
  */
 
-import { applyVelocity, snapshotPositions } from './systems/movement.js';
-
 const BOUND = 12;
 
 /**
@@ -49,5 +47,3 @@ export const stressBounce = {
     }
   },
 };
-
-export { applyVelocity, snapshotPositions };

@@ -41,6 +41,10 @@ export function createCowInstancer(scene, capacity = 256) {
 
   /** @type {number[]} instance row → entity id */
   const slotToEntity = [];
+  /** @type {Map<number, number>} entity id → last yaw, so stationary cows keep facing the direction they last walked. */
+  const lastYaw = new Map();
+  /** @type {Set<number>} scratch alive-set, cleared per frame to avoid per-frame Set allocation. */
+  const seen = new Set();
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -50,6 +54,7 @@ export function createCowInstancer(scene, capacity = 256) {
   function update(world, alpha, timeSec) {
     let i = 0;
     slotToEntity.length = 0;
+    seen.clear();
     for (const { id, components } of world.query([
       'Cow',
       'Position',
@@ -73,7 +78,9 @@ export function createCowInstancer(scene, capacity = 256) {
         : 0;
 
       _position.set(x, y + COW_HEIGHT * 0.5 + bob, z);
-      const yaw = moving ? Math.atan2(v.x, v.z) : 0;
+      const yaw = moving ? Math.atan2(v.x, v.z) : (lastYaw.get(id) ?? 0);
+      lastYaw.set(id, yaw);
+      seen.add(id);
       _euler.set(0, yaw, 0);
       _quat.setFromEuler(_euler);
       _matrix.compose(_position, _quat, _scale);
@@ -83,6 +90,12 @@ export function createCowInstancer(scene, capacity = 256) {
     }
     mesh.count = i;
     mesh.instanceMatrix.needsUpdate = true;
+    // Drop yaw entries for cows that went away so the map doesn't leak.
+    if (lastYaw.size > seen.size) {
+      for (const entId of lastYaw.keys()) {
+        if (!seen.has(entId)) lastYaw.delete(entId);
+      }
+    }
   }
 
   /** @param {number} instanceId */

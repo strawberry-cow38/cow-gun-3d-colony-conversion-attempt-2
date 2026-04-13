@@ -14,7 +14,8 @@ const ARROW_COLOR = 0xffe14a;
 const NEXT_LINE_COLOR = 0x4ac0ff;
 const FULL_PATH_COLOR = 0xffa14a;
 const WAYPOINT_COLOR = 0xff4ac0;
-const PATH_LINE_CAPACITY = 4096;
+// Sized for a max-octile path on a 200×200 grid with headroom.
+const PATH_LINE_CAPACITY = 1024;
 const WAYPOINT_CAPACITY = 64;
 const WAYPOINT_RADIUS = TILE_SIZE * 0.35;
 const LINE_GROUND_CLEARANCE = 0.1 * UNITS_PER_METER;

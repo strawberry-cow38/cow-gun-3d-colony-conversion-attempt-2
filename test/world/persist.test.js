@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { registerPhase3Components } from '../../src/components/cow.js';
-import { registerPhase1Components } from '../../src/components/index.js';
+import { registerComponents } from '../../src/components/index.js';
 import { World } from '../../src/ecs/world.js';
 import {
   hydrateCows,
@@ -12,8 +11,7 @@ import { TileGrid } from '../../src/world/tileGrid.js';
 
 function makeWorld() {
   const w = new World();
-  registerPhase1Components(w);
-  registerPhase3Components(w);
+  registerComponents(w);
   return w;
 }
 

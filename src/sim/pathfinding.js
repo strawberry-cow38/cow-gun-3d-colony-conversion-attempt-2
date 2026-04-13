@@ -44,6 +44,27 @@ export function defaultWalkable(_grid, _i, _j) {
   return true;
 }
 
+// Module-scoped scratch buffers sized to the largest grid we've seen so far.
+// findPath reuses them between calls so we don't allocate ~480KB per pathfind
+// on a 200x200 grid (4 typed arrays × 40k cells × 4-8 bytes).
+/** @type {Float32Array | null} */ let _gScore = null;
+/** @type {Float32Array | null} */ let _fScore = null;
+/** @type {Int32Array | null} */ let _cameFrom = null;
+/** @type {Uint8Array | null} */ let _closed = null;
+let _scratchSize = 0;
+
+/**
+ * @param {number} size
+ */
+function ensureScratch(size) {
+  if (_scratchSize >= size) return;
+  _gScore = new Float32Array(size);
+  _fScore = new Float32Array(size);
+  _cameFrom = new Int32Array(size);
+  _closed = new Uint8Array(size);
+  _scratchSize = size;
+}
+
 /**
  * A* on a TileGrid. Returns array of {i,j} from start (inclusive) to goal
  * (inclusive), or null if no path.
@@ -64,13 +85,19 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
   const startIdx = start.j * W + start.i;
   const goalIdx = goal.j * W + goal.i;
 
-  const gScore = new Float32Array(W * H);
-  const fScore = new Float32Array(W * H);
-  const cameFrom = new Int32Array(W * H);
-  const closed = new Uint8Array(W * H);
-  gScore.fill(Number.POSITIVE_INFINITY);
-  fScore.fill(Number.POSITIVE_INFINITY);
-  cameFrom.fill(-1);
+  ensureScratch(W * H);
+  const gScore = /** @type {Float32Array} */ (_gScore);
+  const fScore = /** @type {Float32Array} */ (_fScore);
+  const cameFrom = /** @type {Int32Array} */ (_cameFrom);
+  const closed = /** @type {Uint8Array} */ (_closed);
+  // Fill only the region we'll touch for this grid size.
+  const cells = W * H;
+  for (let k = 0; k < cells; k++) {
+    gScore[k] = Number.POSITIVE_INFINITY;
+    fScore[k] = Number.POSITIVE_INFINITY;
+    cameFrom[k] = -1;
+    closed[k] = 0;
+  }
 
   gScore[startIdx] = 0;
   fScore[startIdx] = octile(start.i, start.j, goal.i, goal.j);
@@ -121,17 +148,21 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
 }
 
 /**
- * Memoizes findPath results keyed by (start,goal). Walkability changes invalidate
- * the whole cache via `clear()` — fine-grained invalidation comes later.
+ * Memoizes findPath results keyed by (start,goal), capped LRU so a long
+ * session with lots of distinct wanders doesn't grow the cache forever.
+ * Walkability changes invalidate the whole cache via `clear()` — fine-grained
+ * invalidation comes later.
  */
 export class PathCache {
   /**
    * @param {TileGrid} grid
    * @param {(grid: TileGrid, i: number, j: number) => boolean} [walkable]
+   * @param {{ capacity?: number }} [opts]
    */
-  constructor(grid, walkable = defaultWalkable) {
+  constructor(grid, walkable = defaultWalkable, opts = {}) {
     this.grid = grid;
     this.walkable = walkable;
+    this.capacity = opts.capacity ?? 2048;
     /** @type {Map<string, { i: number, j: number }[] | null>} */
     this.cache = new Map();
     this.hits = 0;
@@ -144,13 +175,22 @@ export class PathCache {
    */
   find(start, goal) {
     const key = `${start.i},${start.j}|${goal.i},${goal.j}`;
-    if (this.cache.has(key)) {
+    const hit = this.cache.get(key);
+    if (hit !== undefined) {
+      // Touch: Map preserves insertion order, so delete+set re-inserts at the
+      // tail making this a cheap LRU without a separate linked list.
+      this.cache.delete(key);
+      this.cache.set(key, hit);
       this.hits++;
-      return this.cache.get(key) ?? null;
+      return hit ?? null;
     }
     this.misses++;
     const p = findPath(this.grid, start, goal, this.walkable);
     this.cache.set(key, p);
+    if (this.cache.size > this.capacity) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
     return p;
   }
 

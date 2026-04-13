@@ -15,7 +15,13 @@
  */
 
 import * as THREE from 'three';
-import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import {
+  TILE_SIZE,
+  UNITS_PER_METER,
+  tileToWorld,
+  worldToTile,
+  worldToTileClamp,
+} from '../world/coords.js';
 
 const _ndc = new THREE.Vector2();
 const DRAG_THRESHOLD_PX = 6;
@@ -245,7 +251,7 @@ export class CowMoveCommand {
       return;
     }
 
-    const start = clampToGrid(pos.x, pos.z, this.tileGrid);
+    const start = worldToTileClamp(pos.x, pos.z, this.tileGrid.W, this.tileGrid.H);
     const route = this.pathCache.find(start, goal);
     if (!route || route.length === 0) {
       console.log('[move] no path to', goal, 'for cow', id);
@@ -297,16 +303,6 @@ function writeSeg(out, off, a, b) {
   out[off + 3] = b[0];
   out[off + 4] = b[1];
   out[off + 5] = b[2];
-}
-
-/**
- * @param {number} x @param {number} z
- * @param {import('../world/tileGrid.js').TileGrid} grid
- */
-function clampToGrid(x, z, grid) {
-  const i = Math.floor(x / TILE_SIZE + grid.W / 2);
-  const j = Math.floor(z / TILE_SIZE + grid.H / 2);
-  return { i: Math.max(0, Math.min(grid.W - 1, i)), j: Math.max(0, Math.min(grid.H - 1, j)) };
 }
 
 /**
@@ -425,9 +421,10 @@ function nearestWalkable(grid, walkable, i, j, reserved) {
  * @returns {number[]}
  */
 function matchCowsToTargets(world, ids, targets, grid) {
-  const n = ids.length;
-  const cowXY = /** @type {({ x: number, z: number } | null)[]} */ (new Array(n));
-  for (let k = 0; k < n; k++) {
+  const nc = ids.length;
+  const nt = targets.length;
+  const cowXY = /** @type {({ x: number, z: number } | null)[]} */ (new Array(nc));
+  for (let k = 0; k < nc; k++) {
     const pos = world.get(ids[k], 'Position');
     cowXY[k] = pos ? { x: pos.x, z: pos.z } : null;
   }
@@ -435,10 +432,10 @@ function matchCowsToTargets(world, ids, targets, grid) {
 
   /** @type {{ c: number, t: number, d2: number }[]} */
   const triples = [];
-  for (let c = 0; c < n; c++) {
+  for (let c = 0; c < nc; c++) {
     const cp = cowXY[c];
     if (!cp) continue;
-    for (let t = 0; t < n; t++) {
+    for (let t = 0; t < nt; t++) {
       const tp = tgtXY[t];
       const dx = cp.x - tp.x;
       const dz = cp.z - tp.z;
@@ -447,9 +444,9 @@ function matchCowsToTargets(world, ids, targets, grid) {
   }
   triples.sort((a, b) => a.d2 - b.d2);
 
-  const cowTaken = new Array(n).fill(false);
-  const tgtTaken = new Array(n).fill(false);
-  const out = new Array(n).fill(-1);
+  const cowTaken = new Array(nc).fill(false);
+  const tgtTaken = new Array(nt).fill(false);
+  const out = new Array(nc).fill(-1);
   for (const { c, t } of triples) {
     if (cowTaken[c] || tgtTaken[t]) continue;
     cowTaken[c] = true;

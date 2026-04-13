@@ -1,11 +1,14 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v2):
+ * Format (v3):
  * {
- *   version: 2,
+ *   version: 3,
  *   tileGrid: { W, H, elevation: number[], biome: number[] },
- *   cows: [ { name, position: {x,y,z}, hunger: number } ]
+ *   cows: [ {
+ *     name, position: {x,y,z}, hunger: number,
+ *     job: { kind, state, payload }, path: { steps, index }
+ *   } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -22,6 +25,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {string} name
  * @property {{ x: number, y: number, z: number }} position
  * @property {number} hunger
+ * @property {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @property {{ steps: { i: number, j: number }[], index: number }} path
  */
 
 /**
@@ -31,11 +36,20 @@ import { TileGrid } from './tileGrid.js';
 export function serializeState(tileGrid, world) {
   /** @type {SerializedCow[]} */
   const cows = [];
-  for (const { components } of world.query(['Cow', 'Position', 'Hunger', 'Brain'])) {
+  for (const { components } of world.query(['Cow', 'Position', 'Hunger', 'Brain', 'Job', 'Path'])) {
     cows.push({
       name: components.Brain.name,
       position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
       hunger: components.Hunger.value,
+      job: {
+        kind: components.Job.kind,
+        state: components.Job.state,
+        payload: components.Job.payload,
+      },
+      path: {
+        steps: components.Path.steps.map((s) => ({ i: s.i, j: s.j })),
+        index: components.Path.index,
+      },
     });
   }
   return {
@@ -71,6 +85,8 @@ export function hydrateTileGrid(state) {
 export function hydrateCows(world, state) {
   const cows = state.cows ?? [];
   for (const c of cows) {
+    const job = c.job ?? { kind: 'none', state: 'idle', payload: {} };
+    const path = c.path ?? { steps: [], index: 0 };
     world.spawn({
       Cow: {},
       Position: { ...c.position },
@@ -78,8 +94,8 @@ export function hydrateCows(world, state) {
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: c.hunger },
       Brain: { name: c.name },
-      Job: { kind: 'none', state: 'idle', payload: {} },
-      Path: { steps: [], index: 0 },
+      Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
+      Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
       CowViz: {},
     });
   }

@@ -39,7 +39,8 @@ export function tileToWorld(i, j, W, H) {
 
 /**
  * Convert world-space (x, z) to tile coords (i, j). Out-of-grid coords
- * return (-1, -1).
+ * return (-1, -1). A click exactly on the positive edge lands on the last
+ * tile rather than falling off the grid.
  *
  * @param {number} x
  * @param {number} z
@@ -48,8 +49,24 @@ export function tileToWorld(i, j, W, H) {
  * @returns {{ i: number, j: number }}
  */
 export function worldToTile(x, z, W, H) {
-  const i = Math.floor(x / TILE_SIZE + W / 2);
-  const j = Math.floor(z / TILE_SIZE + H / 2);
+  let i = Math.floor(x / TILE_SIZE + W / 2);
+  let j = Math.floor(z / TILE_SIZE + H / 2);
+  if (i === W) i = W - 1;
+  if (j === H) j = H - 1;
   if (i < 0 || j < 0 || i >= W || j >= H) return { i: -1, j: -1 };
   return { i, j };
+}
+
+/**
+ * Clamped world-to-tile: always returns an in-bounds tile, pinning
+ * out-of-grid coords to the nearest edge. Use when a cow or target may
+ * briefly drift off the grid and we still want a usable tile index.
+ *
+ * @param {number} x @param {number} z @param {number} W @param {number} H
+ * @returns {{ i: number, j: number }}
+ */
+export function worldToTileClamp(x, z, W, H) {
+  const i = Math.floor(x / TILE_SIZE + W / 2);
+  const j = Math.floor(z / TILE_SIZE + H / 2);
+  return { i: Math.max(0, Math.min(W - 1, i)), j: Math.max(0, Math.min(H - 1, j)) };
 }
