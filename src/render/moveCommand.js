@@ -4,11 +4,12 @@
  * cleans the job back to 'none' once the path is consumed, so wander
  * resumes naturally.
  *
- * Shift-modifier queues waypoints: each shift-RMB appends another tile
- * to `Job.payload.waypoints` and rebuilds the chained A* path from the
- * cow's current tile through every pending waypoint. `Job.payload.legEnds`
- * records the step-index boundaries so the brain can pop completed
- * waypoints as the cow advances.
+ * Shift-modifier queues waypoints without interrupting the cow's current
+ * progress: A* from the last queued waypoint to the new tile and append
+ * those steps to `Path.steps`. `Job.payload.legEnds` records the step-
+ * index boundaries so the brain can pop completed waypoints as the cow
+ * advances. Plain RMB replaces the whole plan and re-plans from the
+ * cow's current tile.
  *
  * Listens for `contextmenu` on the canvas; RtsCamera already preventDefaults
  * the browser menu.
@@ -67,52 +68,46 @@ export class CowMoveCommand {
       return;
     }
 
-    const queuing = e.shiftKey && job.kind === 'move';
-    /** @type {{ i: number, j: number }[]} */
-    const waypoints = queuing ? [...(job.payload.waypoints ?? []), goal] : [goal];
+    const existingWaypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
+    const existingLegEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
+    const canQueue =
+      e.shiftKey &&
+      job.kind === 'move' &&
+      existingWaypoints.length > 0 &&
+      path.index < path.steps.length;
 
-    const start = clampToGrid(pos.x, pos.z, this.tileGrid);
-    const chained = chainLegs(this.pathCache, start, waypoints);
-    if (!chained) {
-      console.log('[move] no path through waypoints:', waypoints);
+    if (canQueue) {
+      // Append-only: A* from the last queued waypoint to the new goal and
+      // concat onto the existing path without touching path.index or
+      // existing steps.
+      const lastWp = existingWaypoints[existingWaypoints.length - 1];
+      const leg = this.pathCache.find(lastWp, goal);
+      if (!leg || leg.length === 0) {
+        console.log('[move] no path to new waypoint:', goal);
+        return;
+      }
+      // leg[0] duplicates lastWp, which already sits at the end of path.steps.
+      for (let k = 1; k < leg.length; k++) path.steps.push(leg[k]);
+      existingLegEnds.push(path.steps.length - 1);
+      existingWaypoints.push(goal);
+      job.payload.waypoints = existingWaypoints;
+      job.payload.legEnds = existingLegEnds;
       return;
     }
-    path.steps = chained.steps;
+
+    // Fresh move: plan from the cow's current tile to the single goal.
+    const start = clampToGrid(pos.x, pos.z, this.tileGrid);
+    const route = this.pathCache.find(start, goal);
+    if (!route || route.length === 0) {
+      console.log('[move] no path to', goal);
+      return;
+    }
+    path.steps = route;
     path.index = 0;
     job.kind = 'move';
     job.state = 'moving';
-    job.payload = { waypoints, legEnds: chained.legEnds };
+    job.payload = { waypoints: [goal], legEnds: [route.length - 1] };
   }
-}
-
-/**
- * Chain A* between `start → waypoints[0] → waypoints[1] → …`. Returns the
- * concatenated step list and the step-index boundary for each leg (inclusive
- * upper bound: `path.steps[legEnds[k]]` is the k-th waypoint tile). Returns
- * null if any leg is unreachable.
- *
- * Each leg's first step duplicates the previous leg's end tile, so we drop
- * it when concatenating — except on the very first leg.
- *
- * @param {import('../sim/pathfinding.js').PathCache} cache
- * @param {{ i: number, j: number }} start
- * @param {{ i: number, j: number }[]} waypoints
- */
-function chainLegs(cache, start, waypoints) {
-  /** @type {{ i: number, j: number }[]} */
-  const steps = [];
-  /** @type {number[]} */
-  const legEnds = [];
-  let cursor = start;
-  for (const wp of waypoints) {
-    const leg = cache.find(cursor, wp);
-    if (!leg || leg.length === 0) return null;
-    const slice = steps.length === 0 ? leg : leg.slice(1);
-    for (const s of slice) steps.push(s);
-    legEnds.push(steps.length - 1);
-    cursor = wp;
-  }
-  return { steps, legEnds };
 }
 
 /**
