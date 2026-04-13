@@ -6,6 +6,11 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    allowedHosts: ['.lhr.life', '.trycloudflare.com', '.serveo.net'],
+  },
   build: {
     target: 'es2022',
     sourcemap: true,
