@@ -11,6 +11,7 @@ import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { createCowInstancer } from './render/cowInstancer.js';
+import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
@@ -103,6 +104,7 @@ let tileMesh = buildTileMesh(tileGrid);
 scene.add(tileMesh);
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
+const cowNameTags = createCowNameTags(scene);
 const selectionViz = createSelectionViz(scene);
 
 const selectedCows = /** @type {Set<number>} */ (new Set());
@@ -185,6 +187,7 @@ const loop = new SimLoop({
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec);
+    cowNameTags.update(world, camera, alpha);
     pruneStaleSelections();
     selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
