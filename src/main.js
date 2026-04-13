@@ -25,6 +25,7 @@ import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
+import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
@@ -214,42 +215,43 @@ new SelectionBox(canvas, camera, world, (ids, additive) => {
   updateHud();
 });
 
-new CowSelector(
-  canvas,
-  camera,
-  cowInstancer,
-  () => state.tileMesh,
-  world,
-  (id, additive) => {
-    if (id === null) {
-      // Empty-space click: plain clears, shift preserves the current set.
-      if (!additive) {
-        state.selectedCows.clear();
-        state.primaryCow = null;
-      }
-    } else if (additive) {
-      if (state.selectedCows.has(id)) {
-        state.selectedCows.delete(id);
-        if (state.primaryCow === id) {
-          state.primaryCow =
-            state.selectedCows.size > 0
-              ? /** @type {number} */ (state.selectedCows.values().next().value)
-              : null;
-        }
-      } else {
-        state.selectedCows.add(id);
-        state.primaryCow = id;
-      }
-      audio.play('click');
-    } else {
+/**
+ * Shared selection callback — same code path for canvas clicks (CowSelector)
+ * and portrait-bar clicks. `id === null` is "clicked empty space".
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectCow = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
       state.selectedCows.clear();
+      state.primaryCow = null;
+    }
+  } else if (additive) {
+    if (state.selectedCows.has(id)) {
+      state.selectedCows.delete(id);
+      if (state.primaryCow === id) {
+        state.primaryCow =
+          state.selectedCows.size > 0
+            ? /** @type {number} */ (state.selectedCows.values().next().value)
+            : null;
+      }
+    } else {
       state.selectedCows.add(id);
       state.primaryCow = id;
-      audio.play('click');
     }
-    updateHud();
-  },
-);
+    audio.play('click');
+  } else {
+    state.selectedCows.clear();
+    state.selectedCows.add(id);
+    state.primaryCow = id;
+    audio.play('click');
+  }
+  updateHud();
+};
+
+new CowSelector(canvas, camera, cowInstancer, () => state.tileMesh, world, selectCow);
 
 new TilePicker(
   canvas,
@@ -368,6 +370,24 @@ getDrivingCowId = () => fpCamera.drivingCowId;
 const cowCamOverlay = createCowCamOverlay();
 const draftBadge = createDraftBadge(scene, 256);
 
+const cowPortraitBar = createCowPortraitBar({
+  world,
+  state,
+  fpCamera,
+  onSelect: selectCow,
+  onFocus: (id) => {
+    // Snap rts.focus straight to the cow so the camera doesn't have to ease
+    // across the map first — follow mode then keeps it locked on.
+    const pos = world.get(id, 'Position');
+    if (pos) rts.focus.set(pos.x, pos.y, pos.z);
+    state.selectedCows.add(id);
+    state.primaryCow = id;
+    state.followEnabled = true;
+    audio.play('click');
+    updateHud();
+  },
+});
+
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
@@ -430,6 +450,7 @@ const loop = new SimLoop({
     stockpileOverlay.update(tileGrid);
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
+    cowPortraitBar.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
     renderFrameCount++;

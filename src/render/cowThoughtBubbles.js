@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
+import { thoughtFor } from './cowThoughtText.js';
 
 const HEAD_OFFSET = 3.2 * UNITS_PER_METER; // above the name tag
 const BUBBLE_HEIGHT_WORLD = 0.55 * UNITS_PER_METER;
@@ -20,37 +21,6 @@ const FADE_END = 90 * UNITS_PER_METER;
 const _camPos = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
 const _delta = new THREE.Vector3();
-
-/**
- * Map a cow's job state to a short human phrase. Falls back to the raw
- * `kind` if we haven't defined a case for it — cheap forward-compatibility
- * when a new job kind shows up.
- *
- * @param {{ kind: string, state: string }} job
- */
-function thoughtFor(job) {
-  const { kind, state } = job;
-  if (kind === 'eat') {
-    if (state === 'eating') return 'munching';
-    return 'hungry';
-  }
-  if (kind === 'chop') {
-    if (state === 'chopping') return 'chopping';
-    return 'to tree';
-  }
-  if (kind === 'haul') {
-    if (state === 'walking-to-item' || state === 'pathing-to-item') return 'picking up';
-    if (state === 'picking-up') return 'lifting';
-    if (state === 'dropping') return 'dropping';
-    return 'hauling';
-  }
-  if (kind === 'move') return 'moving';
-  if (kind === 'wander') {
-    if (state === 'idle') return 'idle';
-    return 'wandering';
-  }
-  return kind;
-}
 
 /**
  * @param {THREE.Scene} scene
