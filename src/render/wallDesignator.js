@@ -66,6 +66,7 @@ export class WallDesignator {
     this.curTile = null;
 
     this.preview = buildPreview(scene);
+    this.sizeLabel = buildSizeLabel();
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -111,6 +112,7 @@ export class WallDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.#hideSizeLabel();
   }
 
   /** @param {MouseEvent} e */
@@ -125,6 +127,7 @@ export class WallDesignator {
     this.startTile = tile;
     this.curTile = tile;
     this.#renderPreview();
+    this.#renderSizeLabel(e);
   }
 
   /** @param {MouseEvent} e */
@@ -134,6 +137,7 @@ export class WallDesignator {
     if (!tile) return;
     this.curTile = tile;
     this.#renderPreview();
+    this.#renderSizeLabel(e);
   }
 
   /** @param {MouseEvent} e */
@@ -147,6 +151,7 @@ export class WallDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.#hideSizeLabel();
     if (!start || !end) return;
     this.#apply(start, end, this.removing);
   }
@@ -295,6 +300,29 @@ export class WallDesignator {
     this.preview.line.visible = false;
   }
 
+  /** @param {MouseEvent} e */
+  #renderSizeLabel(e) {
+    if (!this.startTile || !this.curTile) {
+      this.#hideSizeLabel();
+      return;
+    }
+    const w = Math.abs(this.curTile.i - this.startTile.i) + 1;
+    const h = Math.abs(this.curTile.j - this.startTile.j) + 1;
+    const meters = TILE_SIZE / UNITS_PER_METER;
+    const wm = (w * meters).toFixed(1);
+    const hm = (h * meters).toFixed(1);
+    const verb = this.removing ? 'cancel' : 'build';
+    this.sizeLabel.textContent = `${verb}: ${w} × ${h} tiles (${wm}m × ${hm}m, ${w * h})`;
+    this.sizeLabel.style.left = `${e.clientX + 16}px`;
+    this.sizeLabel.style.top = `${e.clientY + 16}px`;
+    this.sizeLabel.style.borderColor = this.removing ? '#ff6a4a' : '#e9d477';
+    this.sizeLabel.style.display = 'block';
+  }
+
+  #hideSizeLabel() {
+    this.sizeLabel.style.display = 'none';
+  }
+
   /**
    * @param {MouseEvent} e
    * @returns {{ i: number, j: number } | null}
@@ -323,4 +351,22 @@ function buildPreview(scene) {
   line.visible = false;
   scene.add(line);
   return { geo, positions, line };
+}
+
+function buildSizeLabel() {
+  const el = document.createElement('div');
+  el.style.position = 'fixed';
+  el.style.display = 'none';
+  el.style.padding = '4px 8px';
+  el.style.background = 'rgba(14, 18, 24, 0.85)';
+  el.style.color = '#ffffff';
+  el.style.font = '12px/1.2 system-ui, -apple-system, Segoe UI, sans-serif';
+  el.style.fontWeight = '600';
+  el.style.border = '1px solid #e9d477';
+  el.style.borderRadius = '3px';
+  el.style.pointerEvents = 'none';
+  el.style.zIndex = '50';
+  el.style.whiteSpace = 'nowrap';
+  document.body.appendChild(el);
+  return el;
 }
