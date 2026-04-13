@@ -274,7 +274,7 @@ export function makeCowBrainSystem(deps) {
         if (job.kind === 'chop') {
           runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'build') {
-          runBuildJob(world, job, path, pos, grid, paths, walkable, board, deps);
+          runBuildJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'haul') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -422,7 +422,12 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
  * State machine for the build job. Mirrors runChopJob: walk adjacent to the
  * build site, hammer for BUILD_TICKS, then convert the BuildSite into a Wall.
  *
+ * Once the timer expires, we hold at the last tick (progress ≈ 99%) until
+ * any non-builder cows have left the destination tile — otherwise the wall
+ * would seal them in. The builder hammers in place during the stall.
+ *
  * @param {import('../ecs/world.js').World} world
+ * @param {number} builderId
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
  * @param {{ x: number, y: number, z: number }} pos
@@ -432,7 +437,7 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runBuildJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, board, deps) {
   const { siteId, jobId } = /** @type {{ siteId: number, jobId: number }} */ (job.payload);
 
   // Site despawned (player cancelled the blueprint) OR the board job was
@@ -492,6 +497,17 @@ function runBuildJob(world, job, path, pos, grid, paths, walkable, board, deps) 
     // — rhythmic without drowning out other cows' work.
     if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
     if (remaining <= 0) {
+      // Hold at 99% if any cow is currently standing on the build tile —
+      // closing the wall on top of them would seal them in. The builder
+      // themselves stand at an adjacent tile, so they don't trigger this.
+      const anchor = world.get(siteId, 'TileAnchor');
+      if (anchor && cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId)) {
+        // One tick of pad keeps progress visually pegged at 99% and the audio
+        // tap firing at the same cadence; we re-check next tick.
+        job.payload.ticksRemaining = 1;
+        site.progress = 1 - 1 / BUILD_TICKS;
+        return;
+      }
       deps.onBuildComplete(pos);
       finishBuild(world, grid, siteId, jobId, board);
       job.kind = 'none';
@@ -499,6 +515,25 @@ function runBuildJob(world, job, path, pos, grid, paths, walkable, board, deps) 
       job.payload = {};
     }
   }
+}
+
+/**
+ * True if any cow other than `excludeId` currently occupies tile (i, j).
+ * Used by the builder to stall completion until the destination is clear so
+ * we never finish a wall on top of a cow.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j
+ * @param {number} excludeId
+ */
+function cowOnTileExcluding(world, grid, i, j, excludeId) {
+  for (const { id, components } of world.query(['Cow', 'Position'])) {
+    if (id === excludeId) continue;
+    const t = worldToTileClamp(components.Position.x, components.Position.z, grid.W, grid.H);
+    if (t.i === i && t.j === j) return true;
+  }
+  return false;
 }
 
 /**
@@ -985,6 +1020,51 @@ export function makeHungerSystem() {
         // want food. The gate in cowBrain stays closed otherwise.
         if (h.value < HUNGER_EAT_THRESHOLD) {
           components.Brain.vitalsDirty = true;
+        }
+      }
+    },
+  };
+}
+
+/**
+ * Post-velocity collision against finished walls.
+ *
+ * AI cows already path around walls (the A* `defaultWalkable` gate prevents
+ * routing through them), but the FP-drafted cow is driven directly by WASD —
+ * nothing else stops them from walking into a wall tile. This runs after
+ * applyVelocity and reverts any cow whose new tile became a wall, sliding
+ * along axis-aligned walls so a glancing approach doesn't dead-stop.
+ *
+ * Defensive for AI cows too — if a future code path ever bypasses the
+ * pathfinder, walls still hold.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @returns {import('../ecs/schedule.js').SystemDef}
+ */
+export function makeCowWallCollisionSystem(grid) {
+  return {
+    name: 'cowWallCollision',
+    tier: 'every',
+    run(world) {
+      for (const { components } of world.query(['Cow', 'Position', 'PrevPosition'])) {
+        const p = components.Position;
+        const pp = components.PrevPosition;
+        const cur = worldToTileClamp(p.x, p.z, grid.W, grid.H);
+        if (!grid.isWall(cur.i, cur.j)) continue;
+        // We've crossed into a wall tile. Try preserving each axis on its own
+        // before falling back to a full revert — that gives the natural
+        // "slide along the wall" feel when the cow walks at it diagonally.
+        const xOnly = worldToTileClamp(p.x, pp.z, grid.W, grid.H);
+        const zOnly = worldToTileClamp(pp.x, p.z, grid.W, grid.H);
+        const xClear = !grid.isWall(xOnly.i, xOnly.j);
+        const zClear = !grid.isWall(zOnly.i, zOnly.j);
+        if (xClear && !zClear) {
+          p.z = pp.z;
+        } else if (zClear && !xClear) {
+          p.x = pp.x;
+        } else {
+          p.x = pp.x;
+          p.z = pp.z;
         }
       }
     },

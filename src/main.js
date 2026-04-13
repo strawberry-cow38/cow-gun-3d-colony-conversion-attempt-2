@@ -43,7 +43,12 @@ import { createWallInstancer } from './render/wallInstancer.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
-import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from './systems/cow.js';
+import {
+  makeCowBrainSystem,
+  makeCowFollowPathSystem,
+  makeCowWallCollisionSystem,
+  makeHungerSystem,
+} from './systems/cow.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { TileGrid } from './world/tileGrid.js';
@@ -106,6 +111,7 @@ scheduler.add(
   }),
 );
 scheduler.add(applyVelocity);
+scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
