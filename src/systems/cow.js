@@ -41,10 +41,14 @@ const SLOW_FACTOR = 0.7; // "excuse me, fellow cow" speed when blocked
  *   Optional hook: returns the id of a cow currently driven by the FP camera
  *   (drafted + viewed). cowFollowPath skips that cow so it doesn't fight
  *   player input by steering toward the nearest path step.
+ * @property {((pos: {x:number,y:number,z:number}) => void)=} onCowStep
+ *   Optional hook: fired when a cow crosses into the next path tile. Used for
+ *   positional footfall audio. Called with the cow's world position.
  *
  * @typedef {PathDeps & {
  *   board: import('../jobs/board.js').JobBoard,
- *   onChopComplete: () => void,
+ *   onChopComplete: (pos: {x:number,y:number,z:number}) => void,
+ *   onCowEat: (pos: {x:number,y:number,z:number}) => void,
  *   onItemChange: () => void,
  * }} BrainDeps
  */
@@ -340,7 +344,7 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
     const tree = world.get(treeId, 'Tree');
     if (tree) tree.progress = 1 - remaining / CHOP_TICKS;
     if (remaining <= 0) {
-      deps.onChopComplete();
+      deps.onChopComplete(pos);
       finishChop(world, grid, treeId, jobId, board);
       job.kind = 'none';
       job.state = 'idle';
@@ -556,6 +560,7 @@ function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
       hunger.value = Math.min(1, hunger.value + FOOD_NUTRITION);
       if (item.count <= 0) world.despawn(itemId);
       deps.onItemChange();
+      deps.onCowEat(pos);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -667,6 +672,7 @@ export function makeCowFollowPathSystem(deps) {
         if (distSq < ARRIVE_DIST_SQ) {
           path.index++;
           pos.y = targetY;
+          deps.onCowStep?.(pos);
           // If that was the final step, zero velocity this tick instead of
           // carrying the previous tick's vel one more step past the goal.
           if (path.index >= path.steps.length) {

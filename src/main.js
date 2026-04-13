@@ -5,6 +5,7 @@
  * (default 10).
  */
 
+import { createAudio } from './audio/audio.js';
 import { createHud } from './boot/hud.js';
 import { installKeyboard } from './boot/input.js';
 import { readBootParams } from './boot/params.js';
@@ -54,9 +55,16 @@ registerComponents(world);
 const pathCache = new PathCache(tileGrid, defaultWalkable);
 const jobBoard = new JobBoard();
 
-// Forward-declared so the brain can poke the renderers once they're
-// constructed below.
+// Forward-declared so the brain can poke the renderers + audio engine once
+// they're constructed below. Callbacks receive the emitter's world position
+// so the directional audio layer can pan the sound correctly; the renderer
+// wrappers ignore the arg.
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldChopComplete = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldCowEat = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldCowStep = () => {};
 let onWorldItemChange = () => {};
 // Forward-declared so cowFollowPath can ask the FP camera for the currently
 // driven cow without a construction-order tangle.
@@ -71,7 +79,8 @@ scheduler.add(
     paths: pathCache,
     walkable: defaultWalkable,
     board: jobBoard,
-    onChopComplete: () => onWorldChopComplete(),
+    onChopComplete: (pos) => onWorldChopComplete(pos),
+    onCowEat: (pos) => onWorldCowEat(pos),
     onItemChange: () => onWorldItemChange(),
   }),
 );
@@ -81,6 +90,7 @@ scheduler.add(
     paths: pathCache,
     walkable: defaultWalkable,
     drivingCowId: () => getDrivingCowId(),
+    onCowStep: (pos) => onWorldCowStep(pos),
   }),
 );
 scheduler.add(applyVelocity);
@@ -94,6 +104,7 @@ spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
 const { renderer, scene, camera } = createScene(canvas);
+const audio = createAudio({ camera });
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
@@ -104,10 +115,17 @@ const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
 const pickTileOverlay = createPickTileOverlay(scene);
 
-onWorldChopComplete = () => {
+onWorldChopComplete = (pos) => {
   treeInstancer.markDirty();
   itemInstancer.markDirty();
   pathCache.clear();
+  audio.playAt('chop', pos);
+};
+onWorldCowEat = (pos) => {
+  audio.playAt('munch', pos);
+};
+onWorldCowStep = (pos) => {
+  audio.playAt('footfall', pos);
 };
 onWorldItemChange = () => {
   itemInstancer.markDirty();
@@ -280,6 +298,7 @@ const loop = new SimLoop({
       }
       rts.update(rdt);
     }
+    audio.update();
     cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
