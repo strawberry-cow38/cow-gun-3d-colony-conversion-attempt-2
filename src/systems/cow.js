@@ -78,6 +78,10 @@ export function makeCowBrainSystem(deps) {
         const inv = components.Inventory;
         const hunger = components.Hunger;
 
+        // Player is driving this cow directly from the FP camera — keep hands
+        // off: no job picks, no carried-item reconciliation, no wander.
+        if (job.kind === 'player') continue;
+
         // Dropped out of haul unexpectedly while carrying? Drop the item on
         // the ground where we stand so it re-enters the haul pool.
         if (inv.itemKind !== null && job.kind !== 'haul') {
@@ -592,18 +596,22 @@ export function makeCowFollowPathSystem(deps) {
     run(world) {
       // Snapshot cow positions so each cow can steer around the others cheaply
       // (O(N²) scan is fine at colony scale — swap in a spatial hash later).
-      /** @type {{ pos: {x:number,y:number,z:number}, vel: {x:number,y:number,z:number}, path: any }[]} */
+      /** @type {{ pos: {x:number,y:number,z:number}, vel: {x:number,y:number,z:number}, path: any, job: any }[]} */
       const herd = [];
-      for (const { components } of world.query(['Cow', 'Position', 'Velocity', 'Path'])) {
+      for (const { components } of world.query(['Cow', 'Position', 'Velocity', 'Path', 'Job'])) {
         herd.push({
           pos: components.Position,
           vel: components.Velocity,
           path: components.Path,
+          job: components.Job,
         });
       }
 
       for (const self of herd) {
-        const { pos, vel, path } = self;
+        const { pos, vel, path, job } = self;
+
+        // Player is driving this cow — the FP camera writes Velocity directly.
+        if (job.kind === 'player') continue;
 
         if (path.index >= path.steps.length) {
           vel.x = 0;

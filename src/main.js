@@ -14,6 +14,7 @@ import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
+import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createItemInstancer } from './render/itemInstancer.js';
 import { createItemLabels } from './render/itemLabels.js';
 import { CowMoveCommand } from './render/moveCommand.js';
@@ -227,6 +228,8 @@ const stockpileDesignator = new StockpileDesignator(
 );
 stockpileDesignatorRef = stockpileDesignator;
 
+const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
+
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
@@ -244,7 +247,8 @@ const loop = new SimLoop({
     const now = performance.now();
     const rdt = (now - lastRenderClock) / 1000;
     lastRenderClock = now;
-    rts.update(rdt);
+    if (fpCamera.active) fpCamera.update(rdt);
+    else rts.update(rdt);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec, tileGrid);
@@ -409,17 +413,42 @@ function updateHud() {
   if (stockpileDesignator.active) {
     lines.push('** STOCKPILE DESIGNATE — LMB drag = add, Shift+drag = remove, B or Esc to exit **');
   }
+  if (fpCamera.active) {
+    const mode = fpCamera.mode === 'control' ? 'TAKEOVER (WASD + mouse)' : 'SPECTATE';
+    lines.push(
+      `** FIRST-PERSON ${mode} — cow #${fpCamera.cowId} — Q/E cycle, R ${fpCamera.mode === 'control' ? 'release' : 'take over'}, H exit **`,
+    );
+  }
   lines.push(
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
     'C = chop designate,  B = stockpile designate,  N = spawn cow at last clicked tile',
     'G = drop stone,  F = drop food (at last clicked tile)',
+    'H = first-person (needs cow selected),  Q/E = cycle cow,  R = take over / release',
     'K = save, L = load',
   );
   hud.innerText = lines.join('\n');
 }
 
 addEventListener('keydown', async (e) => {
+  // First-person: H toggles spectate on/off, Q/E cycle, R toggles takeover.
+  if (e.code === 'KeyH') {
+    if (fpCamera.active) {
+      fpCamera.exit();
+    } else if (primaryCow !== null) {
+      fpCamera.enterSpectate(primaryCow);
+    }
+    return;
+  }
+  if (fpCamera.active && (e.code === 'KeyQ' || e.code === 'KeyE')) {
+    fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
+    return;
+  }
+  if (fpCamera.active && e.code === 'KeyR') {
+    if (fpCamera.mode === 'control') fpCamera.releaseControl();
+    else fpCamera.takeControl();
+    return;
+  }
   if (e.code === 'KeyN') {
     const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
     spawnCowAt(tile.i, tile.j);
