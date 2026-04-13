@@ -120,8 +120,11 @@ export class CowMoveCommand {
         ? lineTargets(this.tileGrid, this.walkable, start, endTile, ids.length)
         : spreadTargets(this.tileGrid, this.walkable, endTile, ids.length);
 
+    const assignment = matchCowsToTargets(this.world, ids, targets, this.tileGrid);
     for (let k = 0; k < ids.length; k++) {
-      this.#issue(ids[k], targets[k], this.shiftAtDown);
+      const t = assignment[k];
+      if (t < 0) continue;
+      this.#issue(ids[k], targets[t], this.shiftAtDown);
     }
   }
 
@@ -405,6 +408,55 @@ function nearestWalkable(grid, walkable, i, j, reserved) {
     }
   }
   return { i: ci, j: cj };
+}
+
+/**
+ * Greedy assignment: for every (cow, target) pair compute the squared
+ * world-space distance, sort ascending, then walk the list claiming the
+ * closest still-unclaimed pair each time. Runs O(n² log n) on the triple
+ * list; n ≤ selection size so it's cheap. Returns an array `a` where
+ * `a[k]` = index into `targets` for cow `ids[k]`, or `-1` if that cow had
+ * no Position component and gets skipped.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number[]} ids
+ * @param {{ i: number, j: number }[]} targets
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @returns {number[]}
+ */
+function matchCowsToTargets(world, ids, targets, grid) {
+  const n = ids.length;
+  const cowXY = /** @type {({ x: number, z: number } | null)[]} */ (new Array(n));
+  for (let k = 0; k < n; k++) {
+    const pos = world.get(ids[k], 'Position');
+    cowXY[k] = pos ? { x: pos.x, z: pos.z } : null;
+  }
+  const tgtXY = targets.map((t) => tileToWorld(t.i, t.j, grid.W, grid.H));
+
+  /** @type {{ c: number, t: number, d2: number }[]} */
+  const triples = [];
+  for (let c = 0; c < n; c++) {
+    const cp = cowXY[c];
+    if (!cp) continue;
+    for (let t = 0; t < n; t++) {
+      const tp = tgtXY[t];
+      const dx = cp.x - tp.x;
+      const dz = cp.z - tp.z;
+      triples.push({ c, t, d2: dx * dx + dz * dz });
+    }
+  }
+  triples.sort((a, b) => a.d2 - b.d2);
+
+  const cowTaken = new Array(n).fill(false);
+  const tgtTaken = new Array(n).fill(false);
+  const out = new Array(n).fill(-1);
+  for (const { c, t } of triples) {
+    if (cowTaken[c] || tgtTaken[t]) continue;
+    cowTaken[c] = true;
+    tgtTaken[t] = true;
+    out[c] = t;
+  }
+  return out;
 }
 
 const NBRS = [
