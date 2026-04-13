@@ -1,12 +1,12 @@
 /**
- * Floating billboard labels above every Item on a stockpile tile. Shows
+ * Floating billboard labels above every Item in the world. Shows
  * "kind count/capacity". One Sprite per item entity, cached by id.
  *
  * Text regenerates only when it changes — a full stack hanging out at 50/50
  * for thousands of ticks costs zero canvas work after the first frame.
  *
- * Loose (non-stockpile) items are intentionally not tagged so the world
- * isn't a sea of text while cows haul fresh chops around.
+ * Visibility is gated by the debug flag (P) in the HUD, so in non-debug play
+ * the world isn't flooded with floating text.
  */
 
 import * as THREE from 'three';
@@ -43,8 +43,6 @@ export function createItemLabels(scene) {
 
     const alive = new Set();
     for (const { id, components } of world.query(['Item', 'TileAnchor', 'Position'])) {
-      const a = components.TileAnchor;
-      if (!grid.isStockpile(a.i, a.j)) continue;
       alive.add(id);
       const item = components.Item;
       const text = `${item.kind} ${item.count}/${item.capacity}`;

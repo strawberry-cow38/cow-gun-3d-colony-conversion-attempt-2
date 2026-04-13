@@ -163,15 +163,19 @@ async function handleKey(ctx, e) {
   // every selected cow (to the majority state's opposite, so mixed selections
   // draft rather than thrash).
   if (e.code === 'KeyR') {
+    const draftOpts = {
+      grid: ctx.tileGrid,
+      onItemChange: () => ctx.itemInstancer.markDirty(),
+    };
     if (fpCamera.active && fpCamera.cowId !== null) {
-      toggleDraft(world, [fpCamera.cowId]);
+      toggleDraft(world, [fpCamera.cowId], draftOpts);
       const cow = world.get(fpCamera.cowId, 'Cow');
       ctx.audio.play(cow?.drafted ? 'draft' : 'undraft');
       ctx.updateHud();
       return;
     }
     if (state.selectedCows.size > 0) {
-      toggleDraft(world, [...state.selectedCows]);
+      toggleDraft(world, [...state.selectedCows], draftOpts);
       // Post-toggle, primary's state reflects the new majority target.
       const primary = state.primaryCow !== null ? world.get(state.primaryCow, 'Cow') : null;
       ctx.audio.play(primary?.drafted ? 'draft' : 'undraft');

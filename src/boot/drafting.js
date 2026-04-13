@@ -3,19 +3,24 @@
  * until the player moves them; undrafted cows return to autonomous brain work.
  */
 
+import { worldToTileClamp } from '../world/coords.js';
+import { addItemToTile } from '../world/items.js';
+
 /**
  * Flip the `drafted` flag on each cow. Mixed selections all go to "drafted"
  * (so one press never silently drafts half the crowd and un-drafts the rest);
  * if everyone is already drafted, the press releases them.
  *
  * Cows transitioning INTO drafted stop immediately — path cleared, velocity
- * zeroed. Any jobs they'd claimed (chop/haul/eat) get released back to the
- * board via the brain on its next tick.
+ * zeroed — and synchronously drop any item they're hauling so the player
+ * sees it hit the ground the moment they grab the reins, instead of waiting
+ * for the next brain tick.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {number[]} cowIds
+ * @param {{ grid?: import('../world/tileGrid.js').TileGrid, onItemChange?: () => void }} [opts]
  */
-export function toggleDraft(world, cowIds) {
+export function toggleDraft(world, cowIds, opts = {}) {
   const ids = [];
   for (const id of cowIds) {
     if (world.get(id, 'Cow')) ids.push(id);
@@ -23,6 +28,7 @@ export function toggleDraft(world, cowIds) {
   if (ids.length === 0) return;
   const allDrafted = ids.every((id) => world.get(id, 'Cow')?.drafted === true);
   const target = !allDrafted;
+  let dropped = false;
   for (const id of ids) {
     const c = world.get(id, 'Cow');
     if (!c) continue;
@@ -35,9 +41,7 @@ export function toggleDraft(world, cowIds) {
     if (becomingDrafted) {
       // Stop visually this frame: clear the path so cowFollowPath can't give
       // them fresh velocity, and zero the current velocity so the next
-      // applyVelocity step doesn't carry them forward. Job cleanup (releasing
-      // chop/haul claims, dropping carried items) happens in the brain's
-      // drafted branch on the next tick using the existing code path.
+      // applyVelocity step doesn't carry them forward.
       const path = world.get(id, 'Path');
       const vel = world.get(id, 'Velocity');
       if (path) {
@@ -48,8 +52,19 @@ export function toggleDraft(world, cowIds) {
         vel.x = 0;
         vel.z = 0;
       }
+      // Drop hauled items immediately so there's no one-tick window where the
+      // player-controlled cow is still clutching a log.
+      const inv = world.get(id, 'Inventory');
+      const pos = world.get(id, 'Position');
+      if (opts.grid && inv && pos && inv.itemKind !== null) {
+        const { i, j } = worldToTileClamp(pos.x, pos.z, opts.grid.W, opts.grid.H);
+        addItemToTile(world, opts.grid, inv.itemKind, i, j);
+        inv.itemKind = null;
+        dropped = true;
+      }
     }
   }
+  if (dropped) opts.onItemChange?.();
 }
 
 /** @param {import('../ecs/world.js').World} world */
