@@ -1,15 +1,17 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v4):
+ * Format (v5):
  * {
- *   version: 4,
+ *   version: 5,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[] },
  *   cows: [ {
  *     name, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
  *     inventory: { itemKind: string | null }
- *   } ]
+ *   } ],
+ *   trees: [ { i, j, marked: boolean } ],
+ *   items: [ { i, j, kind: string } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -18,6 +20,7 @@
  * always upgrade cleanly.
  */
 
+import { tileToWorld } from './coords.js';
 import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { TileGrid } from './tileGrid.js';
 
@@ -29,6 +32,20 @@ import { TileGrid } from './tileGrid.js';
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
  * @property {{ itemKind: string | null }} inventory
+ */
+
+/**
+ * @typedef SerializedTree
+ * @property {number} i
+ * @property {number} j
+ * @property {boolean} marked
+ */
+
+/**
+ * @typedef SerializedItem
+ * @property {number} i
+ * @property {number} j
+ * @property {string} kind
  */
 
 /**
@@ -63,6 +80,24 @@ export function serializeState(tileGrid, world) {
       inventory: { itemKind: components.Inventory.itemKind },
     });
   }
+  /** @type {SerializedTree[]} */
+  const trees = [];
+  for (const { components } of world.query(['Tree', 'TileAnchor'])) {
+    trees.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      marked: components.Tree.markedJobId > 0,
+    });
+  }
+  /** @type {SerializedItem[]} */
+  const items = [];
+  for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    items.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      kind: components.Item.kind,
+    });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -73,6 +108,8 @@ export function serializeState(tileGrid, world) {
       stockpile: Array.from(tileGrid.stockpile),
     },
     cows,
+    trees,
+    items,
   };
 }
 
@@ -117,10 +154,61 @@ export function hydrateCows(world, state) {
 }
 
 /**
+ * Spawn tree entities from a (migrated) save state. Blocks their tiles on the
+ * grid so pathfinding agrees with the render. If a tree was chop-designated at
+ * save time, re-posts a chop job via the board and links the tree to it.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ trees?: SerializedTree[] }} state
+ */
+export function hydrateTrees(world, grid, board, state) {
+  const trees = state.trees ?? [];
+  for (const t of trees) {
+    if (!grid.inBounds(t.i, t.j) || grid.isBlocked(t.i, t.j)) continue;
+    grid.blockTile(t.i, t.j);
+    const w = tileToWorld(t.i, t.j, grid.W, grid.H);
+    const id = world.spawn({
+      Tree: { markedJobId: 0, progress: 0 },
+      TreeViz: {},
+      TileAnchor: { i: t.i, j: t.j },
+      Position: { x: w.x, y: grid.getElevation(t.i, t.j), z: w.z },
+    });
+    if (t.marked) {
+      const job = board.post('chop', { treeId: id, i: t.i, j: t.j });
+      const tree = world.get(id, 'Tree');
+      if (tree) tree.markedJobId = job.id;
+    }
+  }
+}
+
+/**
+ * Spawn item entities from a (migrated) save state.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {{ items?: SerializedItem[] }} state
+ */
+export function hydrateItems(world, grid, state) {
+  const items = state.items ?? [];
+  for (const it of items) {
+    if (!grid.inBounds(it.i, it.j)) continue;
+    const w = tileToWorld(it.i, it.j, grid.W, grid.H);
+    world.spawn({
+      Item: { kind: it.kind },
+      ItemViz: {},
+      TileAnchor: { i: it.i, j: it.j },
+      Position: { x: w.x, y: grid.getElevation(it.i, it.j), z: w.z },
+    });
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[] }, cows: SerializedCow[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

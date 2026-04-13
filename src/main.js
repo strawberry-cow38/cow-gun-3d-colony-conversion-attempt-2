@@ -37,7 +37,9 @@ import {
   gunzipBytes,
   gzipString,
   hydrateCows,
+  hydrateItems,
   hydrateTileGrid,
+  hydrateTrees,
   loadState,
   serializeState,
 } from './world/persist.js';
@@ -400,7 +402,7 @@ addEventListener('keydown', async (e) => {
       const json = JSON.stringify(state);
       const gz = await gzipString(json);
       const b64 = bytesToBase64(gz);
-      localStorage.setItem('save:v4', b64);
+      localStorage.setItem('save:v5', b64);
       console.log(
         '[save] ok — tiles:',
         tileGrid.W * tileGrid.H,
@@ -415,6 +417,7 @@ addEventListener('keydown', async (e) => {
   }
   if (e.code === 'KeyL') {
     const b64 =
+      localStorage.getItem('save:v5') ??
       localStorage.getItem('save:v4') ??
       localStorage.getItem('save:v3') ??
       localStorage.getItem('save:v2');
@@ -435,13 +438,28 @@ addEventListener('keydown', async (e) => {
     despawnAllCows(world);
     despawnAllComp(world, 'Tree');
     despawnAllComp(world, 'Item');
-    // Trees aren't persisted in slice A — regenerate a fresh scatter on load
-    // so the world doesn't end up bare.
-    spawnInitialTrees(world, tileGrid, treeCount);
+    jobBoard.jobs.length = 0;
+    if (migrated.trees.length === 0) {
+      // Pre-v5 save had no tree list — seed a fresh scatter so the world
+      // isn't bare.
+      spawnInitialTrees(world, tileGrid, treeCount);
+    } else {
+      hydrateTrees(world, tileGrid, jobBoard, migrated);
+    }
+    hydrateItems(world, tileGrid, migrated);
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();
     hydrateCows(world, migrated);
+    // Job board was cleared above; any serialized cow job references are
+    // stale. Reset so the brain re-picks from the fresh board.
+    for (const { components } of world.query(['Cow', 'Job', 'Path'])) {
+      components.Job.kind = 'none';
+      components.Job.state = 'idle';
+      components.Job.payload = {};
+      components.Path.steps.length = 0;
+      components.Path.index = 0;
+    }
     const fresh = buildTileMesh(tileGrid);
     scene.remove(tileMesh);
     tileMesh.geometry.dispose();

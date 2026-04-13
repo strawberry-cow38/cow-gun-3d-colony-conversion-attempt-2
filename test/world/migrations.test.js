@@ -59,11 +59,31 @@ describe('migration runner', () => {
     expect(out.cows[0].inventory).toEqual({ itemKind: null });
   });
 
+  it('upgrades a v4 save by adding empty trees + items arrays', () => {
+    const v4 = {
+      version: 4,
+      tileGrid: {
+        W: 2,
+        H: 2,
+        elevation: [0, 0, 0, 0],
+        biome: [0, 0, 0, 0],
+        stockpile: [0, 0, 0, 0],
+      },
+      cows: [],
+    };
+    const out = runMigrations(v4);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.trees).toEqual([]);
+    expect(out.items).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,
       tileGrid: { W: 1, H: 1, elevation: [0], biome: [0], stockpile: [0] },
       cows: [],
+      trees: [],
+      items: [],
     };
     const out = runMigrations(cur);
     expect(out).toEqual(cur);

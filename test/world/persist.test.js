@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { registerComponents } from '../../src/components/index.js';
 import { World } from '../../src/ecs/world.js';
+import { JobBoard } from '../../src/jobs/board.js';
 import {
   hydrateCows,
+  hydrateItems,
   hydrateTileGrid,
+  hydrateTrees,
   loadState,
   serializeState,
 } from '../../src/world/persist.js';
@@ -80,5 +83,71 @@ describe('cow save/load roundtrip', () => {
     const w = makeWorld();
     hydrateCows(w, {});
     expect([...w.query(['Cow'])]).toHaveLength(0);
+  });
+});
+
+describe('tree save/load roundtrip', () => {
+  it('preserves tree positions, blocks their tiles, and re-posts a chop job for marked trees', () => {
+    const tg = new TileGrid(4, 4);
+    const w1 = makeWorld();
+    w1.spawn({
+      Tree: { markedJobId: 0, progress: 0 },
+      TreeViz: {},
+      TileAnchor: { i: 1, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+    w1.spawn({
+      Tree: { markedJobId: 7, progress: 0.3 },
+      TreeViz: {},
+      TileAnchor: { i: 3, j: 0 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    const state = serializeState(tg, w1);
+    expect(state.trees).toHaveLength(2);
+
+    const migrated = loadState(JSON.parse(JSON.stringify(state)));
+    const tg2 = hydrateTileGrid(migrated);
+    const w2 = makeWorld();
+    const board = new JobBoard();
+    hydrateTrees(w2, tg2, board, migrated);
+
+    const trees = [...w2.query(['Tree', 'TileAnchor'])];
+    expect(trees).toHaveLength(2);
+    expect(tg2.isBlocked(1, 2)).toBe(true);
+    expect(tg2.isBlocked(3, 0)).toBe(true);
+
+    const marked = trees.find((t) => t.components.TileAnchor.i === 3);
+    if (!marked) throw new Error('marked tree not found');
+    expect(marked.components.Tree.markedJobId).toBeGreaterThan(0);
+    expect(board.openCount).toBe(1);
+  });
+});
+
+describe('item save/load roundtrip', () => {
+  it('preserves item kind and tile anchor', () => {
+    const tg = new TileGrid(3, 3);
+    const w1 = makeWorld();
+    w1.spawn({
+      Item: { kind: 'wood' },
+      ItemViz: {},
+      TileAnchor: { i: 2, j: 1 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    const state = serializeState(tg, w1);
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0]).toMatchObject({ i: 2, j: 1, kind: 'wood' });
+
+    const migrated = loadState(JSON.parse(JSON.stringify(state)));
+    const tg2 = hydrateTileGrid(migrated);
+    const w2 = makeWorld();
+    hydrateItems(w2, tg2, migrated);
+
+    const items = [...w2.query(['Item', 'TileAnchor'])];
+    expect(items).toHaveLength(1);
+    expect(items[0].components.Item.kind).toBe('wood');
+    expect(items[0].components.TileAnchor.i).toBe(2);
+    expect(items[0].components.TileAnchor.j).toBe(1);
   });
 });
