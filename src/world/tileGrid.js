@@ -10,6 +10,10 @@
  * - wall:      uint8; nonzero = finished wall blocks the tile. Serialized.
  *              Separate from occupancy so we can differentiate "wall" vs
  *              "tree" in pathing + hydration without entity lookups.
+ * - door:      uint8; nonzero = finished door on the tile. Doors are
+ *              WALKABLE — `isBlocked` does not check this — they exist as a
+ *              bitmap only so designators can reject double-placement.
+ *              Serialized.
  */
 
 export const BIOME = Object.freeze({
@@ -32,6 +36,7 @@ export class TileGrid {
     this.occupancy = new Uint8Array(W * H);
     this.stockpile = new Uint8Array(W * H);
     this.wall = new Uint8Array(W * H);
+    this.door = new Uint8Array(W * H);
   }
 
   /** @param {number} i @param {number} j */
@@ -68,6 +73,16 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setWall(i, j, v) {
     this.wall[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isDoor(i, j) {
+    return this.door[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setDoor(i, j, v) {
+    this.door[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /**

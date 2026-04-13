@@ -1,17 +1,12 @@
 /**
- * Wall designation mode.
+ * Door designation mode.
  *
- * Press `V` to enter; LMB drag a rectangle of tiles to designate wood walls.
- * Each designated tile spawns a BuildSite entity (wall/wood/required=1). The
- * haul system then routes wood to the tile and, once delivered, posts a build
- * job so a cow physically erects the wall. Shift+drag cancels existing
- * designations (despawns the BuildSite + its pending haul/build jobs). Press
- * `V` or `Escape` to exit.
- *
- * Tiles that are blocked (tree, rock), already a finished wall, or stockpile
- * tiles are skipped on ADD — we don't want to overlap with pre-existing work.
- * Cancel pass ignores the blocked check so half-placed sites can always be
- * cleared.
+ * Press `M` to enter; LMB drag a rectangle of tiles to designate wood doors.
+ * Each tile spawns a BuildSite with `kind: 'door'`. Haulers deliver wood;
+ * once delivered a builder erects it. The finished door does NOT set the
+ * wall bit — pathing routes cows right through it — but it does set the
+ * door bit so this designator (and the wall one) can reject duplicates.
+ * Shift+drag cancels. Press `M` or `Escape` to exit.
  */
 
 import * as THREE from 'three';
@@ -19,10 +14,10 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/c
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
-const PREVIEW_COLOR_ADD = 0xe9d477;
+const PREVIEW_COLOR_ADD = 0xffb070;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
-export class WallDesignator {
+export class DoorDesignator {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
@@ -86,7 +81,7 @@ export class WallDesignator {
 
   /** @param {KeyboardEvent} e */
   #onKey(e) {
-    if (e.code === 'KeyV') {
+    if (e.code === 'KeyM') {
       this.active = !this.active;
       if (!this.active) this.#cancelDrag();
       this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
@@ -184,12 +179,7 @@ export class WallDesignator {
     }
   }
 
-  /**
-   * Spawn a BuildSite on (i, j) unless something already occupies it. Returns
-   * true if a site was actually added.
-   *
-   * @param {number} i @param {number} j
-   */
+  /** @param {number} i @param {number} j */
   #designateTile(i, j) {
     if (this.tileGrid.isBlocked(i, j)) return false;
     if (this.tileGrid.isDoor(i, j)) return false;
@@ -198,7 +188,7 @@ export class WallDesignator {
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({
       BuildSite: {
-        kind: 'wall',
+        kind: 'door',
         requiredKind: 'wood',
         required: 1,
         delivered: 0,
@@ -212,38 +202,24 @@ export class WallDesignator {
     return true;
   }
 
-  /**
-   * Cancel a pending BuildSite: release/complete its build job if any, clear
-   * any outstanding haul jobs targeting the tile, and despawn the entity.
-   * Delivered materials stay — they end up as a loose Item stack on the tile.
-   *
-   * @param {number} i @param {number} j
-   */
+  /** @param {number} i @param {number} j */
   #cancelTile(i, j) {
     const id = this.#findSiteAt(i, j);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
-    // Wall designator only cancels wall blueprints — doors are owned by the
-    // door designator so the two modes never step on each other.
-    if (site && site.kind !== 'wall') return false;
-    if (site) {
-      if (site.buildJobId > 0) this.board.complete(site.buildJobId);
-      // Drop any delivered units back as a loose stack so they aren't lost.
-      if (site.delivered > 0) {
-        // Dynamic import would be cleaner but we're in a hot path — require a
-        // caller-side helper later. For now: one unit per wall, so a straight
-        // spawn is fine.
-        // eslint-disable-next-line no-inner-declarations
-        const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
-        this.world.spawn({
-          Item: { kind: site.requiredKind, count: site.delivered, capacity: 50 },
-          ItemViz: {},
-          TileAnchor: { i, j },
-          Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
-        });
-      }
+    // Only cancel door blueprints — leave wall blueprints alone so M+Shift
+    // doesn't accidentally nuke wall work on shared tiles.
+    if (!site || site.kind !== 'door') return false;
+    if (site.buildJobId > 0) this.board.complete(site.buildJobId);
+    if (site.delivered > 0) {
+      const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
+      this.world.spawn({
+        Item: { kind: site.requiredKind, count: site.delivered, capacity: 50 },
+        ItemViz: {},
+        TileAnchor: { i, j },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+      });
     }
-    // Cancel outstanding haul jobs pointing at this tile.
     for (const job of this.board.jobs) {
       if (job.completed || job.kind !== 'haul') continue;
       if (job.payload.toBuildSite !== true) continue;
@@ -315,11 +291,11 @@ export class WallDesignator {
     const meters = TILE_SIZE / UNITS_PER_METER;
     const wm = (w * meters).toFixed(1);
     const hm = (h * meters).toFixed(1);
-    const verb = this.removing ? 'cancel' : 'build';
+    const verb = this.removing ? 'cancel door' : 'door';
     this.sizeLabel.textContent = `${verb}: ${w} × ${h} tiles (${wm}m × ${hm}m, ${w * h})`;
     this.sizeLabel.style.left = `${e.clientX + 16}px`;
     this.sizeLabel.style.top = `${e.clientY + 16}px`;
-    this.sizeLabel.style.borderColor = this.removing ? '#ff6a4a' : '#e9d477';
+    this.sizeLabel.style.borderColor = this.removing ? '#ff6a4a' : '#ffb070';
     this.sizeLabel.style.display = 'block';
   }
 
@@ -366,7 +342,7 @@ function buildSizeLabel() {
   el.style.color = '#ffffff';
   el.style.font = '12px/1.2 system-ui, -apple-system, Segoe UI, sans-serif';
   el.style.fontWeight = '600';
-  el.style.border = '1px solid #e9d477';
+  el.style.border = '1px solid #ffb070';
   el.style.borderRadius = '3px';
   el.style.pointerEvents = 'none';
   el.style.zIndex = '50';

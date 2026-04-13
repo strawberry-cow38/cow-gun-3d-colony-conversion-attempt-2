@@ -16,6 +16,7 @@ import {
   gzipString,
   hydrateBuildSites,
   hydrateCows,
+  hydrateDoors,
   hydrateItems,
   hydrateTileGrid,
   hydrateTrees,
@@ -67,6 +68,7 @@ const PAN_KEYS = new Set([
  * @property {any} stockpileOverlay
  * @property {{ markDirty: () => void } | null} [buildSiteInstancer]
  * @property {{ markDirty: () => void } | null} [wallInstancer]
+ * @property {{ markDirty: () => void } | null} [doorInstancer]
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH
@@ -301,6 +303,7 @@ async function loadGame(ctx) {
     tileGrid.biome.set(loaded.biome);
     tileGrid.stockpile.set(loaded.stockpile);
     tileGrid.wall.set(loaded.wall);
+    tileGrid.door.set(loaded.door);
     tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllComp(world, 'Cow');
@@ -308,6 +311,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Item');
     despawnAllComp(world, 'BuildSite');
     despawnAllComp(world, 'Wall');
+    despawnAllComp(world, 'Door');
     jobBoard.jobs.length = 0;
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
@@ -319,11 +323,13 @@ async function loadGame(ctx) {
     hydrateItems(world, tileGrid, migrated);
     hydrateBuildSites(world, tileGrid, migrated);
     hydrateWalls(world, tileGrid, migrated);
+    hydrateDoors(world, tileGrid, migrated);
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();
     ctx.buildSiteInstancer?.markDirty();
     ctx.wallInstancer?.markDirty();
+    ctx.doorInstancer?.markDirty();
     hydrateCows(world, migrated);
     // Job board was cleared above; any serialized cow job references are
     // stale. Reset so the brain re-picks from the fresh board.

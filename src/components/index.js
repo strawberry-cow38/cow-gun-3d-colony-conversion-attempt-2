@@ -36,6 +36,9 @@
  * Wall         {} — tag for finished wall entities. The tile's wall bit in
  *              TileGrid is the source of truth for walkability; this entity
  *              just owns the instance slot for rendering + save/load.
+ * Door         {} — tag for finished door entities. Doors are WALKABLE (no
+ *              wall bit), so pathing routes cows through them freely. The
+ *              tile's door bit just prevents double-designate.
  */
 
 /**
@@ -86,4 +89,6 @@ export function registerComponents(world) {
   world.defineComponent('BuildSiteViz', () => ({}));
   world.defineComponent('Wall', () => ({}));
   world.defineComponent('WallViz', () => ({}));
+  world.defineComponent('Door', () => ({}));
+  world.defineComponent('DoorViz', () => ({}));
 }

@@ -538,8 +538,10 @@ function cowOnTileExcluding(world, grid, i, j, excludeId) {
 }
 
 /**
- * Convert a BuildSite entity into a Wall, flip the tile's wall bit so pathing
- * routes around it, and mark the job complete.
+ * Convert a BuildSite entity into its finished form (Wall or Door based on
+ * `site.kind`), update the matching tile bitmap so pathing + future
+ * designations agree, and mark the job complete. Walls flip the `wall` bit
+ * (blocking); doors flip the `door` bit only (walkable).
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -554,14 +556,25 @@ function finishBuild(world, grid, siteId, jobId, board) {
     board.complete(jobId);
     return;
   }
-  grid.setWall(anchor.i, anchor.j, 1);
   const pos = world.get(siteId, 'Position');
-  world.spawn({
-    Wall: {},
-    WallViz: {},
-    TileAnchor: { i: anchor.i, j: anchor.j },
-    Position: pos ? { ...pos } : { x: 0, y: 0, z: 0 },
-  });
+  const position = pos ? { ...pos } : { x: 0, y: 0, z: 0 };
+  if (site.kind === 'door') {
+    grid.setDoor(anchor.i, anchor.j, 1);
+    world.spawn({
+      Door: {},
+      DoorViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
+  } else {
+    grid.setWall(anchor.i, anchor.j, 1);
+    world.spawn({
+      Wall: {},
+      WallViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
+  }
   world.despawn(siteId);
   board.complete(jobId);
 }

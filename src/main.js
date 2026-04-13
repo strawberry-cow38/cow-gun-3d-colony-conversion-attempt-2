@@ -22,6 +22,8 @@ import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
+import { DoorDesignator } from './render/doorDesignator.js';
+import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createItemInstancer } from './render/itemInstancer.js';
@@ -132,6 +134,7 @@ const cowThoughtBubbles = createCowThoughtBubbles(scene);
 const selectionViz = createSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
 const wallInstancer = createWallInstancer(scene, 2048);
+const doorInstancer = createDoorInstancer(scene, 512);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
@@ -155,6 +158,7 @@ onWorldCowHammer = (pos) => {
 };
 onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
+  doorInstancer.markDirty();
   buildSiteInstancer.markDirty();
   pathCache.clear();
   audio.playAt('hammer', pos);
@@ -272,6 +276,8 @@ new CowMoveCommand(
 let stockpileDesignatorRef = null;
 /** @type {WallDesignator | null} */
 let wallDesignatorRef = null;
+/** @type {DoorDesignator | null} */
+let doorDesignatorRef = null;
 const chopDesignator = new ChopDesignator(
   canvas,
   camera,
@@ -285,6 +291,7 @@ const chopDesignator = new ChopDesignator(
     if (chopDesignator.active) {
       stockpileDesignatorRef?.deactivate();
       wallDesignatorRef?.deactivate();
+      doorDesignatorRef?.deactivate();
     }
     updateHud();
   },
@@ -302,6 +309,7 @@ const stockpileDesignator = new StockpileDesignator(
     if (stockpileDesignator.active) {
       chopDesignator.deactivate();
       wallDesignatorRef?.deactivate();
+      doorDesignatorRef?.deactivate();
     }
     updateHud();
   },
@@ -322,12 +330,34 @@ const wallDesignator = new WallDesignator(
     if (wallDesignator.active) {
       chopDesignator.deactivate();
       stockpileDesignatorRef?.deactivate();
+      doorDesignatorRef?.deactivate();
     }
     updateHud();
   },
   audio,
 );
 wallDesignatorRef = wallDesignator;
+
+const doorDesignator = new DoorDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    if (doorDesignator.active) {
+      chopDesignator.deactivate();
+      stockpileDesignatorRef?.deactivate();
+      wallDesignatorRef?.deactivate();
+    }
+    updateHud();
+  },
+  audio,
+);
+doorDesignatorRef = doorDesignator;
 
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
 getDrivingCowId = () => fpCamera.drivingCowId;
@@ -389,6 +419,7 @@ const loop = new SimLoop({
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     wallInstancer.update(world, tileGrid);
+    doorInstancer.update(world, tileGrid);
     buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
@@ -443,6 +474,7 @@ installKeyboard({
   stockpileOverlay,
   buildSiteInstancer,
   wallInstancer,
+  doorInstancer,
   treeCount,
   gridW,
   gridH,
