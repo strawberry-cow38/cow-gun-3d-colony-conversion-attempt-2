@@ -20,7 +20,7 @@
 
 import * as THREE from 'three';
 import { playRainLoop } from './ambient.js';
-import { playChop, playFootfall, playHammer, playMunch } from './sfx.js';
+import { playChop, playFootfall, playHammer, playMunch, playThunder } from './sfx.js';
 import {
   playClick,
   playCommand,
@@ -71,20 +71,28 @@ const UI_SFX = {
   drop: playDrop,
   cycle: playCycle,
   deny: playDeny,
+  // Thunder is non-spatial (peals the whole sky, not a point source) and
+  // wants to pierce through the rain loop, so it feeds the master gain
+  // directly — same path as UI one-shots even though it isn't "UI".
+  thunder: playThunder,
 };
 
 const UI_MAX_CONCURRENT = 6;
 
 /**
- * Long-running ambient loops (rain, wind, ocean, …). Generators return a
+ * Long-running ambient loops (rain, wind, ocean, …). Each entry bakes in its
+ * opts (peak gain, fade durations) via a thin closure, so callers just ask
+ * for `rain` vs `storm` without knowing the mixing knobs. Generators return a
  * teardown function so the engine can fade them out cleanly when the weather
- * or scene changes. Kept sibling to UI/spatial registries so every sound
- * plug-in point lives in one file.
+ * or scene changes.
  *
- * @type {Record<string, import('./ambient.js').LoopSfxGenerator>}
+ * @type {Record<string, (ctx: AudioContext, dest: AudioNode) => () => void>}
  */
 const LOOP_SFX = {
-  rain: playRainLoop,
+  rain: (ctx, dest) => playRainLoop(ctx, dest, { gain: 0.16, fadeIn: 3.0, fadeOut: 2.0 }),
+  // Storm rain is louder and fades in slightly slower so the transition into
+  // the first lightning flash feels like weather building, not a jump cut.
+  storm: (ctx, dest) => playRainLoop(ctx, dest, { gain: 0.3, fadeIn: 4.0, fadeOut: 2.5 }),
 };
 
 const MASTER_GAIN = 0.35;

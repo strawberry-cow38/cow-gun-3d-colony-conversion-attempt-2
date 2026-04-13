@@ -833,7 +833,9 @@ function finishChop(world, grid, treeId, jobId, board) {
   const anchor = world.get(treeId, 'TileAnchor');
   if (anchor) {
     grid.unblockTile(anchor.i, anchor.j);
-    addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+    // Trees drop 20 wood each — addItemToTile merges into an open stack if
+    // there is one, else spawns a second item when the first stack hits cap.
+    for (let k = 0; k < 20; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   }
   world.despawn(treeId);
   board.complete(jobId);

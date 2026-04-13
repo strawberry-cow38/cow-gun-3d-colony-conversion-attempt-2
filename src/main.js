@@ -118,7 +118,7 @@ const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas
 const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({ sun, hemi, sky });
-const weather = createWeather({ scene, timeOfDay, audio });
+const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
@@ -269,9 +269,12 @@ let wallDesignatorRef = null;
 const chopDesignator = new ChopDesignator(
   canvas,
   camera,
+  () => state.tileMesh,
+  tileGrid,
   treeInstancer,
   world,
   jobBoard,
+  scene,
   () => {
     if (chopDesignator.active) {
       stockpileDesignatorRef?.deactivate();

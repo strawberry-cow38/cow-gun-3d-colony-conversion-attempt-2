@@ -143,7 +143,7 @@ export function createHud(ctx) {
       '',
     ];
     if (ctx.chopDesignator.active) {
-      lines.push('** CHOP DESIGNATE — click trees to mark, C or Esc to exit **');
+      lines.push('** CHOP DESIGNATE — LMB drag = mark, Shift+drag = unmark, C or Esc to exit **');
     }
     if (ctx.stockpileDesignator.active) {
       lines.push(

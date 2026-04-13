@@ -1,13 +1,21 @@
 /**
  * Looping ambient sound generators.
  *
- * Contract is `(ctx, dest) => stopFn` — each generator builds a long-lived
- * node graph and returns a teardown function that fades the gain out and
- * disconnects. Same pluggable-later story as the one-shots: swapping in a
- * sample loader later is a single-function replacement per kind.
+ * Contract is `(ctx, dest, opts?) => stopFn` — each generator builds a
+ * long-lived node graph and returns a teardown function that fades the gain
+ * out and disconnects. `opts` lets callers tweak per-kind settings (peak gain,
+ * fade durations) without reallocating the buffer when weather changes —
+ * future-me can swap in sample-backed playback via the same contract.
  */
 
-/** @typedef {(ctx: AudioContext, dest: AudioNode) => () => void} LoopSfxGenerator */
+/**
+ * @typedef {Object} RainLoopOpts
+ * @property {number} [gain]      peak gain during the loop (default 0.16)
+ * @property {number} [fadeIn]    seconds to ramp from 0 → gain (default 3.0)
+ * @property {number} [fadeOut]   seconds to ramp gain → 0 on stop (default 2.0)
+ *
+ * @typedef {(ctx: AudioContext, dest: AudioNode, opts?: RainLoopOpts) => () => void} LoopSfxGenerator
+ */
 
 /**
  * Pink noise via the Paul Kellet approximation, then filtered into a soft
@@ -16,7 +24,10 @@
  *
  * @type {LoopSfxGenerator}
  */
-export function playRainLoop(ctx, dest) {
+export function playRainLoop(ctx, dest, opts = {}) {
+  const target = opts.gain ?? 0.16;
+  const fadeIn = opts.fadeIn ?? 3.0;
+  const fadeOut = opts.fadeOut ?? 2.0;
   const SR = ctx.sampleRate;
   const frames = SR * 2;
   const buf = ctx.createBuffer(1, frames, SR);
@@ -56,7 +67,7 @@ export function playRainLoop(ctx, dest) {
   const gain = ctx.createGain();
   const t = ctx.currentTime;
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(0.32, t + 1.0);
+  gain.gain.linearRampToValueAtTime(target, t + fadeIn);
 
   src.connect(hp).connect(lp).connect(gain).connect(dest);
   src.start(t);
@@ -65,21 +76,24 @@ export function playRainLoop(ctx, dest) {
     const now = ctx.currentTime;
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(gain.gain.value, now);
-    gain.gain.linearRampToValueAtTime(0, now + 0.6);
+    gain.gain.linearRampToValueAtTime(0, now + fadeOut);
     try {
-      src.stop(now + 0.65);
+      src.stop(now + fadeOut + 0.05);
     } catch {
       /* already stopped */
     }
-    setTimeout(() => {
-      try {
-        src.disconnect();
-        hp.disconnect();
-        lp.disconnect();
-        gain.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }, 700);
+    setTimeout(
+      () => {
+        try {
+          src.disconnect();
+          hp.disconnect();
+          lp.disconnect();
+          gain.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      },
+      (fadeOut + 0.1) * 1000,
+    );
   };
 }

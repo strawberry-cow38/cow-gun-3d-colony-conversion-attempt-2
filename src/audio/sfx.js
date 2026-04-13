@@ -92,6 +92,68 @@ export function playHammer(ctx, dest) {
   return dur;
 }
 
+/**
+ * Thunder clap. Two layers:
+ *   - sharp filtered-noise crack (~0.25s) for the initial slap of the strike
+ *   - long lowpassed rumble (~3s) for the rolling tail
+ * Random crackle on the way down adds the irregular boom-boom that makes
+ * synthetic thunder feel less like a single envelope.
+ *
+ * @type {SfxGenerator}
+ */
+export function playThunder(ctx, dest) {
+  const now = ctx.currentTime;
+  const dur = 3.2;
+  const SR = ctx.sampleRate;
+
+  // Crack: short bright noise burst, bandpassed around 700Hz.
+  const crackBuf = ctx.createBuffer(1, Math.ceil(SR * 0.3), SR);
+  const crackData = crackBuf.getChannelData(0);
+  for (let i = 0; i < crackData.length; i++) crackData[i] = Math.random() * 2 - 1;
+  const crackSrc = ctx.createBufferSource();
+  crackSrc.buffer = crackBuf;
+  const crackBp = ctx.createBiquadFilter();
+  crackBp.type = 'bandpass';
+  crackBp.frequency.value = 700;
+  crackBp.Q.value = 1.2;
+  const crackEnv = ctx.createGain();
+  crackEnv.gain.setValueAtTime(0.0001, now);
+  crackEnv.gain.exponentialRampToValueAtTime(0.85, now + 0.01);
+  crackEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+  crackSrc.connect(crackBp).connect(crackEnv).connect(dest);
+  crackSrc.start(now);
+  crackSrc.stop(now + 0.3);
+
+  // Rumble: 3s of lowpassed brown-ish noise with a slow envelope and a couple
+  // of mid-roll bumps to simulate the rolling boom.
+  const rumbleBuf = ctx.createBuffer(1, Math.ceil(SR * dur), SR);
+  const rumbleData = rumbleBuf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < rumbleData.length; i++) {
+    // Brownish noise: integrate white noise then leak slowly.
+    last = (last + (Math.random() * 2 - 1) * 0.04) * 0.995;
+    rumbleData[i] = last;
+  }
+  const rumbleSrc = ctx.createBufferSource();
+  rumbleSrc.buffer = rumbleBuf;
+  const rumbleLp = ctx.createBiquadFilter();
+  rumbleLp.type = 'lowpass';
+  rumbleLp.frequency.value = 220;
+  rumbleLp.Q.value = 0.9;
+  const rumbleEnv = ctx.createGain();
+  rumbleEnv.gain.setValueAtTime(0.0001, now);
+  rumbleEnv.gain.exponentialRampToValueAtTime(0.95, now + 0.05);
+  rumbleEnv.gain.exponentialRampToValueAtTime(0.55, now + 0.6);
+  rumbleEnv.gain.exponentialRampToValueAtTime(0.85, now + 1.1);
+  rumbleEnv.gain.exponentialRampToValueAtTime(0.4, now + 1.8);
+  rumbleEnv.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  rumbleSrc.connect(rumbleLp).connect(rumbleEnv).connect(dest);
+  rumbleSrc.start(now);
+  rumbleSrc.stop(now + dur);
+
+  return dur;
+}
+
 /** @type {SfxGenerator} */
 export function playFootfall(ctx, dest) {
   const now = ctx.currentTime;
