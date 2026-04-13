@@ -161,6 +161,7 @@ new CowMoveCommand(
   defaultWalkable,
   world,
   () => selectedCows,
+  scene,
 );
 
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
