@@ -85,7 +85,7 @@ function base64ToBytes(b64) {
 
 const params = new URLSearchParams(location.search);
 const stressCount = Number.parseInt(params.get('stress') ?? '0', 10);
-const cowCount = Number.parseInt(params.get('cows') ?? '1', 10);
+const cowCount = Number.parseInt(params.get('cows') ?? '10', 10);
 const treeCount = Number.parseInt(params.get('trees') ?? '60', 10);
 const gridW = Number.parseInt(params.get('w') ?? `${DEFAULT_GRID_W}`, 10);
 const gridH = Number.parseInt(params.get('h') ?? `${DEFAULT_GRID_H}`, 10);
