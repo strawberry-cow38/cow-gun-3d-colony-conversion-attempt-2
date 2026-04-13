@@ -5,16 +5,11 @@
  * (default 10).
  */
 
-import { countDrafted, toggleDraft } from './boot/drafting.js';
+import { countDrafted } from './boot/drafting.js';
+import { installKeyboard } from './boot/input.js';
 import { readBootParams } from './boot/params.js';
-import { spawnCowAt, spawnInitialCows } from './boot/spawn.js';
-import {
-  allCowIds,
-  base64ToBytes,
-  bytesToBase64,
-  countComp,
-  despawnAllComp,
-} from './boot/utils.js';
+import { spawnInitialCows } from './boot/spawn.js';
+import { countComp } from './boot/utils.js';
 import { registerComponents } from './components/index.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
@@ -47,19 +42,7 @@ import { spawnStressEntities, stressBounce } from './stress.js';
 import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from './systems/cow.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
-import { tileToWorld } from './world/coords.js';
-import { ITEM_KINDS, addItemToTile } from './world/items.js';
-import { CURRENT_VERSION } from './world/migrations/index.js';
-import {
-  gunzipBytes,
-  gzipString,
-  hydrateCows,
-  hydrateItems,
-  hydrateTileGrid,
-  hydrateTrees,
-  loadState,
-  serializeState,
-} from './world/persist.js';
+import { ITEM_KINDS } from './world/items.js';
 import { BIOME, TileGrid } from './world/tileGrid.js';
 
 const BIOME_NAMES = /** @type {Record<number, string>} */ ({
@@ -120,8 +103,6 @@ spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
 const { renderer, scene, camera } = createScene(canvas);
-let tileMesh = buildTileMesh(tileGrid);
-scene.add(tileMesh);
 const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
@@ -141,18 +122,36 @@ onWorldItemChange = () => {
   itemInstancer.markDirty();
 };
 
-const selectedCows = /** @type {Set<number>} */ (new Set());
-let primaryCow = /** @type {number | null} */ (null);
+/**
+ * Mutable state shared across selection callbacks, HUD, render loop, and the
+ * keyboard handler. Kept on one object so `input.js` can mutate the same
+ * primaryCow/followEnabled/tileMesh that HUD + render observe.
+ *
+ * @type {import('./boot/input.js').BootState}
+ */
+const state = {
+  debugEnabled: true,
+  // Global follow toggle. When true, the overhead camera eases toward the
+  // current `primaryCow` every frame — so plain-clicking or marquee-picking
+  // a different cow automatically hands the camera off. Q/E cycle primary
+  // while engaged; WASD/arrows disengage.
+  followEnabled: false,
+  primaryCow: null,
+  selectedCows: new Set(),
+  lastPick: null,
+  tileMesh: buildTileMesh(tileGrid),
+};
+scene.add(state.tileMesh);
 
 // Marquee BEFORE CowSelector so its capture-phase handler swallows the post-drag click first.
 new SelectionBox(canvas, camera, world, (ids, additive) => {
   if (!additive) {
-    selectedCows.clear();
-    primaryCow = null;
+    state.selectedCows.clear();
+    state.primaryCow = null;
   }
   for (const id of ids) {
-    selectedCows.add(id);
-    primaryCow = id;
+    state.selectedCows.add(id);
+    state.primaryCow = id;
   }
   updateHud();
 });
@@ -161,57 +160,56 @@ new CowSelector(
   canvas,
   camera,
   cowInstancer,
-  () => tileMesh,
+  () => state.tileMesh,
   world,
   (id, additive) => {
     if (id === null) {
       // Empty-space click: plain clears, shift preserves the current set.
       if (!additive) {
-        selectedCows.clear();
-        primaryCow = null;
+        state.selectedCows.clear();
+        state.primaryCow = null;
       }
     } else if (additive) {
-      if (selectedCows.has(id)) {
-        selectedCows.delete(id);
-        if (primaryCow === id) {
-          primaryCow =
-            selectedCows.size > 0
-              ? /** @type {number} */ (selectedCows.values().next().value)
+      if (state.selectedCows.has(id)) {
+        state.selectedCows.delete(id);
+        if (state.primaryCow === id) {
+          state.primaryCow =
+            state.selectedCows.size > 0
+              ? /** @type {number} */ (state.selectedCows.values().next().value)
               : null;
         }
       } else {
-        selectedCows.add(id);
-        primaryCow = id;
+        state.selectedCows.add(id);
+        state.primaryCow = id;
       }
     } else {
-      selectedCows.clear();
-      selectedCows.add(id);
-      primaryCow = id;
+      state.selectedCows.clear();
+      state.selectedCows.add(id);
+      state.primaryCow = id;
     }
     updateHud();
   },
 );
 
-let lastPick = /** @type {{ i: number, j: number } | null} */ (null);
 new TilePicker(
   canvas,
   camera,
-  () => tileMesh,
+  () => state.tileMesh,
   { W: gridW, H: gridH },
   (hit) => {
-    lastPick = hit;
+    state.lastPick = hit;
   },
 );
 
 new CowMoveCommand(
   canvas,
   camera,
-  () => tileMesh,
+  () => state.tileMesh,
   tileGrid,
   pathCache,
   defaultWalkable,
   world,
-  () => selectedCows,
+  () => state.selectedCows,
   scene,
 );
 
@@ -225,7 +223,7 @@ const chopDesignator = new ChopDesignator(canvas, camera, treeInstancer, world, 
 const stockpileDesignator = new StockpileDesignator(
   canvas,
   camera,
-  () => tileMesh,
+  () => state.tileMesh,
   tileGrid,
   stockpileOverlay,
   scene,
@@ -244,14 +242,6 @@ const draftBadge = createDraftBadge(scene, 256);
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
-let debugEnabled = true;
-/**
- * Global follow toggle. When true, the overhead camera eases toward the
- * current `primaryCow` every frame — so plain-clicking or marquee-picking
- * a different cow automatically hands the camera off. Q/E cycle primary
- * while engaged; WASD/arrows disengage.
- */
-let followEnabled = false;
 let renderFrameCount = 0;
 let renderFpsSampleStart = performance.now();
 let measuredFps = 0;
@@ -274,9 +264,9 @@ const loop = new SimLoop({
       // kills the 30Hz tick quantization that caused per-frame jitter; the
       // exp lerp on top softens abrupt handoffs when the player clicks a
       // different cow across the map.
-      if (followEnabled && primaryCow !== null) {
-        const p = world.get(primaryCow, 'Position');
-        const pp = world.get(primaryCow, 'PrevPosition') ?? p;
+      if (state.followEnabled && state.primaryCow !== null) {
+        const p = world.get(state.primaryCow, 'Position');
+        const pp = world.get(state.primaryCow, 'PrevPosition') ?? p;
         if (p) {
           const tx = pp.x + (p.x - pp.x) * alpha;
           const ty = pp.y + (p.y - pp.y) * alpha;
@@ -302,9 +292,9 @@ const loop = new SimLoop({
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
-    pickTileOverlay.update(tileGrid, lastPick);
+    pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
-    selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);
+    selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
@@ -317,19 +307,19 @@ const loop = new SimLoop({
 });
 
 function updateHud() {
-  if (!debugEnabled) {
+  if (!state.debugEnabled) {
     hud.style.display = 'none';
     return;
   }
   hud.style.display = '';
   let cowLines = ['', 'click a cow to inspect'];
-  const selCount = selectedCows.size;
-  if (selCount > 0 && primaryCow !== null) {
-    const brain = world.get(primaryCow, 'Brain');
-    const hunger = world.get(primaryCow, 'Hunger');
-    const job = world.get(primaryCow, 'Job');
-    const path = world.get(primaryCow, 'Path');
-    const pos = world.get(primaryCow, 'Position');
+  const selCount = state.selectedCows.size;
+  if (selCount > 0 && state.primaryCow !== null) {
+    const brain = world.get(state.primaryCow, 'Brain');
+    const hunger = world.get(state.primaryCow, 'Hunger');
+    const job = world.get(state.primaryCow, 'Job');
+    const path = world.get(state.primaryCow, 'Path');
+    const pos = world.get(state.primaryCow, 'Position');
     if (brain) {
       const header =
         selCount === 1
@@ -345,18 +335,20 @@ function updateHud() {
       ];
     } else {
       cowLines = ['', 'selected cow despawned'];
-      selectedCows.delete(primaryCow);
-      primaryCow =
-        selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
+      state.selectedCows.delete(state.primaryCow);
+      state.primaryCow =
+        state.selectedCows.size > 0
+          ? /** @type {number} */ (state.selectedCows.values().next().value)
+          : null;
     }
   }
   let pickStr = 'pick: (click a tile)';
-  if (lastPick && tileGrid.inBounds(lastPick.i, lastPick.j)) {
-    const elev = tileGrid.getElevation(lastPick.i, lastPick.j);
-    const biomeId = tileGrid.getBiome(lastPick.i, lastPick.j);
+  if (state.lastPick && tileGrid.inBounds(state.lastPick.i, state.lastPick.j)) {
+    const elev = tileGrid.getElevation(state.lastPick.i, state.lastPick.j);
+    const biomeId = tileGrid.getBiome(state.lastPick.i, state.lastPick.j);
     const biomeName = BIOME_NAMES[biomeId] ?? `biome#${biomeId}`;
-    const walk = defaultWalkable(tileGrid, lastPick.i, lastPick.j) ? 'yes' : 'no';
-    pickStr = `pick: i=${lastPick.i} j=${lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
+    const walk = defaultWalkable(tileGrid, state.lastPick.i, state.lastPick.j) ? 'yes' : 'no';
+    pickStr = `pick: i=${state.lastPick.i} j=${state.lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
   }
   const lines = [
     'phase 4: trees + chop + stacks + eat',
@@ -383,11 +375,11 @@ function updateHud() {
     lines.push(
       `** FIRST-PERSON ${mode} — cow #${viewed} — Q/E cycle, R ${drafted ? 'release' : 'draft'}, H exit **`,
     );
-  } else if (followEnabled && primaryCow !== null) {
+  } else if (state.followEnabled && state.primaryCow !== null) {
     lines.push(
-      `** FOLLOWING cow #${primaryCow} — click a cow to switch, Q/E cycle, F or WASD release **`,
+      `** FOLLOWING cow #${state.primaryCow} — click a cow to switch, Q/E cycle, F or WASD release **`,
     );
-  } else if (followEnabled) {
+  } else if (state.followEnabled) {
     lines.push('** FOLLOW MODE — click a cow to lock onto them (F to disable) **');
   }
   const draftedCount = countDrafted(world);
@@ -405,214 +397,16 @@ function updateHud() {
   hud.innerText = lines.join('\n');
 }
 
-addEventListener('keydown', async (e) => {
-  if (e.code === 'KeyP') {
-    debugEnabled = !debugEnabled;
-    applyDebugVisibility();
-    updateHud();
-    return;
-  }
-  // First-person: H toggles FP on/off, Q/E cycle the viewed cow.
-  if (e.code === 'KeyH') {
-    if (fpCamera.active) {
-      // Recenter overhead on the cow we were just watching so exiting doesn't
-      // dump us back at whatever corner of the map we entered FP from.
-      if (fpCamera.cowId !== null) {
-        const viewedPos = world.get(fpCamera.cowId, 'Position');
-        if (viewedPos) rts.focus.set(viewedPos.x, viewedPos.y, viewedPos.z);
-      }
-      fpCamera.exit();
-    } else if (primaryCow !== null) {
-      fpCamera.enter(primaryCow);
-    }
-    return;
-  }
-  if (fpCamera.active && (e.code === 'KeyQ' || e.code === 'KeyE')) {
-    fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
-    return;
-  }
-  // F toggles follow mode. Follow tracks whoever is `primaryCow` every frame,
-  // so plain-clicking a different cow automatically hands off the camera. If
-  // nothing is selected when F is pressed, auto-select the first cow.
-  if (e.code === 'KeyF') {
-    if (followEnabled) {
-      followEnabled = false;
-    } else {
-      if (primaryCow === null) {
-        const first = allCowIds(world)[0] ?? null;
-        if (first !== null) {
-          selectedCows.clear();
-          selectedCows.add(first);
-          primaryCow = first;
-        }
-      }
-      followEnabled = primaryCow !== null;
-    }
-    updateHud();
-    return;
-  }
-  // Q/E cycle the primary cow while follow is engaged. The camera follows
-  // primary so cycling primary auto-hands off the camera too.
-  if (followEnabled && (e.code === 'KeyQ' || e.code === 'KeyE')) {
-    const cows = allCowIds(world);
-    if (cows.length > 0) {
-      const curIdx = primaryCow !== null ? cows.indexOf(primaryCow) : -1;
-      const dir = e.code === 'KeyE' ? 1 : -1;
-      const nextIdx = (curIdx + dir + cows.length) % cows.length;
-      const next = cows[nextIdx];
-      selectedCows.clear();
-      selectedCows.add(next);
-      primaryCow = next;
-    }
-    updateHud();
-    return;
-  }
-  // Pan keys break follow — moving the camera manually implies "let me look
-  // around" so the latch releases. Fall through so RtsCamera's own listener
-  // still processes the pan on this same keydown.
-  if (
-    followEnabled &&
-    (e.code === 'KeyW' ||
-      e.code === 'KeyA' ||
-      e.code === 'KeyS' ||
-      e.code === 'KeyD' ||
-      e.code === 'ArrowUp' ||
-      e.code === 'ArrowDown' ||
-      e.code === 'ArrowLeft' ||
-      e.code === 'ArrowRight')
-  ) {
-    followEnabled = false;
-    updateHud();
-    // no return — let RtsCamera handle the pan this frame
-  }
-  // R toggles the 'drafted' flag. In FP, toggles the viewed cow. In overhead,
-  // toggles every selected cow (to the majority state's opposite so a mixed
-  // selection drafts rather than thrash).
-  if (e.code === 'KeyR') {
-    if (fpCamera.active && fpCamera.cowId !== null) {
-      toggleDraft(world, [fpCamera.cowId]);
-      updateHud();
-      return;
-    }
-    if (selectedCows.size > 0) {
-      toggleDraft(world, [...selectedCows]);
-      updateHud();
-      return;
-    }
-    return;
-  }
-  if (!debugEnabled) return;
-  if (e.code === 'KeyN') {
-    const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
-    spawnCowAt(world, tileGrid, tile.i, tile.j);
-    updateHud();
-    return;
-  }
-  if (e.code === 'KeyG' || e.code === 'KeyJ') {
-    const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
-    const kind = e.code === 'KeyG' ? 'stone' : 'food';
-    addItemToTile(world, tileGrid, kind, tile.i, tile.j);
-    itemInstancer.markDirty();
-    updateHud();
-    return;
-  }
-  if (e.code === 'KeyK') {
-    try {
-      const state = serializeState(tileGrid, world);
-      const json = JSON.stringify(state);
-      const gz = await gzipString(json);
-      const b64 = bytesToBase64(gz);
-      localStorage.setItem(`save:v${CURRENT_VERSION}`, b64);
-      console.log(
-        '[save] ok — tiles:',
-        tileGrid.W * tileGrid.H,
-        'cows:',
-        state.cows.length,
-        'gz bytes:',
-        gz.length,
-      );
-    } catch (err) {
-      console.error('[save] failed:', err);
-    }
-  }
-  if (e.code === 'KeyL') {
-    try {
-      let b64 = null;
-      for (let v = CURRENT_VERSION; v >= 2; v--) {
-        b64 = localStorage.getItem(`save:v${v}`);
-        if (b64) break;
-      }
-      if (!b64) {
-        console.warn('[load] no save in localStorage');
-        return;
-      }
-      const bin = base64ToBytes(b64);
-      const json = await gunzipBytes(bin);
-      const parsed = JSON.parse(json);
-      const migrated = loadState(parsed);
-      const loaded = hydrateTileGrid(migrated);
-      tileGrid.elevation.set(loaded.elevation);
-      tileGrid.biome.set(loaded.biome);
-      tileGrid.stockpile.set(loaded.stockpile);
-      tileGrid.occupancy.fill(0);
-      pathCache.clear();
-      despawnAllComp(world, 'Cow');
-      despawnAllComp(world, 'Tree');
-      despawnAllComp(world, 'Item');
-      jobBoard.jobs.length = 0;
-      if (migrated.trees.length === 0) {
-        // Pre-v5 save had no tree list — seed a fresh scatter so the world
-        // isn't bare.
-        spawnInitialTrees(world, tileGrid, treeCount);
-      } else {
-        hydrateTrees(world, tileGrid, jobBoard, migrated);
-      }
-      hydrateItems(world, tileGrid, migrated);
-      treeInstancer.markDirty();
-      itemInstancer.markDirty();
-      stockpileOverlay.markDirty();
-      hydrateCows(world, migrated);
-      // Job board was cleared above; any serialized cow job references are
-      // stale. Reset so the brain re-picks from the fresh board.
-      for (const { components } of world.query(['Cow', 'Job', 'Path'])) {
-        components.Job.kind = 'none';
-        components.Job.state = 'idle';
-        components.Job.payload = {};
-        components.Path.steps.length = 0;
-        components.Path.index = 0;
-      }
-      const fresh = buildTileMesh(tileGrid);
-      scene.remove(tileMesh);
-      tileMesh.geometry.dispose();
-      tileMesh = fresh;
-      scene.add(tileMesh);
-      selectedCows.clear();
-      primaryCow = null;
-      console.log(
-        '[load] restored',
-        tileGrid.W,
-        'x',
-        tileGrid.H,
-        'tiles, cows:',
-        migrated.cows.length,
-      );
-      updateHud();
-    } catch (err) {
-      console.error('[load] failed:', err);
-    }
-  }
-});
-
 /**
  * Mirror the debug flag out to the world-space overlays. Kept as one place
  * so a future overlay just needs to add a line here instead of chasing the
  * flag through the keydown handler.
  */
 function applyDebugVisibility() {
-  cowNameTags.setVisible(debugEnabled);
-  itemLabels.setVisible(debugEnabled);
-  stockpileOverlay.setVisible(debugEnabled);
-  pickTileOverlay.setVisible(debugEnabled);
+  cowNameTags.setVisible(state.debugEnabled);
+  itemLabels.setVisible(state.debugEnabled);
+  stockpileOverlay.setVisible(state.debugEnabled);
+  pickTileOverlay.setVisible(state.debugEnabled);
 }
 
 function itemCountsStr() {
@@ -626,14 +420,35 @@ function itemCountsStr() {
 }
 
 function pruneStaleSelections() {
-  for (const id of selectedCows) {
-    if (!world.get(id, 'Position')) selectedCows.delete(id);
+  for (const id of state.selectedCows) {
+    if (!world.get(id, 'Position')) state.selectedCows.delete(id);
   }
-  if (primaryCow !== null && !selectedCows.has(primaryCow)) {
-    primaryCow =
-      selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
+  if (state.primaryCow !== null && !state.selectedCows.has(state.primaryCow)) {
+    state.primaryCow =
+      state.selectedCows.size > 0
+        ? /** @type {number} */ (state.selectedCows.values().next().value)
+        : null;
   }
 }
+
+installKeyboard({
+  world,
+  tileGrid,
+  pathCache,
+  jobBoard,
+  scene,
+  fpCamera,
+  rts,
+  itemInstancer,
+  treeInstancer,
+  stockpileOverlay,
+  treeCount,
+  gridW,
+  gridH,
+  state,
+  applyDebugVisibility,
+  updateHud,
+});
 
 loop.start();
 updateHud();
