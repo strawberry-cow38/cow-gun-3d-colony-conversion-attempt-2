@@ -20,6 +20,7 @@ import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createItemInstancer } from './render/itemInstancer.js';
 import { createItemLabels } from './render/itemLabels.js';
 import { CowMoveCommand } from './render/moveCommand.js';
+import { createPickTileOverlay } from './render/pickTileOverlay.js';
 import { TilePicker } from './render/picker.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
@@ -148,6 +149,7 @@ const treeInstancer = createTreeInstancer(scene, 2048);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
+const pickTileOverlay = createPickTileOverlay(scene);
 
 onWorldChopComplete = () => {
   treeInstancer.markDirty();
@@ -248,12 +250,12 @@ const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCou
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
 let debugEnabled = true;
 /**
- * When set, the overhead camera tracks this cow every frame. F toggles it;
- * Q/E cycle to prev/next cow while follow is engaged. Cleared automatically
- * when the followed cow despawns.
- * @type {number | null}
+ * Global follow toggle. When true, the overhead camera eases toward the
+ * current `primaryCow` every frame — so plain-clicking or marquee-picking
+ * a different cow automatically hands the camera off. Q/E cycle primary
+ * while engaged; WASD/arrows disengage.
  */
-let followingCowId = null;
+let followEnabled = false;
 let renderFrameCount = 0;
 let renderFpsSampleStart = performance.now();
 let measuredFps = 0;
@@ -271,13 +273,24 @@ const loop = new SimLoop({
     if (fpCamera.active) {
       fpCamera.update(rdt);
     } else {
-      // Follow mode: camera target latches to the followed cow's position
-      // each frame so they stay centered as they walk. Cleared if the cow
-      // went away since last frame.
-      if (followingCowId !== null) {
-        const followPos = world.get(followingCowId, 'Position');
-        if (followPos) rts.focus.set(followPos.x, followPos.y, followPos.z);
-        else followingCowId = null;
+      // Follow mode: ease the camera toward the interpolated render position
+      // of whoever's currently `primaryCow`. Interpolating (pp→p at alpha)
+      // kills the 30Hz tick quantization that caused per-frame jitter; the
+      // exp lerp on top softens abrupt handoffs when the player clicks a
+      // different cow across the map.
+      if (followEnabled && primaryCow !== null) {
+        const p = world.get(primaryCow, 'Position');
+        const pp = world.get(primaryCow, 'PrevPosition') ?? p;
+        if (p) {
+          const tx = pp.x + (p.x - pp.x) * alpha;
+          const ty = pp.y + (p.y - pp.y) * alpha;
+          const tz = pp.z + (p.z - pp.z) * alpha;
+          // ~80ms time constant — snappy, but smooths out direction changes.
+          const k = 1 - Math.exp(-rdt * 12);
+          rts.focus.x += (tx - rts.focus.x) * k;
+          rts.focus.y += (ty - rts.focus.y) * k;
+          rts.focus.z += (tz - rts.focus.z) * k;
+        }
       }
       rts.update(rdt);
     }
@@ -293,6 +306,7 @@ const loop = new SimLoop({
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
+    pickTileOverlay.update(tileGrid, lastPick);
     pruneStaleSelections();
     selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
@@ -503,10 +517,12 @@ function updateHud() {
     lines.push(
       `** FIRST-PERSON ${mode} — cow #${viewed} — Q/E cycle, R ${drafted ? 'release' : 'draft'}, H exit **`,
     );
-  } else if (followingCowId !== null) {
+  } else if (followEnabled && primaryCow !== null) {
     lines.push(
-      `** FOLLOWING cow #${followingCowId} — Q/E cycle, F release, WASD/arrows also release **`,
+      `** FOLLOWING cow #${primaryCow} — click a cow to switch, Q/E cycle, F or WASD release **`,
     );
+  } else if (followEnabled) {
+    lines.push('** FOLLOW MODE — click a cow to lock onto them (F to disable) **');
   }
   const draftedCount = countDrafted();
   lines.push(
@@ -514,7 +530,7 @@ function updateHud() {
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
     'C = chop designate,  B = stockpile designate',
-    'F = focus/follow cow (Q/E cycle, WASD release),  H = first-person',
+    'F = toggle follow (tracks selected cow; Q/E cycle, WASD releases),  H = first-person',
     'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
     'P = toggle debug menu  (also disables the debug-only keys below)',
     'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',
@@ -549,34 +565,47 @@ addEventListener('keydown', async (e) => {
     fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
     return;
   }
-  // F focuses on a cow. If we're already following someone, re-press releases.
-  // Otherwise pick the primary selected cow, or the first cow if nothing's
-  // selected — no-op if there are no cows.
+  // F toggles follow mode. Follow tracks whoever is `primaryCow` every frame,
+  // so plain-clicking a different cow automatically hands off the camera. If
+  // nothing is selected when F is pressed, auto-select the first cow.
   if (e.code === 'KeyF') {
-    if (followingCowId !== null) {
-      followingCowId = null;
-      updateHud();
-      return;
+    if (followEnabled) {
+      followEnabled = false;
+    } else {
+      if (primaryCow === null) {
+        const first = allCowIds()[0] ?? null;
+        if (first !== null) {
+          selectedCows.clear();
+          selectedCows.add(first);
+          primaryCow = first;
+        }
+      }
+      followEnabled = primaryCow !== null;
     }
-    const target = primaryCow ?? allCowIds()[0] ?? null;
-    if (target !== null) {
-      focusOnCow(target);
-      updateHud();
-    }
-    return;
-  }
-  // Q/E cycle the focused cow in overhead. Only active while follow mode is
-  // engaged so we don't stomp on anything future (zoom, menus, etc).
-  if (followingCowId !== null && (e.code === 'KeyQ' || e.code === 'KeyE')) {
-    cycleFocus(e.code === 'KeyE' ? 1 : -1);
     updateHud();
     return;
   }
-  // Pan keys break the focus lock — moving the camera manually implies
-  // "let me look around" so the follow latch releases. Fall through so
-  // RtsCamera's own listener still processes the pan on this same keydown.
+  // Q/E cycle the primary cow while follow is engaged. The camera follows
+  // primary so cycling primary auto-hands off the camera too.
+  if (followEnabled && (e.code === 'KeyQ' || e.code === 'KeyE')) {
+    const cows = allCowIds();
+    if (cows.length > 0) {
+      const curIdx = primaryCow !== null ? cows.indexOf(primaryCow) : -1;
+      const dir = e.code === 'KeyE' ? 1 : -1;
+      const nextIdx = (curIdx + dir + cows.length) % cows.length;
+      const next = cows[nextIdx];
+      selectedCows.clear();
+      selectedCows.add(next);
+      primaryCow = next;
+    }
+    updateHud();
+    return;
+  }
+  // Pan keys break follow — moving the camera manually implies "let me look
+  // around" so the latch releases. Fall through so RtsCamera's own listener
+  // still processes the pan on this same keydown.
   if (
-    followingCowId !== null &&
+    followEnabled &&
     (e.code === 'KeyW' ||
       e.code === 'KeyA' ||
       e.code === 'KeyS' ||
@@ -586,7 +615,7 @@ addEventListener('keydown', async (e) => {
       e.code === 'ArrowLeft' ||
       e.code === 'ArrowRight')
   ) {
-    followingCowId = null;
+    followEnabled = false;
     updateHud();
     // no return — let RtsCamera handle the pan this frame
   }
@@ -717,43 +746,11 @@ function countComp(component) {
   return n;
 }
 
-/**
- * Put the overhead camera on a cow and select them — "focus" per the F/Q/E
- * hotkey trio. Selection narrows to just that cow so the rest of the UI
- * (HUD, selection viz, RMB move-to) stays consistent with what we're
- * looking at. Follow mode stays on until F un-focuses or Q/E hands it off.
- * @param {number} id
- */
-function focusOnCow(id) {
-  const pos = world.get(id, 'Position');
-  if (!pos) return;
-  selectedCows.clear();
-  selectedCows.add(id);
-  primaryCow = id;
-  followingCowId = id;
-  // Snap once immediately so the first frame doesn't lag behind the cow's
-  // actual position (render loop already does this per-frame, but without
-  // the snap there's a subtle jump on the very first F press).
-  rts.focus.set(pos.x, pos.y, pos.z);
-}
-
 /** @returns {number[]} every cow id in spawn order (what query returns) */
 function allCowIds() {
   const ids = [];
   for (const { id } of world.query(['Cow', 'Position'])) ids.push(id);
   return ids;
-}
-
-/** @param {number} dir  +1 next, -1 prev */
-function cycleFocus(dir) {
-  const cows = allCowIds();
-  if (cows.length === 0) {
-    followingCowId = null;
-    return;
-  }
-  const idx = followingCowId !== null ? cows.indexOf(followingCowId) : -1;
-  const next = (idx + dir + cows.length) % cows.length;
-  focusOnCow(cows[next]);
 }
 
 /**
@@ -765,6 +762,7 @@ function applyDebugVisibility() {
   cowNameTags.setVisible(debugEnabled);
   itemLabels.setVisible(debugEnabled);
   stockpileOverlay.setVisible(debugEnabled);
+  pickTileOverlay.setVisible(debugEnabled);
 }
 
 function countDrafted() {
