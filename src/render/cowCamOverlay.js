@@ -97,6 +97,10 @@ const CSS = `
   font-weight: bold;
   opacity: 0.9;
 }
+.cc-mode.drafted {
+  color: #ffd24d;
+  text-shadow: 0 0 8px rgba(255, 180, 0, 0.65), 0 0 2px rgba(0, 0, 0, 0.9);
+}
 
 .cc-hints {
   position: absolute;
@@ -135,7 +139,7 @@ export function createCowCamOverlay() {
       <div class="cc-mode"></div>
       <div class="cc-title">COW CAM</div>
       <div class="cc-subtitle"></div>
-      <div class="cc-hints">Q / E cycle  ·  R take over  ·  H exit</div>
+      <div class="cc-hints">Q / E cycle  ·  R draft  ·  H exit</div>
     `;
     document.body.appendChild(root);
   }
@@ -149,7 +153,7 @@ export function createCowCamOverlay() {
   let lastHints = '';
 
   /**
-   * @param {{ active: boolean, mode: string, cowId: number | null }} fp
+   * @param {{ active: boolean, cowId: number | null }} fp
    * @param {import('../ecs/world.js').World} world
    */
   function update(fp, world) {
@@ -160,25 +164,28 @@ export function createCowCamOverlay() {
     if (!root.classList.contains('on')) root.classList.add('on');
 
     let name = '';
+    let drafted = false;
     if (fp.cowId !== null) {
       const brain = world.get(fp.cowId, 'Brain');
+      const cow = world.get(fp.cowId, 'Cow');
       name = brain?.name ?? `cow#${fp.cowId}`;
+      drafted = cow?.drafted === true;
     }
     if (name !== lastName) {
       subtitle.textContent = name;
       lastName = name;
     }
 
-    const modeLabel = fp.mode === 'control' ? 'TAKEOVER' : 'SPECTATE';
+    const modeLabel = drafted ? 'DRAFTED' : 'FREE';
     if (modeLabel !== lastMode) {
       modeEl.textContent = modeLabel;
+      modeEl.classList.toggle('drafted', drafted);
       lastMode = modeLabel;
     }
 
-    const hintText =
-      fp.mode === 'control'
-        ? 'WASD move  ·  mouse look  ·  R release  ·  H exit'
-        : 'Q / E cycle  ·  R take over  ·  H exit';
+    const hintText = drafted
+      ? 'WASD move  ·  mouse look  ·  R release  ·  Q/E cycle  ·  H exit'
+      : 'Q / E cycle  ·  R draft (take control)  ·  H exit';
     if (hintText !== lastHints) {
       hints.textContent = hintText;
       lastHints = hintText;

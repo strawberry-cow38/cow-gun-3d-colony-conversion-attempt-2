@@ -100,6 +100,30 @@ describe('migration runner', () => {
     expect(out.items).toEqual([]);
   });
 
+  it('upgrades a v6 save by adding drafted=false to each cow', () => {
+    const v6 = {
+      version: 6,
+      tileGrid: { W: 1, H: 1, elevation: [0], biome: [0], stockpile: [0] },
+      cows: [
+        {
+          name: 'bessie',
+          position: { x: 0, y: 0, z: 0 },
+          hunger: 0.5,
+          job: { kind: 'none', state: 'idle', payload: {} },
+          path: { steps: [], index: 0 },
+          inventory: { itemKind: null },
+        },
+      ],
+      trees: [],
+      items: [],
+    };
+    const out = runMigrations(v6);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.cows[0].drafted).toBe(false);
+    expect(out.cows[0].name).toBe('bessie');
+    expect(out.cows[0].inventory).toEqual({ itemKind: null });
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

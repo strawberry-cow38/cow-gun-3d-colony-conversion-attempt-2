@@ -37,6 +37,10 @@ const SLOW_FACTOR = 0.7; // "excuse me, fellow cow" speed when blocked
  * @property {import('../world/tileGrid.js').TileGrid} grid
  * @property {import('../sim/pathfinding.js').PathCache} paths
  * @property {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @property {(() => number | null)=} drivingCowId
+ *   Optional hook: returns the id of a cow currently driven by the FP camera
+ *   (drafted + viewed). cowFollowPath skips that cow so it doesn't fight
+ *   player input by steering toward the nearest path step.
  *
  * @typedef {PathDeps & {
  *   board: import('../jobs/board.js').JobBoard,
@@ -72,15 +76,52 @@ export function makeCowBrainSystem(deps) {
         'Inventory',
         'Hunger',
       ])) {
+        const cow = components.Cow;
         const job = components.Job;
         const path = components.Path;
         const pos = components.Position;
         const inv = components.Inventory;
         const hunger = components.Hunger;
 
-        // Player is driving this cow directly from the FP camera — keep hands
-        // off: no job picks, no carried-item reconciliation, no wander.
-        if (job.kind === 'player') continue;
+        // Drafted cows opt out of all autonomous behavior — they just wait
+        // for explicit player orders (RMB 'move' job, or FP direct drive).
+        // Release any work they'd claimed and drop whatever they carry so it
+        // re-enters the haul pool.
+        if (cow.drafted) {
+          if (job.kind === 'chop' || job.kind === 'haul' || job.kind === 'eat') {
+            if (job.payload?.jobId != null) board.release(job.payload.jobId);
+            job.kind = 'none';
+            job.state = 'idle';
+            job.payload = {};
+            path.steps = [];
+            path.index = 0;
+          }
+          if (inv.itemKind !== null) {
+            dropCarriedItem(world, grid, inv, pos);
+            deps.onItemChange();
+          }
+          // 'move' jobs stay — drafted cows still follow paths the player
+          // gave them. Anything else gets clamped to idle.
+          if (job.kind !== 'move' && job.kind !== 'none') {
+            job.kind = 'none';
+            job.state = 'idle';
+            job.payload = {};
+          }
+          if (job.kind === 'move') {
+            const waypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
+            const legEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
+            while (legEnds.length > 0 && path.index >= legEnds[0]) {
+              waypoints.shift();
+              legEnds.shift();
+            }
+            if (path.index >= path.steps.length) {
+              job.kind = 'none';
+              job.state = 'idle';
+              job.payload = {};
+            }
+          }
+          continue;
+        }
 
         // Dropped out of haul unexpectedly while carrying? Drop the item on
         // the ground where we stand so it re-enters the haul pool.
@@ -596,22 +637,24 @@ export function makeCowFollowPathSystem(deps) {
     run(world) {
       // Snapshot cow positions so each cow can steer around the others cheaply
       // (O(N²) scan is fine at colony scale — swap in a spatial hash later).
-      /** @type {{ pos: {x:number,y:number,z:number}, vel: {x:number,y:number,z:number}, path: any, job: any }[]} */
+      const drivenId = deps.drivingCowId?.() ?? null;
+      /** @type {{ id: number, pos: {x:number,y:number,z:number}, vel: {x:number,y:number,z:number}, path: any }[]} */
       const herd = [];
-      for (const { components } of world.query(['Cow', 'Position', 'Velocity', 'Path', 'Job'])) {
+      for (const { id, components } of world.query(['Cow', 'Position', 'Velocity', 'Path'])) {
         herd.push({
+          id,
           pos: components.Position,
           vel: components.Velocity,
           path: components.Path,
-          job: components.Job,
         });
       }
 
       for (const self of herd) {
-        const { pos, vel, path, job } = self;
+        const { id, pos, vel, path } = self;
 
-        // Player is driving this cow — the FP camera writes Velocity directly.
-        if (job.kind === 'player') continue;
+        // FP camera is driving this cow — it writes Velocity directly each
+        // render frame, so skip path-follow so we don't fight it.
+        if (id === drivenId) continue;
 
         if (path.index >= path.steps.length) {
           vel.x = 0;

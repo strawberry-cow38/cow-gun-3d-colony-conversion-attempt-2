@@ -3,7 +3,9 @@
  *
  * Position/PrevPosition/Velocity    kinematic state + interpolation prev
  * StressViz                          tag — stress instancer renders these
- * Cow / CowViz                       tag — cow + cow instancer renders these
+ * Cow          { drafted: boolean }  drafted cows skip autonomous AI and
+ *                                    wait for player orders (RMB paths, FP
+ *                                    takeover). CowViz is just the render tag.
  * Hunger      { value: 0..1 }        drains slowly; 1 = full, 0 = starving
  * Brain       { name: string }       identity for now; mood/traits later
  * Job         { kind, state, payload } kind='none' = idle
@@ -28,7 +30,7 @@ export function registerComponents(world) {
   world.defineComponent('PrevPosition', () => ({ x: 0, y: 0, z: 0 }));
   world.defineComponent('Velocity', () => ({ x: 0, y: 0, z: 0 }));
   world.defineComponent('StressViz', () => ({}));
-  world.defineComponent('Cow', () => ({}));
+  world.defineComponent('Cow', () => ({ drafted: false }));
   world.defineComponent('Hunger', () => ({ value: 1 }));
   world.defineComponent('Brain', () => ({ name: 'cow' }));
   world.defineComponent('Job', () => ({

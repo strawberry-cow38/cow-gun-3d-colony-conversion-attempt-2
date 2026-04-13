@@ -1,12 +1,12 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v6):
+ * Format (v7):
  * {
- *   version: 6,
+ *   version: 7,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[] },
  *   cows: [ {
- *     name, position: {x,y,z}, hunger: number,
+ *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
  *     inventory: { itemKind: string | null }
  *   } ],
@@ -28,6 +28,7 @@ import { TileGrid } from './tileGrid.js';
 /**
  * @typedef SerializedCow
  * @property {string} name
+ * @property {boolean} drafted
  * @property {{ x: number, y: number, z: number }} position
  * @property {number} hunger
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
@@ -70,6 +71,7 @@ export function serializeState(tileGrid, world) {
   ])) {
     cows.push({
       name: components.Brain.name,
+      drafted: components.Cow.drafted === true,
       position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
       hunger: components.Hunger.value,
       job: {
@@ -146,7 +148,7 @@ export function hydrateCows(world, state) {
     const path = c.path ?? { steps: [], index: 0 };
     const inv = c.inventory ?? { itemKind: null };
     world.spawn({
-      Cow: {},
+      Cow: { drafted: c.drafted === true },
       Position: { ...c.position },
       PrevPosition: { ...c.position },
       Velocity: { x: 0, y: 0, z: 0 },

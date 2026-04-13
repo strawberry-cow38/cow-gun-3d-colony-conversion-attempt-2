@@ -1,14 +1,16 @@
 /**
- * First-person camera controller with two sub-modes:
- *   - spectate: ride along on a cow's head, look direction follows the cow's
- *     velocity. The cow keeps doing its AI job.
- *   - control: player takes over the cow. Mouse-look via pointer lock, WASD
- *     drives the cow's velocity directly. Brain + cowFollowPath skip any cow
- *     whose Job.kind === 'player' so they don't fight the input.
+ * First-person camera: view through a cow's eyes. What happens while in FP
+ * depends on the viewed cow's `Cow.drafted` flag:
+ *   - free cow: passive spectate. Look direction follows the cow's velocity.
+ *     The cow keeps doing its AI job — no input wiring.
+ *   - drafted cow: direct drive. Mouse-look via pointer lock, WASD writes
+ *     Velocity on the cow. cowFollowPath skips this id (see `drivingCowId`)
+ *     so the path system doesn't fight the input.
  *
- * Sitting in the render layer (not ECS): the controller updates the three.js
- * camera each frame, and when in 'control' mode pokes the controlled cow's
- * Velocity so the sim integrates it like any other cow.
+ * Drafting/undrafting the viewed cow flips between the two modes without
+ * re-entering FP — pointer lock is acquired/released inside update(), and
+ * `drivingCowId` always reflects the current truth for the follow-path
+ * system to query.
  */
 
 import * as THREE from 'three';
@@ -32,7 +34,7 @@ export class FirstPersonCamera {
     this.canvas = canvas;
     this.world = world;
     this.onChange = onChange;
-    /** @type {'off' | 'spectate' | 'control'} */
+    /** @type {'off' | 'active'} */
     this.mode = 'off';
     /** @type {number | null} */
     this.cowId = null;
@@ -47,11 +49,23 @@ export class FirstPersonCamera {
     return this.mode !== 'off';
   }
 
+  /**
+   * True when FP is active and the viewed cow is drafted — meaning this
+   * controller owns that cow's Velocity this frame. The follow-path system
+   * reads this to skip the driven cow.
+   * @returns {number | null}
+   */
+  get drivingCowId() {
+    if (!this.active || this.cowId === null) return null;
+    const cow = this.world.get(this.cowId, 'Cow');
+    return cow?.drafted ? this.cowId : null;
+  }
+
   /** @param {number} cowId */
-  enterSpectate(cowId) {
+  enter(cowId) {
     if (!this.world.get(cowId, 'Position')) return;
     this.cowId = cowId;
-    this.mode = 'spectate';
+    this.mode = 'active';
     const vel = this.world.get(cowId, 'Velocity');
     if (vel && Math.hypot(vel.x, vel.z) > 0.01) {
       this.yaw = Math.atan2(vel.x, vel.z);
@@ -61,7 +75,7 @@ export class FirstPersonCamera {
   }
 
   exit() {
-    if (this.mode === 'control') this.releaseControl();
+    this.#releasePointerLock();
     this.mode = 'off';
     this.cowId = null;
     this.onChange();
@@ -76,53 +90,22 @@ export class FirstPersonCamera {
       this.exit();
       return;
     }
-    const wasControlling = this.mode === 'control';
-    if (wasControlling) this.releaseControl();
+    // Release lock proactively — update() will re-acquire if the new cow is
+    // drafted. Cleaner than a stale lock pointing at the previous cow.
+    this.#releasePointerLock();
     const idx = this.cowId !== null ? cows.indexOf(this.cowId) : -1;
     const next = (idx + dir + cows.length) % cows.length;
     this.cowId = cows[next];
-    this.onChange();
-  }
-
-  takeControl() {
-    if (this.mode !== 'spectate' || this.cowId === null) return;
-    const job = this.world.get(this.cowId, 'Job');
-    const path = this.world.get(this.cowId, 'Path');
-    if (job) {
-      job.kind = 'player';
-      job.state = 'driving';
-      job.payload = {};
-    }
-    if (path) {
-      path.steps = [];
-      path.index = 0;
-    }
-    this.mode = 'control';
-    // Pointer lock requires a user gesture — we're inside a keydown handler.
-    try {
-      this.canvas.requestPointerLock();
-    } catch {
-      /* non-fatal: continue without lock */
-    }
-    this.onChange();
-  }
-
-  releaseControl() {
-    if (this.cowId !== null) {
-      const job = this.world.get(this.cowId, 'Job');
-      const vel = this.world.get(this.cowId, 'Velocity');
-      if (job && job.kind === 'player') {
-        job.kind = 'none';
-        job.state = 'idle';
-        job.payload = {};
-      }
-      if (vel) {
-        vel.x = 0;
-        vel.z = 0;
+    // Zero out the previous cow's leftover velocity so it doesn't cruise off
+    // once we stop driving it.
+    const prevVel = idx >= 0 ? this.world.get(cows[idx], 'Velocity') : null;
+    if (prevVel) {
+      const prevCow = this.world.get(cows[idx], 'Cow');
+      if (prevCow?.drafted) {
+        prevVel.x = 0;
+        prevVel.z = 0;
       }
     }
-    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
-    if (this.mode === 'control') this.mode = 'spectate';
     this.onChange();
   }
 
@@ -130,12 +113,16 @@ export class FirstPersonCamera {
   update(_dt) {
     if (this.mode === 'off' || this.cowId === null) return;
     const pos = this.world.get(this.cowId, 'Position');
-    if (!pos) {
+    const cow = this.world.get(this.cowId, 'Cow');
+    if (!pos || !cow) {
       this.exit();
       return;
     }
 
-    if (this.mode === 'control') {
+    const driving = cow.drafted === true;
+    this.#syncPointerLock(driving);
+
+    if (driving) {
       const vel = this.world.get(this.cowId, 'Velocity');
       if (vel) {
         let f = 0;
@@ -171,17 +158,39 @@ export class FirstPersonCamera {
 
     let viewYaw = this.yaw;
     let viewPitch = this.pitch;
-    if (this.mode === 'spectate') {
+    if (!driving) {
       const vel = this.world.get(this.cowId, 'Velocity');
       if (vel && Math.hypot(vel.x, vel.z) > 0.01) {
         viewYaw = Math.atan2(vel.x, vel.z);
-        this.yaw = viewYaw; // remember last facing so takeover starts aligned
+        this.yaw = viewYaw; // remember last facing so draft-takeover starts aligned
       }
       viewPitch = 0;
     }
     const cosP = Math.cos(viewPitch);
     _look.set(x + Math.sin(viewYaw) * cosP, y + Math.sin(viewPitch), z + Math.cos(viewYaw) * cosP);
     this.camera.lookAt(_look);
+  }
+
+  /** @param {boolean} driving */
+  #syncPointerLock(driving) {
+    const locked = document.pointerLockElement === this.canvas;
+    if (driving && !locked) {
+      // Pointer-lock requests outside a user gesture fail silently on most
+      // browsers — but when we DO have a gesture (R key handler), this
+      // acquires immediately. If we don't, the view just stays mouse-free
+      // until the next gesture, which is acceptable.
+      try {
+        this.canvas.requestPointerLock();
+      } catch {
+        /* non-fatal */
+      }
+    } else if (!driving && locked) {
+      document.exitPointerLock();
+    }
+  }
+
+  #releasePointerLock() {
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
   #bind() {
@@ -195,7 +204,7 @@ export class FirstPersonCamera {
       this.keys.delete(e.code);
     });
     document.addEventListener('mousemove', (e) => {
-      if (this.mode !== 'control') return;
+      if (!this.active) return;
       if (document.pointerLockElement !== this.canvas) return;
       // Mouse right (+movementX) should turn the view right. World right at
       // yaw=0 is -X, reached by sin(yaw)<0 ⟹ yaw decreases.
@@ -204,12 +213,6 @@ export class FirstPersonCamera {
         -MAX_PITCH,
         Math.min(MAX_PITCH, this.pitch - e.movementY * MOUSE_SENSITIVITY),
       );
-    });
-    document.addEventListener('pointerlockchange', () => {
-      if (this.mode === 'control' && document.pointerLockElement !== this.canvas) {
-        // Pressed Esc (or something else dropped the lock). Bail to spectate.
-        this.releaseControl();
-      }
     });
   }
 }

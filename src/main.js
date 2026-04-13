@@ -15,6 +15,7 @@ import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
+import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createItemInstancer } from './render/itemInstancer.js';
 import { createItemLabels } from './render/itemLabels.js';
@@ -101,6 +102,10 @@ const jobBoard = new JobBoard();
 // constructed below.
 let onWorldChopComplete = () => {};
 let onWorldItemChange = () => {};
+// Forward-declared so cowFollowPath can ask the FP camera for the currently
+// driven cow without a construction-order tangle.
+/** @type {() => number | null} */
+let getDrivingCowId = () => null;
 
 const scheduler = new Scheduler();
 scheduler.add(snapshotPositions);
@@ -115,7 +120,12 @@ scheduler.add(
   }),
 );
 scheduler.add(
-  makeCowFollowPathSystem({ grid: tileGrid, paths: pathCache, walkable: defaultWalkable }),
+  makeCowFollowPathSystem({
+    grid: tileGrid,
+    paths: pathCache,
+    walkable: defaultWalkable,
+    drivingCowId: () => getDrivingCowId(),
+  }),
 );
 scheduler.add(applyVelocity);
 scheduler.add(stressBounce);
@@ -229,7 +239,9 @@ const stockpileDesignator = new StockpileDesignator(
 stockpileDesignatorRef = stockpileDesignator;
 
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
+getDrivingCowId = () => fpCamera.drivingCowId;
 const cowCamOverlay = createCowCamOverlay();
+const draftBadge = createDraftBadge(scene, 256);
 
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
@@ -256,6 +268,7 @@ const loop = new SimLoop({
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec, tileGrid);
     cowNameTags.update(world, camera, alpha);
+    draftBadge.update(world, tSec);
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
@@ -282,7 +295,7 @@ function spawnCowAt(i, j) {
   const w = tileToWorld(placed.i, placed.j, gridW, gridH);
   const y = tileGrid.getElevation(placed.i, placed.j);
   world.spawn({
-    Cow: {},
+    Cow: { drafted: false },
     Position: { x: w.x, y, z: w.z },
     PrevPosition: { x: w.x, y, z: w.z },
     Velocity: { x: 0, y: 0, z: 0 },
@@ -350,6 +363,24 @@ function spawnItemAt(i, j, kind) {
     TileAnchor: { i, j },
     Position: { x: w.x, y: tileGrid.getElevation(i, j), z: w.z },
   });
+}
+
+/**
+ * Flip the `drafted` flag on each cow. Mixed selections all go to "drafted"
+ * (so one press never silently drafts half the crowd and un-drafts the rest);
+ * if everyone is already drafted, the press releases them.
+ * @param {number[]} cowIds
+ */
+function toggleDraft(cowIds) {
+  const cows = [];
+  for (const id of cowIds) {
+    const c = world.get(id, 'Cow');
+    if (c) cows.push(c);
+  }
+  if (cows.length === 0) return;
+  const allDrafted = cows.every((c) => c.drafted === true);
+  const target = !allDrafted;
+  for (const c of cows) c.drafted = target;
 }
 
 /** @param {number} count */
@@ -421,16 +452,22 @@ function updateHud() {
     lines.push('** STOCKPILE DESIGNATE — LMB drag = add, Shift+drag = remove, B or Esc to exit **');
   }
   if (fpCamera.active) {
-    const mode = fpCamera.mode === 'control' ? 'TAKEOVER (WASD + mouse)' : 'SPECTATE';
+    const viewed = fpCamera.cowId;
+    const viewedCow = viewed !== null ? world.get(viewed, 'Cow') : null;
+    const drafted = viewedCow?.drafted === true;
+    const mode = drafted ? 'DRAFTED (WASD + mouse)' : 'SPECTATE';
     lines.push(
-      `** FIRST-PERSON ${mode} — cow #${fpCamera.cowId} — Q/E cycle, R ${fpCamera.mode === 'control' ? 'release' : 'take over'}, H exit **`,
+      `** FIRST-PERSON ${mode} — cow #${viewed} — Q/E cycle, R ${drafted ? 'release' : 'draft'}, H exit **`,
     );
   }
+  const draftedCount = countDrafted();
   lines.push(
+    `drafted: ${draftedCount}`,
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
     'C = chop designate,  B = stockpile designate',
-    'H = first-person (needs cow selected),  Q/E = cycle cow,  R = take over / release',
+    'H = first-person (needs cow selected),  Q/E = cycle cow',
+    'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
     'P = toggle debug menu  (also disables the debug-only keys below)',
     'N = spawn cow,  G = drop stone,  F = drop food  (at last clicked tile)',
     'K = save, L = load',
@@ -444,12 +481,12 @@ addEventListener('keydown', async (e) => {
     updateHud();
     return;
   }
-  // First-person: H toggles spectate on/off, Q/E cycle, R toggles takeover.
+  // First-person: H toggles FP on/off, Q/E cycle the viewed cow.
   if (e.code === 'KeyH') {
     if (fpCamera.active) {
       fpCamera.exit();
     } else if (primaryCow !== null) {
-      fpCamera.enterSpectate(primaryCow);
+      fpCamera.enter(primaryCow);
     }
     return;
   }
@@ -457,9 +494,20 @@ addEventListener('keydown', async (e) => {
     fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
     return;
   }
-  if (fpCamera.active && e.code === 'KeyR') {
-    if (fpCamera.mode === 'control') fpCamera.releaseControl();
-    else fpCamera.takeControl();
+  // R toggles the 'drafted' flag. In FP, toggles the viewed cow. In overhead,
+  // toggles every selected cow (to the majority state's opposite so a mixed
+  // selection drafts rather than thrash).
+  if (e.code === 'KeyR') {
+    if (fpCamera.active && fpCamera.cowId !== null) {
+      toggleDraft([fpCamera.cowId]);
+      updateHud();
+      return;
+    }
+    if (selectedCows.size > 0) {
+      toggleDraft([...selectedCows]);
+      updateHud();
+      return;
+    }
     return;
   }
   if (!debugEnabled) return;
@@ -483,7 +531,7 @@ addEventListener('keydown', async (e) => {
       const json = JSON.stringify(state);
       const gz = await gzipString(json);
       const b64 = bytesToBase64(gz);
-      localStorage.setItem('save:v6', b64);
+      localStorage.setItem('save:v7', b64);
       console.log(
         '[save] ok — tiles:',
         tileGrid.W * tileGrid.H,
@@ -499,6 +547,7 @@ addEventListener('keydown', async (e) => {
   if (e.code === 'KeyL') {
     try {
       const b64 =
+        localStorage.getItem('save:v7') ??
         localStorage.getItem('save:v6') ??
         localStorage.getItem('save:v5') ??
         localStorage.getItem('save:v4') ??
@@ -569,6 +618,14 @@ addEventListener('keydown', async (e) => {
 function countComp(component) {
   let n = 0;
   for (const _ of world.query([component])) n++;
+  return n;
+}
+
+function countDrafted() {
+  let n = 0;
+  for (const { components } of world.query(['Cow'])) {
+    if (components.Cow.drafted) n++;
+  }
   return n;
 }
 

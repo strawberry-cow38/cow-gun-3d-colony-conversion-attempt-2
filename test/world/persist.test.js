@@ -84,6 +84,47 @@ describe('cow save/load roundtrip', () => {
     hydrateCows(w, {});
     expect([...w.query(['Cow'])]).toHaveLength(0);
   });
+
+  it('preserves the drafted flag across save/load', () => {
+    const tg = new TileGrid(2, 2);
+    const w1 = makeWorld();
+    w1.spawn({
+      Cow: { drafted: true },
+      Position: { x: 0, y: 0, z: 0 },
+      PrevPosition: { x: 0, y: 0, z: 0 },
+      Velocity: { x: 0, y: 0, z: 0 },
+      Hunger: { value: 1 },
+      Brain: { name: 'sarge' },
+      Job: { kind: 'none', state: 'idle', payload: {} },
+      Path: { steps: [], index: 0 },
+      Inventory: { itemKind: null },
+      CowViz: {},
+    });
+    w1.spawn({
+      Cow: { drafted: false },
+      Position: { x: 1, y: 0, z: 1 },
+      PrevPosition: { x: 1, y: 0, z: 1 },
+      Velocity: { x: 0, y: 0, z: 0 },
+      Hunger: { value: 1 },
+      Brain: { name: 'civvy' },
+      Job: { kind: 'none', state: 'idle', payload: {} },
+      Path: { steps: [], index: 0 },
+      Inventory: { itemKind: null },
+      CowViz: {},
+    });
+
+    const state = serializeState(tg, w1);
+    const roundtripped = loadState(JSON.parse(JSON.stringify(state)));
+
+    const w2 = makeWorld();
+    hydrateCows(w2, roundtripped);
+    const cows = [...w2.query(['Cow', 'Brain'])];
+    const sarge = cows.find((c) => c.components.Brain.name === 'sarge');
+    const civvy = cows.find((c) => c.components.Brain.name === 'civvy');
+    if (!sarge || !civvy) throw new Error('both cows should hydrate');
+    expect(sarge.components.Cow.drafted).toBe(true);
+    expect(civvy.components.Cow.drafted).toBe(false);
+  });
 });
 
 describe('tree save/load roundtrip', () => {
