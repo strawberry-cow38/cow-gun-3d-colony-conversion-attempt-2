@@ -16,16 +16,25 @@
 export const PICKUP_TICKS = 12;
 export const DROP_TICKS = 9;
 
+/** Reusable scratch buffer for reservations. Grown lazily to grid size. */
+let _reservedScratch = new Uint8Array(0);
+
 /**
  * Build a {tileIdx → true} set of stockpile tiles already occupied by an Item
  * or reserved as a haul drop target. Used when picking a free slot.
+ *
+ * Returned buffer is a shared scratch — caller must finish using it before
+ * calling this again, and must not retain a reference.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('./board.js').JobBoard} board
  */
 export function buildStockpileReservations(world, grid, board) {
-  const reserved = new Uint8Array(grid.W * grid.H);
+  const size = grid.W * grid.H;
+  if (_reservedScratch.length < size) _reservedScratch = new Uint8Array(size);
+  const reserved = _reservedScratch;
+  reserved.fill(0, 0, size);
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     if (grid.isStockpile(a.i, a.j)) reserved[grid.idx(a.i, a.j)] = 1;

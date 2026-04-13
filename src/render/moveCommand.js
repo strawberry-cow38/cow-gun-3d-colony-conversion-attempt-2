@@ -24,6 +24,8 @@ import {
 } from '../world/coords.js';
 
 const _ndc = new THREE.Vector2();
+/** Module-level BFS scratch reused by spreadTargets + nearestWalkable. */
+let _bfsScratch = new Uint8Array(0);
 const DRAG_THRESHOLD_PX = 6;
 const PREVIEW_COLOR = 0xffe14a;
 const PREVIEW_GROUND_CLEARANCE = 0.12 * UNITS_PER_METER;
@@ -321,7 +323,10 @@ function writeSeg(out, off, a, b) {
 function spreadTargets(grid, walkable, goal, count) {
   /** @type {{ i: number, j: number }[]} */
   const out = [];
-  const seen = new Uint8Array(grid.W * grid.H);
+  const size = grid.W * grid.H;
+  if (_bfsScratch.length < size) _bfsScratch = new Uint8Array(size);
+  const seen = _bfsScratch;
+  seen.fill(0, 0, size);
   /** @type {{ i: number, j: number }[]} */
   const queue = [{ i: goal.i, j: goal.j }];
   seen[goal.j * grid.W + goal.i] = 1;
@@ -385,7 +390,10 @@ function lineTargets(grid, walkable, start, end, count) {
 function nearestWalkable(grid, walkable, i, j, reserved) {
   const ci = Math.max(0, Math.min(grid.W - 1, i));
   const cj = Math.max(0, Math.min(grid.H - 1, j));
-  const seen = new Uint8Array(grid.W * grid.H);
+  const size = grid.W * grid.H;
+  if (_bfsScratch.length < size) _bfsScratch = new Uint8Array(size);
+  const seen = _bfsScratch;
+  seen.fill(0, 0, size);
   const queue = [{ i: ci, j: cj }];
   seen[cj * grid.W + ci] = 1;
   let head = 0;

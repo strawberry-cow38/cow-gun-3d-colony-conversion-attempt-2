@@ -150,7 +150,8 @@ export function makeCowBrainSystem(deps) {
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
               continue;
             }
-            const route = paths.find({ i: si, j: sj }, goal);
+            // Wander goals are randomized — caching them just churns the LRU.
+            const route = paths.find({ i: si, j: sj }, goal, { cache: false });
             if (!route || route.length === 0) {
               job.state = 'idle';
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };

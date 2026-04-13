@@ -174,8 +174,14 @@ export class PathCache {
   /**
    * @param {{ i: number, j: number }} start
    * @param {{ i: number, j: number }} goal
+   * @param {{ cache?: boolean }} [opts] pass { cache: false } for ephemeral
+   *   queries (e.g. wander) that would otherwise churn the LRU.
    */
-  find(start, goal) {
+  find(start, goal, opts) {
+    if (opts && opts.cache === false) {
+      this.misses++;
+      return findPath(this.grid, start, goal, this.walkable);
+    }
     const key = `${start.i},${start.j}|${goal.i},${goal.j}`;
     const hit = this.cache.get(key);
     if (hit !== undefined) {
