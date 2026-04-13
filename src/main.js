@@ -215,9 +215,10 @@ const loop = new SimLoop({
     rts.update(rdt);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
-    cowInstancer.update(world, alpha, tSec);
+    cowInstancer.update(world, alpha, tSec, tileGrid);
     cowNameTags.update(world, camera, alpha);
     treeInstancer.update(world, tileGrid);
+    treeInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
     pruneStaleSelections();
     selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);

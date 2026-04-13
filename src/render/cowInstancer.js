@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import { UNITS_PER_METER } from '../world/coords.js';
+import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
@@ -24,6 +24,9 @@ const COW_HEIGHT = 1.0 * UNITS_PER_METER;
 const COW_LENGTH = 1.8 * UNITS_PER_METER;
 const COW_BOB_AMPLITUDE = 0.08 * UNITS_PER_METER;
 const COW_BOB_FREQ_HZ = 6;
+// Chopping rhythm: forward-lean pulse at ~2.5 Hz, 25° max lean.
+const CHOP_PITCH_AMP = 0.44; // ≈ 25°
+const CHOP_PITCH_FREQ_HZ = 2.5;
 
 /**
  * @param {THREE.Scene} scene
@@ -50,8 +53,9 @@ export function createCowInstancer(scene, capacity = 256) {
    * @param {import('../ecs/world.js').World} world
    * @param {number} alpha
    * @param {number} timeSec
+   * @param {import('../world/tileGrid.js').TileGrid} [grid] required for chop-facing yaw
    */
-  function update(world, alpha, timeSec) {
+  function update(world, alpha, timeSec, grid) {
     let i = 0;
     slotToEntity.length = 0;
     seen.clear();
@@ -60,28 +64,46 @@ export function createCowInstancer(scene, capacity = 256) {
       'Position',
       'PrevPosition',
       'Velocity',
+      'Job',
       'CowViz',
     ])) {
       if (i >= capacity) break;
       const p = components.Position;
       const pp = components.PrevPosition;
       const v = components.Velocity;
+      const job = components.Job;
 
       const x = pp.x + (p.x - pp.x) * alpha;
       const y = pp.y + (p.y - pp.y) * alpha;
       const z = pp.z + (p.z - pp.z) * alpha;
 
+      const chopping = job.kind === 'chop' && job.state === 'chopping';
       const speedSq = v.x * v.x + v.z * v.z;
       const moving = speedSq > 0.01;
-      const bob = moving
-        ? COW_BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * COW_BOB_FREQ_HZ * Math.PI))
+      const bob =
+        moving && !chopping
+          ? COW_BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * COW_BOB_FREQ_HZ * Math.PI))
+          : 0;
+
+      // Face the tree while chopping so the forward-lean reads as "swinging at it".
+      let yaw;
+      if (chopping && grid && typeof job.payload.i === 'number') {
+        const tw = tileToWorld(job.payload.i, job.payload.j, grid.W, grid.H);
+        yaw = Math.atan2(tw.x - x, tw.z - z);
+      } else {
+        yaw = moving ? Math.atan2(v.x, v.z) : (lastYaw.get(id) ?? 0);
+      }
+      lastYaw.set(id, yaw);
+      seen.add(id);
+
+      // Clamped positive lean — the cow rocks forward (toward the tree) and
+      // back to neutral, never backwards. |sin| gives the hit-then-recover feel.
+      const pitch = chopping
+        ? CHOP_PITCH_AMP * Math.abs(Math.sin(timeSec * CHOP_PITCH_FREQ_HZ * Math.PI))
         : 0;
 
       _position.set(x, y + COW_HEIGHT * 0.5 + bob, z);
-      const yaw = moving ? Math.atan2(v.x, v.z) : (lastYaw.get(id) ?? 0);
-      lastYaw.set(id, yaw);
-      seen.add(id);
-      _euler.set(0, yaw, 0);
+      _euler.set(pitch, yaw, 0);
       _quat.setFromEuler(_euler);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(i, _matrix);
