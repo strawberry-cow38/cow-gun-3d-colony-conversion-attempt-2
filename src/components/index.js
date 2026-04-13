@@ -8,6 +8,14 @@
  * Brain       { name: string }       identity for now; mood/traits later
  * Job         { kind, state, payload } kind='none' = idle
  * Path        { steps, index }       current path; index >= steps.length = arrived
+ *
+ * Tree / TreeViz  { markedJobId, progress } — markedJobId>0 means player
+ *                                   designated it for chop; progress 0..1 drives
+ *                                   visual feedback. Kept on Tree itself since
+ *                                   the archetype ECS can't add/remove components.
+ * TileAnchor   { i, j }              tile this world entity occupies
+ * Item         { kind: string }      loose world item ('wood', 'stone', 'food'...)
+ * ItemViz                            tag — item instancer renders these
  */
 
 /**
@@ -33,4 +41,9 @@ export function registerComponents(world) {
     index: 0,
   }));
   world.defineComponent('CowViz', () => ({}));
+  world.defineComponent('Tree', () => ({ markedJobId: 0, progress: 0 }));
+  world.defineComponent('TreeViz', () => ({}));
+  world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
+  world.defineComponent('Item', () => ({ kind: 'wood' }));
+  world.defineComponent('ItemViz', () => ({}));
 }

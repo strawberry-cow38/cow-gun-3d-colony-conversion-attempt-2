@@ -9,9 +9,11 @@ import { registerComponents } from './components/index.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
+import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
+import { createItemInstancer } from './render/itemInstancer.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
 import { RtsCamera } from './render/rtsCamera.js';
@@ -20,11 +22,13 @@ import { SelectionBox } from './render/selectionBox.js';
 import { createSelectionViz } from './render/selectionViz.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
+import { createTreeInstancer } from './render/treeInstancer.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
 import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from './systems/cow.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
+import { spawnInitialTrees } from './systems/trees.js';
 import { DEFAULT_GRID_H, DEFAULT_GRID_W, tileToWorld } from './world/coords.js';
 import {
   gunzipBytes,
@@ -70,6 +74,7 @@ function base64ToBytes(b64) {
 const params = new URLSearchParams(location.search);
 const stressCount = Number.parseInt(params.get('stress') ?? '0', 10);
 const cowCount = Number.parseInt(params.get('cows') ?? '1', 10);
+const treeCount = Number.parseInt(params.get('trees') ?? '60', 10);
 const gridW = Number.parseInt(params.get('w') ?? `${DEFAULT_GRID_W}`, 10);
 const gridH = Number.parseInt(params.get('h') ?? `${DEFAULT_GRID_H}`, 10);
 
@@ -82,9 +87,21 @@ registerComponents(world);
 const pathCache = new PathCache(tileGrid, defaultWalkable);
 const jobBoard = new JobBoard();
 
+// Forward-declared so the brain's onChopComplete can poke the renderers once
+// they're constructed below.
+let onWorldChopComplete = () => {};
+
 const scheduler = new Scheduler();
 scheduler.add(snapshotPositions);
-scheduler.add(makeCowBrainSystem({ grid: tileGrid, paths: pathCache, walkable: defaultWalkable }));
+scheduler.add(
+  makeCowBrainSystem({
+    grid: tileGrid,
+    paths: pathCache,
+    walkable: defaultWalkable,
+    board: jobBoard,
+    onChopComplete: () => onWorldChopComplete(),
+  }),
+);
 scheduler.add(
   makeCowFollowPathSystem({ grid: tileGrid, paths: pathCache, walkable: defaultWalkable }),
 );
@@ -95,6 +112,7 @@ scheduler.add(makeHungerSystem());
 let cowsSpawned = 0;
 
 if (stressCount > 0) spawnStressEntities(world, stressCount);
+spawnInitialTrees(world, tileGrid, treeCount);
 spawnInitialCows(cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
@@ -105,6 +123,14 @@ const rts = new RtsCamera(camera, canvas);
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
 const selectionViz = createSelectionViz(scene);
+const treeInstancer = createTreeInstancer(scene, 2048);
+const itemInstancer = createItemInstancer(scene, 1024);
+
+onWorldChopComplete = () => {
+  treeInstancer.markDirty();
+  itemInstancer.markDirty();
+  pathCache.clear();
+};
 
 const selectedCows = /** @type {Set<number>} */ (new Set());
 let primaryCow = /** @type {number | null} */ (null);
@@ -165,6 +191,10 @@ new CowMoveCommand(
   scene,
 );
 
+const chopDesignator = new ChopDesignator(canvas, camera, treeInstancer, world, jobBoard, () =>
+  updateHud(),
+);
+
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
@@ -187,6 +217,8 @@ const loop = new SimLoop({
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec);
     cowNameTags.update(world, camera, alpha);
+    treeInstancer.update(world, tileGrid);
+    itemInstancer.update(world, tileGrid);
     pruneStaleSelections();
     selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
@@ -203,8 +235,10 @@ const loop = new SimLoop({
 /** @param {number} i @param {number} j */
 function spawnCowAt(i, j) {
   if (!tileGrid.inBounds(i, j)) return;
-  const w = tileToWorld(i, j, gridW, gridH);
-  const y = tileGrid.getElevation(i, j);
+  const placed = nearestFreeTile(i, j);
+  if (!placed) return;
+  const w = tileToWorld(placed.i, placed.j, gridW, gridH);
+  const y = tileGrid.getElevation(placed.i, placed.j);
   cowsSpawned += 1;
   world.spawn({
     Cow: {},
@@ -217,6 +251,38 @@ function spawnCowAt(i, j) {
     Path: { steps: [], index: 0 },
     CowViz: {},
   });
+}
+
+/**
+ * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
+ * cow spawn never lands on a tree/rock. Returns null only if the whole grid
+ * is blocked, which shouldn't happen.
+ * @param {number} i @param {number} j
+ */
+function nearestFreeTile(i, j) {
+  const seen = new Uint8Array(gridW * gridH);
+  const queue = [{ i, j }];
+  seen[j * gridW + i] = 1;
+  let head = 0;
+  while (head < queue.length) {
+    const t = queue[head++];
+    if (tileGrid.inBounds(t.i, t.j) && !tileGrid.isBlocked(t.i, t.j)) return t;
+    for (const [di, dj] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const ni = t.i + di;
+      const nj = t.j + dj;
+      if (ni < 0 || nj < 0 || ni >= gridW || nj >= gridH) continue;
+      const idx = nj * gridW + ni;
+      if (seen[idx]) continue;
+      seen[idx] = 1;
+      queue.push({ i: ni, j: nj });
+    }
+  }
+  return null;
 }
 
 /** @param {number} count */
@@ -266,20 +332,25 @@ function updateHud() {
     pickStr = `pick: i=${lastPick.i} j=${lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
   }
   const lines = [
-    'phase 3: cows + pathfinding + jobs',
+    'phase 4: trees + chop',
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
     `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
     `render: ${measuredFps.toFixed(0)} fps`,
-    `entities: ${world.entityCount}  cows=${countCows()}  stress=${stressCount}`,
+    `entities: ${world.entityCount}  cows=${countCows()}  trees=${countComp('Tree')}  wood=${countComp('Item')}`,
     `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
     pickStr,
     ...cowLines,
     '',
+  ];
+  if (chopDesignator.active) {
+    lines.push('** CHOP DESIGNATE — click trees to mark, C or Esc to exit **');
+  }
+  lines.push(
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-    'N = spawn cow at last clicked tile',
+    'C = chop designate mode,  N = spawn cow at last clicked tile',
     'K = save, L = load',
-  ];
+  );
   hud.innerText = lines.join('\n');
 }
 
@@ -322,8 +393,16 @@ addEventListener('keydown', async (e) => {
     const loaded = hydrateTileGrid(migrated);
     tileGrid.elevation.set(loaded.elevation);
     tileGrid.biome.set(loaded.biome);
+    tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllCows(world);
+    despawnAllComp(world, 'Tree');
+    despawnAllComp(world, 'Item');
+    // Trees aren't persisted in slice A — regenerate a fresh scatter on load
+    // so the world doesn't end up bare.
+    spawnInitialTrees(world, tileGrid, treeCount);
+    treeInstancer.markDirty();
+    itemInstancer.markDirty();
     hydrateCows(world, migrated);
     const fresh = buildTileMesh(tileGrid);
     scene.remove(tileMesh);
@@ -350,6 +429,13 @@ function countCows() {
   return n;
 }
 
+/** @param {string} component */
+function countComp(component) {
+  let n = 0;
+  for (const _ of world.query([component])) n++;
+  return n;
+}
+
 function pruneStaleSelections() {
   for (const id of selectedCows) {
     if (!world.get(id, 'Position')) selectedCows.delete(id);
@@ -364,6 +450,13 @@ function pruneStaleSelections() {
 function despawnAllCows(w) {
   const ids = [];
   for (const { id } of w.query(['Cow'])) ids.push(id);
+  for (const id of ids) w.despawn(id);
+}
+
+/** @param {import('./ecs/world.js').World} w @param {string} comp */
+function despawnAllComp(w, comp) {
+  const ids = [];
+  for (const { id } of w.query([comp])) ids.push(id);
   for (const id of ids) w.despawn(id);
 }
 

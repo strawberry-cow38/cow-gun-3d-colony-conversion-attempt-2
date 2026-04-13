@@ -1,12 +1,11 @@
 /**
  * Tile grid storage. W × H grid of per-tile data.
  *
- * Per-tile fields (Phase 2):
- * - elevation: number (in world units; 0 = ground level)
- * - biome:     small enum stored as uint8 (0=grass, 1=dirt, 2=stone, 3=sand)
- *
- * Both backed by TypedArrays for memory + serialization efficiency. A 200×200
- * grid is 40k entries × ~8 bytes = ~320KB total.
+ * Per-tile fields:
+ * - elevation: number (world units; 0 = ground level)
+ * - biome:     small enum uint8 (0=grass, 1=dirt, 2=stone, 3=sand)
+ * - occupancy: uint8; nonzero = a world entity (tree, rock, building) blocks the tile.
+ *              Transient — NOT serialized; rebuilt from entities on load.
  */
 
 export const BIOME = Object.freeze({
@@ -26,6 +25,22 @@ export class TileGrid {
     this.H = H;
     this.elevation = new Float32Array(W * H);
     this.biome = new Uint8Array(W * H);
+    this.occupancy = new Uint8Array(W * H);
+  }
+
+  /** @param {number} i @param {number} j */
+  isBlocked(i, j) {
+    return this.occupancy[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  blockTile(i, j) {
+    this.occupancy[this.idx(i, j)] = 1;
+  }
+
+  /** @param {number} i @param {number} j */
+  unblockTile(i, j) {
+    this.occupancy[this.idx(i, j)] = 0;
   }
 
   /**

@@ -95,18 +95,24 @@ Notes deferred to later phases:
 
 ---
 
-## Phase 4 — Job ecosystem
+## Phase 4 — Job ecosystem *(in progress)*
 
 Grow the simulation breadth. Multiple jobs, resources, basic colony loop.
 
-- [ ] Resource components: `Wood`, `Food`, `Stone` (as item entities)
-- [ ] Stockpile zones (player-designated tiles where items get hauled)
-- [ ] Jobs: `Eat`, `Sleep`, `Haul`, `Chop` (tree → wood), `Mine` (rock → stone)
-- [ ] Trees + rocks as world entities
-- [ ] Building placement: `Build` job, construction-in-progress component, completion turns blueprint into building
-- [ ] First building: a wooden wall and a sleeping spot
-- [ ] Hunger ticks down, eating restores it, starvation deals damage
-- [ ] Sleep need ticks down, sleeping in a sleep spot restores it
+Landed as slice A (trees + chop):
+- [~] Resource components: `Wood`, `Food`, `Stone` (as item entities) — `Item {kind}` + wood; food/stone later.
+- [x] Trees as world entities (rocks deferred to a later slice)
+- [x] Chop job (designate-mode click → JobBoard chop → cow pathfinds adjacent → chop timer → tree despawns, wood drops).
+- [x] Tile-occupancy aware walkability: trees block paths; pathCache invalidates on tree change.
+
+Still open:
+- [ ] Stockpile zones (player-designated tiles where items get hauled) — slice B.
+- [ ] Haul job — slice B.
+- [ ] Jobs: `Eat`, `Sleep`, `Mine` (rock → stone) — later slices.
+- [ ] Building placement: `Build` job, construction-in-progress component, completion turns blueprint into building.
+- [ ] First building: a wooden wall and a sleeping spot.
+- [ ] Hunger ticks down, eating restores it, starvation deals damage. (hunger drain already wired; eating path TBD)
+- [ ] Sleep need ticks down, sleeping in a sleep spot restores it.
 
 **Definition of done:** Player can place a stockpile + sleep spot, designate trees to chop, cows autonomously chop wood, haul to stockpile, eat when hungry, sleep when tired, build walls.
 

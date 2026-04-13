@@ -36,12 +36,14 @@ function octile(ax, ay, bx, by) {
 }
 
 /**
- * Default walkability: every tile is walkable. Replace later when terrain
- * has solid biomes / structures.
- * @param {TileGrid} _grid @param {number} _i @param {number} _j
+ * Default walkability: tile must be in-bounds and not marked blocked in the
+ * grid's occupancy array (trees, rocks, buildings). Biome-based walls come
+ * later when we add e.g. lava/water.
+ * @param {TileGrid} grid @param {number} i @param {number} j
  */
-export function defaultWalkable(_grid, _i, _j) {
-  return true;
+export function defaultWalkable(grid, i, j) {
+  if (!grid.inBounds(i, j)) return false;
+  return grid.occupancy[grid.idx(i, j)] === 0;
 }
 
 // Module-scoped scratch buffers sized to the largest grid we've seen so far.
