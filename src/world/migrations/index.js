@@ -15,8 +15,9 @@ import { v1_to_v2 } from './v1_to_v2.js';
 import { v2_to_v3 } from './v2_to_v3.js';
 import { v3_to_v4 } from './v3_to_v4.js';
 import { v4_to_v5 } from './v4_to_v5.js';
+import { v5_to_v6 } from './v5_to_v6.js';
 
-export const CURRENT_VERSION = 5;
+export const CURRENT_VERSION = 6;
 
 /**
  * @typedef Migration
@@ -26,7 +27,7 @@ export const CURRENT_VERSION = 5;
  */
 
 /** @type {Migration[]} */
-export const migrations = [v0_to_v1, v1_to_v2, v2_to_v3, v3_to_v4, v4_to_v5];
+export const migrations = [v0_to_v1, v1_to_v2, v2_to_v3, v3_to_v4, v4_to_v5, v5_to_v6];
 
 /**
  * Apply every migration whose `from` is >= save.version, in order, until the

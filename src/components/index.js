@@ -14,7 +14,8 @@
  *                                   visual feedback. Kept on Tree itself since
  *                                   the archetype ECS can't add/remove components.
  * TileAnchor   { i, j }              tile this world entity occupies
- * Item         { kind: string }      loose world item ('wood', 'stone', 'food'...)
+ * Item         { kind: string, count, capacity } — a stack of N items on a tile;
+ *                                   when count reaches 0 the entity is despawned.
  * ItemViz                            tag — item instancer renders these
  * Inventory    { itemKind: string|null } — one-slot carry for cows hauling items.
  */
@@ -45,7 +46,7 @@ export function registerComponents(world) {
   world.defineComponent('Tree', () => ({ markedJobId: 0, progress: 0 }));
   world.defineComponent('TreeViz', () => ({}));
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
-  world.defineComponent('Item', () => ({ kind: 'wood' }));
+  world.defineComponent('Item', () => ({ kind: 'wood', count: 1, capacity: 50 }));
   world.defineComponent('ItemViz', () => ({}));
   world.defineComponent('Inventory', () => ({
     /** @type {string | null} */

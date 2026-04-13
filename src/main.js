@@ -33,6 +33,7 @@ import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from '.
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { DEFAULT_GRID_H, DEFAULT_GRID_W, tileToWorld } from './world/coords.js';
+import { ITEM_KINDS, maxStack } from './world/items.js';
 import {
   gunzipBytes,
   gzipString,
@@ -317,6 +318,31 @@ function nearestFreeTile(i, j) {
   return null;
 }
 
+/**
+ * Drop one unit of `kind` at (i, j), merging into an existing same-kind stack
+ * if one is already there. Used by the G/F debug keys.
+ * @param {number} i @param {number} j @param {string} kind
+ */
+function spawnItemAt(i, j, kind) {
+  if (!tileGrid.inBounds(i, j)) return;
+  const cap = maxStack(kind);
+  for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    const it = components.Item;
+    if (a.i === i && a.j === j && it.kind === kind && it.count < cap) {
+      it.count += 1;
+      return;
+    }
+  }
+  const w = tileToWorld(i, j, gridW, gridH);
+  world.spawn({
+    Item: { kind, count: 1, capacity: cap },
+    ItemViz: {},
+    TileAnchor: { i, j },
+    Position: { x: w.x, y: tileGrid.getElevation(i, j), z: w.z },
+  });
+}
+
 /** @param {number} count */
 function spawnInitialCows(count) {
   for (let n = 0; n < count; n++) {
@@ -364,11 +390,11 @@ function updateHud() {
     pickStr = `pick: i=${lastPick.i} j=${lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
   }
   const lines = [
-    'phase 4: trees + chop + stockpile',
+    'phase 4: trees + chop + stacks + eat',
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
     `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
     `render: ${measuredFps.toFixed(0)} fps`,
-    `entities: ${world.entityCount}  cows=${countComp('Cow')}  trees=${countComp('Tree')}  wood=${countComp('Item')}`,
+    `entities: ${world.entityCount}  cows=${countComp('Cow')}  trees=${countComp('Tree')}  ${itemCountsStr()}`,
     `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
     pickStr,
     ...cowLines,
@@ -384,6 +410,7 @@ function updateHud() {
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
     'C = chop designate,  B = stockpile designate,  N = spawn cow at last clicked tile',
+    'G = drop stone,  F = drop food (at last clicked tile)',
     'K = save, L = load',
   );
   hud.innerText = lines.join('\n');
@@ -396,13 +423,21 @@ addEventListener('keydown', async (e) => {
     updateHud();
     return;
   }
+  if (e.code === 'KeyG' || e.code === 'KeyF') {
+    const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
+    const kind = e.code === 'KeyG' ? 'stone' : 'food';
+    spawnItemAt(tile.i, tile.j, kind);
+    itemInstancer.markDirty();
+    updateHud();
+    return;
+  }
   if (e.code === 'KeyK') {
     try {
       const state = serializeState(tileGrid, world);
       const json = JSON.stringify(state);
       const gz = await gzipString(json);
       const b64 = bytesToBase64(gz);
-      localStorage.setItem('save:v5', b64);
+      localStorage.setItem('save:v6', b64);
       console.log(
         '[save] ok — tiles:',
         tileGrid.W * tileGrid.H,
@@ -418,6 +453,7 @@ addEventListener('keydown', async (e) => {
   if (e.code === 'KeyL') {
     try {
       const b64 =
+        localStorage.getItem('save:v6') ??
         localStorage.getItem('save:v5') ??
         localStorage.getItem('save:v4') ??
         localStorage.getItem('save:v3') ??
@@ -488,6 +524,16 @@ function countComp(component) {
   let n = 0;
   for (const _ of world.query([component])) n++;
   return n;
+}
+
+function itemCountsStr() {
+  const totals = /** @type {Record<string, number>} */ ({});
+  for (const k of ITEM_KINDS) totals[k] = 0;
+  for (const { components } of world.query(['Item'])) {
+    const k = components.Item.kind;
+    totals[k] = (totals[k] ?? 0) + components.Item.count;
+  }
+  return ITEM_KINDS.map((k) => `${k}=${totals[k]}`).join(' ');
 }
 
 function pruneStaleSelections() {

@@ -59,6 +59,29 @@ describe('migration runner', () => {
     expect(out.cows[0].inventory).toEqual({ itemKind: null });
   });
 
+  it('upgrades a v5 save by adding count + capacity to each item', () => {
+    const v5 = {
+      version: 5,
+      tileGrid: {
+        W: 2,
+        H: 2,
+        elevation: [0, 0, 0, 0],
+        biome: [0, 0, 0, 0],
+        stockpile: [0, 0, 0, 0],
+      },
+      cows: [],
+      trees: [],
+      items: [
+        { i: 0, j: 0, kind: 'wood' },
+        { i: 1, j: 1, kind: 'stone' },
+      ],
+    };
+    const out = runMigrations(v5);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.items[0]).toMatchObject({ i: 0, j: 0, kind: 'wood', count: 1, capacity: 50 });
+    expect(out.items[1]).toMatchObject({ i: 1, j: 1, kind: 'stone', count: 1, capacity: 30 });
+  });
+
   it('upgrades a v4 save by adding empty trees + items arrays', () => {
     const v4 = {
       version: 4,
@@ -83,7 +106,7 @@ describe('migration runner', () => {
       tileGrid: { W: 1, H: 1, elevation: [0], biome: [0], stockpile: [0] },
       cows: [],
       trees: [],
-      items: [],
+      items: [{ i: 0, j: 0, kind: 'wood', count: 3, capacity: 50 }],
     };
     const out = runMigrations(cur);
     expect(out).toEqual(cur);

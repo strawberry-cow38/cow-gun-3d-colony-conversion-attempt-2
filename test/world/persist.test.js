@@ -125,11 +125,11 @@ describe('tree save/load roundtrip', () => {
 });
 
 describe('item save/load roundtrip', () => {
-  it('preserves item kind and tile anchor', () => {
+  it('preserves item kind, tile anchor, count, and capacity', () => {
     const tg = new TileGrid(3, 3);
     const w1 = makeWorld();
     w1.spawn({
-      Item: { kind: 'wood' },
+      Item: { kind: 'stone', count: 7, capacity: 30 },
       ItemViz: {},
       TileAnchor: { i: 2, j: 1 },
       Position: { x: 0, y: 0, z: 0 },
@@ -137,7 +137,13 @@ describe('item save/load roundtrip', () => {
 
     const state = serializeState(tg, w1);
     expect(state.items).toHaveLength(1);
-    expect(state.items[0]).toMatchObject({ i: 2, j: 1, kind: 'wood' });
+    expect(state.items[0]).toMatchObject({
+      i: 2,
+      j: 1,
+      kind: 'stone',
+      count: 7,
+      capacity: 30,
+    });
 
     const migrated = loadState(JSON.parse(JSON.stringify(state)));
     const tg2 = hydrateTileGrid(migrated);
@@ -146,7 +152,9 @@ describe('item save/load roundtrip', () => {
 
     const items = [...w2.query(['Item', 'TileAnchor'])];
     expect(items).toHaveLength(1);
-    expect(items[0].components.Item.kind).toBe('wood');
+    expect(items[0].components.Item.kind).toBe('stone');
+    expect(items[0].components.Item.count).toBe(7);
+    expect(items[0].components.Item.capacity).toBe(30);
     expect(items[0].components.TileAnchor.i).toBe(2);
     expect(items[0].components.TileAnchor.j).toBe(1);
   });

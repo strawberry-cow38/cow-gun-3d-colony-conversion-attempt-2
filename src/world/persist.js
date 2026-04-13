@@ -1,17 +1,17 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v5):
+ * Format (v6):
  * {
- *   version: 5,
+ *   version: 6,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[] },
  *   cows: [ {
  *     name, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
  *     inventory: { itemKind: string | null }
  *   } ],
- *   trees: [ { i, j, marked: boolean } ],
- *   items: [ { i, j, kind: string } ]
+ *   trees: [ { i, j, marked: boolean, progress: number } ],
+ *   items: [ { i, j, kind: string, count: number, capacity: number } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -21,6 +21,7 @@
  */
 
 import { tileToWorld } from './coords.js';
+import { maxStack } from './items.js';
 import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { TileGrid } from './tileGrid.js';
 
@@ -47,6 +48,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} i
  * @property {number} j
  * @property {string} kind
+ * @property {number} count
+ * @property {number} capacity
  */
 
 /**
@@ -98,6 +101,8 @@ export function serializeState(tileGrid, world) {
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
       kind: components.Item.kind,
+      count: components.Item.count,
+      capacity: components.Item.capacity,
     });
   }
   return {
@@ -197,8 +202,11 @@ export function hydrateItems(world, grid, state) {
   for (const it of items) {
     if (!grid.inBounds(it.i, it.j)) continue;
     const w = tileToWorld(it.i, it.j, grid.W, grid.H);
+    const cap = typeof it.capacity === 'number' ? it.capacity : maxStack(it.kind);
+    const count = typeof it.count === 'number' ? it.count : 1;
+    if (count <= 0) continue;
     world.spawn({
-      Item: { kind: it.kind },
+      Item: { kind: it.kind, count, capacity: cap },
       ItemViz: {},
       TileAnchor: { i: it.i, j: it.j },
       Position: { x: w.x, y: grid.getElevation(it.i, it.j), z: w.z },

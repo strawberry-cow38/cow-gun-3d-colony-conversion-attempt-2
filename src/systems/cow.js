@@ -1,26 +1,28 @@
 /**
  * Cow brain + path-follow + hunger systems.
  *
- * Brain (every tick): if Job.kind === 'none', try to claim a job off the board
- * (chop for now); otherwise synthesize a Wander goal. Runs the active job's
- * state machine.
+ * Brain (every tick): if hungry and idle, self-assign an Eat job. Otherwise try
+ * to claim a chop/haul job off the board; else synthesize a Wander goal.
  *
  * PathFollow (every tick): for any cow with a Path, point Velocity toward the
  * world position of the next path step. When close enough, advance the index.
  * When the path is exhausted, zero velocity (the brain's job-state will notice).
  *
  * Hunger (rare tier): drain Hunger.value at a rate of 1 / (one-day-in-ticks).
- * Cosmetic in Phase 3 — Phase 4 will wire it into the Eat job.
+ * When it drops below HUNGER_EAT_THRESHOLD the brain interrupts wander/idle
+ * with an Eat job that walks to the nearest food stack and consumes one unit.
  */
 
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
+import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, maxStack } from '../world/items.js';
 
 const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
+const EAT_TICKS = 18;
 
 /**
  * @typedef PathDeps
@@ -60,17 +62,33 @@ export function makeCowBrainSystem(deps) {
         'Job',
         'Path',
         'Inventory',
+        'Hunger',
       ])) {
         const job = components.Job;
         const path = components.Path;
         const pos = components.Position;
         const inv = components.Inventory;
+        const hunger = components.Hunger;
 
         // Dropped out of haul unexpectedly while carrying? Drop the item on
         // the ground where we stand so it re-enters the haul pool.
         if (inv.itemKind !== null && job.kind !== 'haul') {
           dropCarriedItem(world, grid, inv, pos);
           deps.onItemChange();
+        }
+
+        // Hungry + idle? Self-assign an eat job so the cow walks to the nearest
+        // food stack instead of wandering while starving.
+        if ((job.kind === 'wander' || job.kind === 'none') && hunger.value < HUNGER_EAT_THRESHOLD) {
+          const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+          const food = findNearestFood(world, near);
+          if (food) {
+            job.kind = 'eat';
+            job.state = 'pathing-to-food';
+            job.payload = { itemId: food.id, i: food.i, j: food.j };
+            path.steps = [];
+            path.index = 0;
+          }
         }
 
         // Preempt a wander when work appears — without this a cow that already
@@ -120,6 +138,11 @@ export function makeCowBrainSystem(deps) {
 
         if (job.kind === 'haul') {
           runHaulJob(world, id, job, path, pos, inv, grid, paths, board, deps);
+          continue;
+        }
+
+        if (job.kind === 'eat') {
+          runEatJob(world, job, path, pos, hunger, grid, paths, deps);
           continue;
         }
 
@@ -332,7 +355,7 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
       const item = world.get(itemId, 'Item');
-      if (!item) {
+      if (!item || item.count <= 0) {
         board.complete(jobId);
         job.kind = 'none';
         job.state = 'idle';
@@ -340,7 +363,8 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
         return;
       }
       inv.itemKind = item.kind;
-      world.despawn(itemId);
+      item.count -= 1;
+      if (item.count <= 0) world.despawn(itemId);
       deps.onItemChange();
       job.state = 'pathing-to-drop';
     }
@@ -383,13 +407,7 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
       // If another code path already cleared the inventory (e.g. emergency
       // drop), skip spawning a phantom item.
       if (inv.itemKind !== null) {
-        const w = tileToWorld(toI, toJ, grid.W, grid.H);
-        world.spawn({
-          Item: { kind: inv.itemKind },
-          ItemViz: {},
-          TileAnchor: { i: toI, j: toJ },
-          Position: { x: w.x, y: grid.getElevation(toI, toJ), z: w.z },
-        });
+        addItemToTile(world, grid, inv.itemKind, toI, toJ);
         inv.itemKind = null;
         deps.onItemChange();
       }
@@ -399,6 +417,124 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
       job.payload = {};
     }
   }
+}
+
+/**
+ * State machine for the self-assigned eat job: walk to food → consume one unit
+ * → restore hunger. Bails if the food vanishes mid-trip.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {{ value: number }} hunger
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {BrainDeps} deps
+ */
+function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
+  const { itemId } = /** @type {{ itemId: number }} */ (job.payload);
+
+  if (job.state === 'pathing-to-food') {
+    const item = world.get(itemId, 'Item');
+    const anchor = world.get(itemId, 'TileAnchor');
+    if (!item || !anchor || item.count <= 0 || item.kind !== 'food') {
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i: anchor.i, j: anchor.j });
+    if (!route || route.length === 0) {
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking-to-food';
+    job.payload = { itemId, i: anchor.i, j: anchor.j };
+    return;
+  }
+
+  if (job.state === 'walking-to-food') {
+    if (path.index >= path.steps.length) {
+      job.state = 'eating';
+      job.payload.ticksRemaining = EAT_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'eating') {
+    const remaining = (job.payload.ticksRemaining ?? EAT_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    if (remaining <= 0) {
+      const item = world.get(itemId, 'Item');
+      if (item && item.kind === 'food' && item.count > 0) {
+        item.count -= 1;
+        hunger.value = Math.min(1, hunger.value + FOOD_NUTRITION);
+        if (item.count <= 0) world.despawn(itemId);
+        deps.onItemChange();
+      }
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * Nearest food item (Chebyshev) with at least one unit left. Cheap enough at
+ * colony scale since there are rarely many food stacks.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ i: number, j: number }} near
+ */
+function findNearestFood(world, near) {
+  let best = null;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
+    if (components.Item.kind !== 'food' || components.Item.count <= 0) continue;
+    const a = components.TileAnchor;
+    const d = Math.max(Math.abs(a.i - near.i), Math.abs(a.j - near.j));
+    if (d < bestD) {
+      bestD = d;
+      best = { id, i: a.i, j: a.j };
+    }
+  }
+  return best;
+}
+
+/**
+ * Drop one unit of `kind` on tile (i, j), merging into an existing same-kind
+ * stack with room if one is there, else spawning a fresh stack with count=1.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {string} kind
+ * @param {number} i @param {number} j
+ */
+function addItemToTile(world, grid, kind, i, j) {
+  const cap = maxStack(kind);
+  for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    const it = components.Item;
+    if (a.i === i && a.j === j && it.kind === kind && it.count < cap) {
+      it.count += 1;
+      return;
+    }
+  }
+  const w = tileToWorld(i, j, grid.W, grid.H);
+  world.spawn({
+    Item: { kind, count: 1, capacity: cap },
+    ItemViz: {},
+    TileAnchor: { i, j },
+    Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
+  });
 }
 
 /**
@@ -413,13 +549,7 @@ function runHaulJob(world, cowId, job, path, pos, inv, grid, paths, board, deps)
 function dropCarriedItem(world, grid, inv, pos) {
   if (inv.itemKind === null) return;
   const { i, j } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-  const w = tileToWorld(i, j, grid.W, grid.H);
-  world.spawn({
-    Item: { kind: inv.itemKind },
-    ItemViz: {},
-    TileAnchor: { i, j },
-    Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
-  });
+  addItemToTile(world, grid, inv.itemKind, i, j);
   inv.itemKind = null;
 }
 
@@ -436,13 +566,7 @@ function finishChop(world, grid, treeId, jobId, board) {
   const anchor = world.get(treeId, 'TileAnchor');
   if (anchor) {
     grid.unblockTile(anchor.i, anchor.j);
-    const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-    world.spawn({
-      Item: { kind: 'wood' },
-      ItemViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
-      Position: { x: w.x, y: grid.getElevation(anchor.i, anchor.j), z: w.z },
-    });
+    addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   }
   world.despawn(treeId);
   board.complete(jobId);

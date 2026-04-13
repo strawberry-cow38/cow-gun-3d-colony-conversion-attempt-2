@@ -8,15 +8,14 @@
 
 import * as THREE from 'three';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { KIND_COLOR } from '../world/items.js';
 
 const ITEM_SIZE = 0.35 * UNITS_PER_METER;
+const MIN_HEIGHT_FRAC = 0.3;
 
-/** @type {Record<string, THREE.Color>} */
-const KIND_COLORS = {
-  wood: new THREE.Color(0x8a5a2e),
-  stone: new THREE.Color(0x8a8a92),
-  food: new THREE.Color(0xd64a4a),
-};
+const KIND_COLORS = /** @type {Record<string, THREE.Color>} */ (
+  Object.fromEntries(Object.entries(KIND_COLOR).map(([k, hex]) => [k, new THREE.Color(hex)]))
+);
 const FALLBACK_COLOR = new THREE.Color(0xffffff);
 
 const _matrix = new THREE.Matrix4();
@@ -49,12 +48,15 @@ export function createItemInstancer(scene, capacity = 1024) {
     for (const { components } of world.query(['Item', 'TileAnchor', 'ItemViz'])) {
       if (i >= capacity) break;
       const a = components.TileAnchor;
+      const item = components.Item;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j);
+      const frac = Math.min(1, item.count / Math.max(1, item.capacity));
+      _scale.set(1, MIN_HEIGHT_FRAC + (1 - MIN_HEIGHT_FRAC) * frac, 1);
       _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(i, _matrix);
-      mesh.setColorAt(i, KIND_COLORS[components.Item.kind] ?? FALLBACK_COLOR);
+      mesh.setColorAt(i, KIND_COLORS[item.kind] ?? FALLBACK_COLOR);
       i++;
     }
     mesh.count = i;
