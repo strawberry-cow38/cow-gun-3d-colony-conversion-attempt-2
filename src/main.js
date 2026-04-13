@@ -11,6 +11,7 @@ import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { makeHaulPostingSystem } from './jobs/haul.js';
 import { ChopDesignator } from './render/chopDesignator.js';
+import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
 import { CowSelector } from './render/cowSelector.js';
@@ -35,6 +36,7 @@ import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from '.
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { DEFAULT_GRID_H, DEFAULT_GRID_W, tileToWorld } from './world/coords.js';
+import { pickCowName } from './world/cowNames.js';
 import { ITEM_KINDS, maxStack } from './world/items.js';
 import {
   gunzipBytes,
@@ -119,8 +121,6 @@ scheduler.add(applyVelocity);
 scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
-
-let cowsSpawned = 0;
 
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialTrees(world, tileGrid, treeCount);
@@ -229,10 +229,12 @@ const stockpileDesignator = new StockpileDesignator(
 stockpileDesignatorRef = stockpileDesignator;
 
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
+const cowCamOverlay = createCowCamOverlay();
 
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
+let debugEnabled = true;
 let renderFrameCount = 0;
 let renderFpsSampleStart = performance.now();
 let measuredFps = 0;
@@ -249,6 +251,7 @@ const loop = new SimLoop({
     lastRenderClock = now;
     if (fpCamera.active) fpCamera.update(rdt);
     else rts.update(rdt);
+    cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
     cowInstancer.update(world, alpha, tSec, tileGrid);
@@ -278,14 +281,13 @@ function spawnCowAt(i, j) {
   if (!placed) return;
   const w = tileToWorld(placed.i, placed.j, gridW, gridH);
   const y = tileGrid.getElevation(placed.i, placed.j);
-  cowsSpawned += 1;
   world.spawn({
     Cow: {},
     Position: { x: w.x, y, z: w.z },
     PrevPosition: { x: w.x, y, z: w.z },
     Velocity: { x: 0, y: 0, z: 0 },
     Hunger: { value: 1 },
-    Brain: { name: `cow#${cowsSpawned}` },
+    Brain: { name: pickCowName() },
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },
     Inventory: { itemKind: null },
@@ -360,6 +362,11 @@ function spawnInitialCows(count) {
 }
 
 function updateHud() {
+  if (!debugEnabled) {
+    hud.style.display = 'none';
+    return;
+  }
+  hud.style.display = '';
   let cowLines = ['', 'click a cow to inspect'];
   const selCount = selectedCows.size;
   if (selCount > 0 && primaryCow !== null) {
@@ -422,15 +429,21 @@ function updateHud() {
   lines.push(
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-    'C = chop designate,  B = stockpile designate,  N = spawn cow at last clicked tile',
-    'G = drop stone,  F = drop food (at last clicked tile)',
+    'C = chop designate,  B = stockpile designate',
     'H = first-person (needs cow selected),  Q/E = cycle cow,  R = take over / release',
+    'P = toggle debug menu  (also disables the debug-only keys below)',
+    'N = spawn cow,  G = drop stone,  F = drop food  (at last clicked tile)',
     'K = save, L = load',
   );
   hud.innerText = lines.join('\n');
 }
 
 addEventListener('keydown', async (e) => {
+  if (e.code === 'KeyP') {
+    debugEnabled = !debugEnabled;
+    updateHud();
+    return;
+  }
   // First-person: H toggles spectate on/off, Q/E cycle, R toggles takeover.
   if (e.code === 'KeyH') {
     if (fpCamera.active) {
@@ -449,6 +462,7 @@ addEventListener('keydown', async (e) => {
     else fpCamera.takeControl();
     return;
   }
+  if (!debugEnabled) return;
   if (e.code === 'KeyN') {
     const tile = lastPick ?? { i: Math.floor(gridW / 2), j: Math.floor(gridH / 2) };
     spawnCowAt(tile.i, tile.j);
