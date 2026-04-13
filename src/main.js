@@ -421,6 +421,10 @@ function toggleDraft(cowIds) {
     if (!c) continue;
     const becomingDrafted = target === true && c.drafted !== true;
     c.drafted = target;
+    // Either direction wakes the brain so it notices the flip next tick —
+    // drafted-becoming runs the cleanup branch, released cows re-evaluate.
+    const brain = world.get(id, 'Brain');
+    if (brain) brain.jobDirty = true;
     if (becomingDrafted) {
       // Stop visually this frame: clear the path so cowFollowPath can't give
       // them fresh velocity, and zero the current velocity so the next

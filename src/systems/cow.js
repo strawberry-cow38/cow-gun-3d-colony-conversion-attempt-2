@@ -75,6 +75,7 @@ export function makeCowBrainSystem(deps) {
         'Path',
         'Inventory',
         'Hunger',
+        'Brain',
       ])) {
         const cow = components.Cow;
         const job = components.Job;
@@ -82,6 +83,7 @@ export function makeCowBrainSystem(deps) {
         const pos = components.Position;
         const inv = components.Inventory;
         const hunger = components.Hunger;
+        const brain = components.Brain;
 
         // Drafted cows opt out of all autonomous behavior — they just wait
         // for explicit player orders (RMB 'move' job, or FP direct drive).
@@ -130,76 +132,83 @@ export function makeCowBrainSystem(deps) {
           deps.onItemChange();
         }
 
-        // Hungry + idle? Self-assign an eat job so the cow walks to the nearest
-        // food stack instead of wandering while starving.
-        if ((job.kind === 'wander' || job.kind === 'none') && hunger.value < HUNGER_EAT_THRESHOLD) {
-          const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-          const food = findNearestFood(world, near);
-          if (food) {
-            job.kind = 'eat';
-            job.state = 'pathing-to-food';
-            job.payload = { itemId: food.id, i: food.i, j: food.j };
-            path.steps = [];
-            path.index = 0;
+        // Dirty gate: skip the expensive decide block unless something that
+        // could change this cow's plan has happened — job finished, hunger
+        // dropped, or the job board has new/released work since we last looked.
+        const needsDecide =
+          brain.jobDirty || brain.vitalsDirty || brain.lastBoardVersion !== board.version;
+
+        if (needsDecide) {
+          if (job.kind === 'wander' || job.kind === 'none') {
+            // Hungry + idle? Self-assign an eat job so the cow walks to the
+            // nearest food stack instead of wandering while starving.
+            if (hunger.value < HUNGER_EAT_THRESHOLD) {
+              const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+              const food = findNearestFood(world, near);
+              if (food) {
+                job.kind = 'eat';
+                job.state = 'pathing-to-food';
+                job.payload = { itemId: food.id, i: food.i, j: food.j };
+                path.steps = [];
+                path.index = 0;
+              }
+            }
+
+            // Preempt a wander when work appears — without this a cow that
+            // already rolled into wander never re-checks the board and would
+            // ignore freshly designated trees / dropped items.
+            if (job.kind === 'wander' || job.kind === 'none') {
+              const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+              const candidate = board.findUnclaimed(near);
+              if (candidate && candidate.kind === 'chop' && board.claim(candidate.id, id)) {
+                job.kind = 'chop';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  treeId: candidate.payload.treeId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
+              } else if (candidate && candidate.kind === 'haul' && board.claim(candidate.id, id)) {
+                job.kind = 'haul';
+                job.state = 'pathing-to-item';
+                job.payload = {
+                  jobId: candidate.id,
+                  itemId: candidate.payload.itemId,
+                  fromI: candidate.payload.fromI,
+                  fromJ: candidate.payload.fromJ,
+                  toI: candidate.payload.toI,
+                  toJ: candidate.payload.toJ,
+                };
+                path.steps = [];
+                path.index = 0;
+              }
+            }
+
+            if (job.kind === 'none') {
+              // No work claimed above → fall back to wander.
+              job.kind = 'wander';
+              job.state = 'planning';
+              job.payload = {};
+            }
           }
+
+          brain.jobDirty = false;
+          brain.vitalsDirty = false;
+          brain.lastBoardVersion = board.version;
         }
 
-        // Preempt a wander when work appears — without this a cow that already
-        // rolled into wander never re-checks the board and would ignore freshly
-        // designated trees / dropped items.
-        if (job.kind === 'wander' || job.kind === 'none') {
-          const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-          const candidate = board.findUnclaimed(near);
-          if (candidate && candidate.kind === 'chop' && board.claim(candidate.id, id)) {
-            job.kind = 'chop';
-            job.state = 'pathing';
-            job.payload = {
-              jobId: candidate.id,
-              treeId: candidate.payload.treeId,
-              i: candidate.payload.i,
-              j: candidate.payload.j,
-            };
-            path.steps = [];
-            path.index = 0;
-          } else if (candidate && candidate.kind === 'haul' && board.claim(candidate.id, id)) {
-            job.kind = 'haul';
-            job.state = 'pathing-to-item';
-            job.payload = {
-              jobId: candidate.id,
-              itemId: candidate.payload.itemId,
-              fromI: candidate.payload.fromI,
-              fromJ: candidate.payload.fromJ,
-              toI: candidate.payload.toI,
-              toJ: candidate.payload.toJ,
-            };
-            path.steps = [];
-            path.index = 0;
-          }
-        }
-
-        if (job.kind === 'none') {
-          // No work claimed above → fall back to wander.
-          job.kind = 'wander';
-          job.state = 'planning';
-          job.payload = {};
-        }
+        const kindBefore = job.kind;
 
         if (job.kind === 'chop') {
           runChopJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
-          continue;
-        }
-
-        if (job.kind === 'haul') {
+        } else if (job.kind === 'haul') {
           runHaulJob(world, id, job, path, pos, inv, grid, paths, board, deps);
-          continue;
-        }
-
-        if (job.kind === 'eat') {
+        } else if (job.kind === 'eat') {
           runEatJob(world, job, path, pos, hunger, grid, paths, deps);
-          continue;
-        }
-
-        if (job.kind === 'move') {
+        } else if (job.kind === 'move') {
           // Player-issued move. Pop any waypoint boundary we've passed so the
           // selection viz stops drawing markers for already-reached steps.
           const waypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
@@ -214,29 +223,26 @@ export function makeCowBrainSystem(deps) {
             job.state = 'idle';
             job.payload = {};
           }
-          continue;
-        }
-
-        if (job.kind === 'wander') {
+        } else if (job.kind === 'wander') {
           if (job.state === 'planning') {
             const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
             const goal = pickRandomWalkable(grid, walkable, { i: si, j: sj });
             if (!goal) {
               job.state = 'idle';
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
-              continue;
+            } else {
+              // Wander goals are randomized — caching them just churns the LRU.
+              const route = paths.find({ i: si, j: sj }, goal, { cache: false });
+              if (!route || route.length === 0) {
+                job.state = 'idle';
+                job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
+              } else {
+                path.steps = route;
+                path.index = 0;
+                job.state = 'moving';
+                job.payload = { goal };
+              }
             }
-            // Wander goals are randomized — caching them just churns the LRU.
-            const route = paths.find({ i: si, j: sj }, goal, { cache: false });
-            if (!route || route.length === 0) {
-              job.state = 'idle';
-              job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
-              continue;
-            }
-            path.steps = route;
-            path.index = 0;
-            job.state = 'moving';
-            job.payload = { goal };
           } else if (job.state === 'moving') {
             if (path.index >= path.steps.length) {
               job.state = 'idle';
@@ -248,6 +254,12 @@ export function makeCowBrainSystem(deps) {
             const until = job.payload.untilTick ?? 0;
             if (ctx.tick >= until) job.state = 'planning';
           }
+        }
+
+        // State machine completed → mark the brain dirty so next tick picks
+        // fresh work instead of waiting for an external bump.
+        if (kindBefore !== 'none' && job.kind === 'none') {
+          brain.jobDirty = true;
         }
       }
     },
@@ -732,9 +744,15 @@ export function makeHungerSystem() {
     tier: 'rare',
     run(world) {
       const drain = HUNGER_DRAIN_PER_TICK * 8;
-      for (const { components } of world.query(['Hunger'])) {
+      for (const { components } of world.query(['Hunger', 'Brain'])) {
         const h = components.Hunger;
-        h.value = Math.max(0, h.value - drain);
+        const before = h.value;
+        h.value = Math.max(0, before - drain);
+        // Wake the brain when the cow is (or just became) hungry enough to
+        // want food. The gate in cowBrain stays closed otherwise.
+        if (h.value < HUNGER_EAT_THRESHOLD) {
+          components.Brain.vitalsDirty = true;
+        }
       }
     },
   };

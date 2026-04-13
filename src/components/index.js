@@ -7,7 +7,14 @@
  *                                    wait for player orders (RMB paths, FP
  *                                    takeover). CowViz is just the render tag.
  * Hunger      { value: 0..1 }        drains slowly; 1 = full, 0 = starving
- * Brain       { name: string }       identity for now; mood/traits later
+ * Brain       { name, jobDirty, vitalsDirty, lastBoardVersion }
+ *                                    Dirty flags gate the expensive decide-what-
+ *                                    to-do block in the brain loop. jobDirty is
+ *                                    raised on draft toggle and job completion;
+ *                                    vitalsDirty on hunger drain; lastBoardVersion
+ *                                    compared against JobBoard.version so a new
+ *                                    posting wakes idle cows. Default true on
+ *                                    spawn/hydrate so fresh cows evaluate once.
  * Job         { kind, state, payload } kind='none' = idle
  * Path        { steps, index }       current path; index >= steps.length = arrived
  *
@@ -32,7 +39,12 @@ export function registerComponents(world) {
   world.defineComponent('StressViz', () => ({}));
   world.defineComponent('Cow', () => ({ drafted: false }));
   world.defineComponent('Hunger', () => ({ value: 1 }));
-  world.defineComponent('Brain', () => ({ name: 'cow' }));
+  world.defineComponent('Brain', () => ({
+    name: 'cow',
+    jobDirty: true,
+    vitalsDirty: true,
+    lastBoardVersion: -1,
+  }));
   world.defineComponent('Job', () => ({
     kind: 'none',
     state: 'idle',

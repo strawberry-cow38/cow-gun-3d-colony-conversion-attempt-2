@@ -25,6 +25,10 @@ export class JobBoard {
   constructor() {
     /** @type {Job[]} */
     this.jobs = [];
+    // Bumped whenever the open-job pool changes in a way that might wake an
+    // idle cow (post, release). Brains cache lastBoardVersion and skip the
+    // board scan if it hasn't moved.
+    this.version = 0;
   }
 
   /**
@@ -35,6 +39,7 @@ export class JobBoard {
   post(kind, payload = {}) {
     const job = { id: _nextId++, kind, payload, claimedBy: null, completed: false };
     this.jobs.push(job);
+    this.version++;
     return job;
   }
 
@@ -76,6 +81,7 @@ export class JobBoard {
     const job = this.jobs.find((j) => j.id === jobId);
     if (!job) return;
     job.claimedBy = null;
+    this.version++;
   }
 
   /** @param {number} jobId */
