@@ -89,6 +89,9 @@ export class JobBoard {
     const job = this.jobs.find((j) => j.id === jobId);
     if (!job) return;
     job.completed = true;
+    // Bump so cows whose job got cancelled out from under them (e.g. chop
+    // unmark) don't keep walking toward a dead target for another tick.
+    this.version++;
   }
 
   /** Remove all completed jobs. Run periodically to keep the queue small. */

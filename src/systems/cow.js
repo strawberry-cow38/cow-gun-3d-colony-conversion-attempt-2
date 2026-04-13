@@ -61,11 +61,13 @@ export function makeCowBrainSystem(deps) {
     run(world, ctx) {
       // Release claims held by cows that no longer consider the job theirs
       // (e.g. the player reassigned the cow to a move via RMB mid-chop).
+      // Goes through board.release() so version bumps and other idle cows
+      // get a chance to pick up the freshly-freed job.
       for (const j of board.jobs) {
         if (j.claimedBy === null || j.completed) continue;
         const cowJob = world.get(j.claimedBy, 'Job');
         if (!cowJob || cowJob.kind !== j.kind || cowJob.payload.jobId !== j.id) {
-          j.claimedBy = null;
+          board.release(j.id);
         }
       }
       for (const { id, components } of world.query([
@@ -284,9 +286,13 @@ export function makeCowBrainSystem(deps) {
 function runChopJob(world, cowId, job, path, pos, grid, paths, walkable, board, ctx, deps) {
   const { treeId, jobId } = /** @type {{ treeId: number, jobId: number }} */ (job.payload);
 
-  // Tree went away (despawned by us earlier, or by external action) → bail.
-  if (!world.get(treeId, 'Tree')) {
-    board.release(jobId);
+  // Tree went away, OR the board job was cancelled (player unmarked the tree
+  // mid-chop) / completed externally → bail so we don't fell an unmarked tree.
+  const boardJob = board.jobs.find((j) => j.id === jobId);
+  if (!world.get(treeId, 'Tree') || !boardJob || boardJob.completed) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    const tree = world.get(treeId, 'Tree');
+    if (tree) tree.progress = 0;
     job.kind = 'none';
     job.state = 'idle';
     job.payload = {};
@@ -535,16 +541,23 @@ function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
   }
 
   if (job.state === 'eating') {
+    // Re-check at the start of each eating tick — if the food got hauled away
+    // or eaten by someone else, bail immediately instead of burning the full
+    // EAT_TICKS countdown with nothing to consume.
+    const item = world.get(itemId, 'Item');
+    if (!item || item.kind !== 'food' || item.count <= 0) {
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
     const remaining = (job.payload.ticksRemaining ?? EAT_TICKS) - 1;
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
-      const item = world.get(itemId, 'Item');
-      if (item && item.kind === 'food' && item.count > 0) {
-        item.count -= 1;
-        hunger.value = Math.min(1, hunger.value + FOOD_NUTRITION);
-        if (item.count <= 0) world.despawn(itemId);
-        deps.onItemChange();
-      }
+      item.count -= 1;
+      hunger.value = Math.min(1, hunger.value + FOOD_NUTRITION);
+      if (item.count <= 0) world.despawn(itemId);
+      deps.onItemChange();
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -684,6 +697,12 @@ export function makeCowFollowPathSystem(deps) {
         if (distSq < ARRIVE_DIST_SQ) {
           path.index++;
           pos.y = targetY;
+          // If that was the final step, zero velocity this tick instead of
+          // carrying the previous tick's vel one more step past the goal.
+          if (path.index >= path.steps.length) {
+            vel.x = 0;
+            vel.z = 0;
+          }
           continue;
         }
 

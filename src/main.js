@@ -176,36 +176,51 @@ new SelectionBox(canvas, camera, world, (ids, additive) => {
   updateHud();
 });
 
-new CowSelector(canvas, camera, cowInstancer, tileMesh, world, (id, additive) => {
-  if (id === null) {
-    // Empty-space click: plain clears, shift preserves the current set.
-    if (!additive) {
-      selectedCows.clear();
-      primaryCow = null;
-    }
-  } else if (additive) {
-    if (selectedCows.has(id)) {
-      selectedCows.delete(id);
-      if (primaryCow === id) {
-        primaryCow =
-          selectedCows.size > 0 ? /** @type {number} */ (selectedCows.values().next().value) : null;
+new CowSelector(
+  canvas,
+  camera,
+  cowInstancer,
+  () => tileMesh,
+  world,
+  (id, additive) => {
+    if (id === null) {
+      // Empty-space click: plain clears, shift preserves the current set.
+      if (!additive) {
+        selectedCows.clear();
+        primaryCow = null;
+      }
+    } else if (additive) {
+      if (selectedCows.has(id)) {
+        selectedCows.delete(id);
+        if (primaryCow === id) {
+          primaryCow =
+            selectedCows.size > 0
+              ? /** @type {number} */ (selectedCows.values().next().value)
+              : null;
+        }
+      } else {
+        selectedCows.add(id);
+        primaryCow = id;
       }
     } else {
+      selectedCows.clear();
       selectedCows.add(id);
       primaryCow = id;
     }
-  } else {
-    selectedCows.clear();
-    selectedCows.add(id);
-    primaryCow = id;
-  }
-  updateHud();
-});
+    updateHud();
+  },
+);
 
 let lastPick = /** @type {{ i: number, j: number } | null} */ (null);
-new TilePicker(canvas, camera, tileMesh, { W: gridW, H: gridH }, (hit) => {
-  lastPick = hit;
-});
+new TilePicker(
+  canvas,
+  camera,
+  () => tileMesh,
+  { W: gridW, H: gridH },
+  (hit) => {
+    lastPick = hit;
+  },
+);
 
 new CowMoveCommand(
   canvas,

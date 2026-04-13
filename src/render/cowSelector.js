@@ -29,16 +29,17 @@ export class CowSelector {
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
    * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} instancer
-   * @param {THREE.Mesh} tileMesh
+   * @param {() => THREE.Mesh} getTileMesh  resolved per-click so Save/Load
+   *                                         mesh swaps don't strand a stale ref.
    * @param {import('../ecs/world.js').World} world
    * @param {(entityId: number | null, additive: boolean) => void} onSelect
    * @param {{ pickRadius?: number }} [opts]
    */
-  constructor(dom, camera, instancer, tileMesh, world, onSelect, opts = {}) {
+  constructor(dom, camera, instancer, getTileMesh, world, onSelect, opts = {}) {
     this.dom = dom;
     this.camera = camera;
     this.instancer = instancer;
-    this.tileMesh = tileMesh;
+    this.getTileMesh = getTileMesh;
     this.world = world;
     this.onSelect = onSelect;
     this.pickRadius = opts.pickRadius ?? TILE_SIZE * 1.5;
@@ -66,7 +67,7 @@ export class CowSelector {
     }
 
     // 2) fallback: pick nearest cow near the tile we clicked
-    const tileHit = this.raycaster.intersectObject(this.tileMesh, false);
+    const tileHit = this.raycaster.intersectObject(this.getTileMesh(), false);
     if (tileHit.length === 0) {
       this.onSelect(null, additive);
       return;
