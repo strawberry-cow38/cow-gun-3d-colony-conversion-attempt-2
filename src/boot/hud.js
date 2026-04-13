@@ -176,7 +176,7 @@ export function createHud(ctx) {
       'P = toggle debug menu  (also disables the debug-only keys below)',
       'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',
       'K = save, L = load',
-      'T = time +2h (Shift+T = -2h),  Y = cycle weather,  1/2/3 = sim speed',
+      'T = time +2h (Shift+T = -2h),  Y = cycle weather,  1/2/3/4 = sim speed (1/2/3/6x)',
     );
     hud.innerText = lines.join('\n');
   }

@@ -14,7 +14,7 @@
 export const SIM_HZ = 30;
 export const SIM_DT = 1 / SIM_HZ;
 const MAX_STEPS_PER_FRAME = 5;
-export const SPEED_STEPS = /** @type {const} */ ([1, 2, 3]);
+export const SPEED_STEPS = /** @type {const} */ ([1, 2, 3, 6]);
 
 /**
  * @typedef SimLoopOpts
@@ -37,7 +37,7 @@ export class SimLoop {
     this.measuredHz = 0;
     /** Steps per render frame, last frame. */
     this.lastSteps = 0;
-    /** Tick-rate multiplier. 1 = normal 30Hz, 2 = 60Hz, 3 = 90Hz. */
+    /** Tick-rate multiplier. 1 = normal 30Hz, 2 = 60Hz, 3 = 90Hz, 6 = 180Hz. */
     this.speed = 1;
     /** @type {number | null} */
     this.rafId = null;

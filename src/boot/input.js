@@ -27,6 +27,13 @@ import { toggleDraft } from './drafting.js';
 import { spawnCowAt } from './spawn.js';
 import { allCowIds, base64ToBytes, bytesToBase64, despawnAllComp } from './utils.js';
 
+const SPEED_KEYS = /** @type {Record<string, number>} */ ({
+  Digit1: 1,
+  Digit2: 2,
+  Digit3: 3,
+  Digit4: 6,
+});
+
 const PAN_KEYS = new Set([
   'KeyW',
   'KeyA',
@@ -187,12 +194,11 @@ async function handleKey(ctx, e) {
     return;
   }
 
-  // 1/2/3 set sim speed multiplier. Player-facing so it's NOT debug-gated.
-  // Keys map directly to multipliers; anything outside the allowed set is
-  // ignored so stray number presses don't crank the sim to unintended speeds.
-  if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
-    const mult = Number(e.code.slice(5));
-    ctx.loop.setSpeed(mult);
+  // 1/2/3/4 set sim speed multiplier. Player-facing so it's NOT debug-gated.
+  // 4 jumps to 6x (skipping 4x/5x) — the useful tier is "much faster" for
+  // long hauls, so a single big-step key beats filling every integer slot.
+  if (SPEED_KEYS[e.code] !== undefined) {
+    ctx.loop.setSpeed(SPEED_KEYS[e.code]);
     ctx.audio.play('cycle');
     ctx.updateHud();
     return;
