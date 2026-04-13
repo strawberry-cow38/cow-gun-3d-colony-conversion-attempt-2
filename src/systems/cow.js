@@ -15,6 +15,11 @@
 
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
+import {
+  HUNGER_CRITICAL_THRESHOLD,
+  HUNGER_PREEMPT_TIER,
+  tierFor,
+} from '../jobs/tiers.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
@@ -136,6 +141,29 @@ export function makeCowBrainSystem(deps) {
         if (inv.itemKind !== null && job.kind !== 'haul') {
           dropCarriedItem(world, grid, inv, pos);
           deps.onItemChange();
+        }
+
+        // Critical hunger preempts any non-urgent work. A cow hauling logs
+        // when it's starving drops what it's carrying and bails to eat; the
+        // next tick's decide block will self-assign an eat job. Jobs below
+        // HUNGER_PREEMPT_TIER (eat itself) are already urgent enough to let
+        // run to completion.
+        if (
+          hunger.value < HUNGER_CRITICAL_THRESHOLD &&
+          tierFor(job.kind) >= HUNGER_PREEMPT_TIER
+        ) {
+          if (job.payload?.jobId != null) board.release(job.payload.jobId);
+          if (inv.itemKind !== null) {
+            dropCarriedItem(world, grid, inv, pos);
+            deps.onItemChange();
+          }
+          job.kind = 'none';
+          job.state = 'idle';
+          job.payload = {};
+          path.steps = [];
+          path.index = 0;
+          brain.jobDirty = true;
+          brain.vitalsDirty = true;
         }
 
         // Dirty gate: skip the expensive decide block unless something that

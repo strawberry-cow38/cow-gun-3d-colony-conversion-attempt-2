@@ -5,9 +5,13 @@
  * unclaimed job each tick when a cow has nothing to do. Chop and haul jobs
  * post here; wander is synthesized by the brain when the board is empty.
  *
- * A job is { id, kind, payload, claimedBy, completed }. `payload` is opaque to
- * the board; the job's tick handler interprets it.
+ * A job is { id, kind, tier, payload, claimedBy, completed }. `tier` is
+ * derived from `kind` at post time (see src/jobs/tiers.js) and drives the
+ * priority ordering in findUnclaimed — lower tier beats higher regardless of
+ * distance. `payload` is opaque to the board.
  */
+
+import { tierFor } from './tiers.js';
 
 let _nextId = 1;
 
@@ -15,6 +19,7 @@ let _nextId = 1;
  * @typedef Job
  * @property {number} id
  * @property {string} kind
+ * @property {number} tier
  * @property {Record<string, any>} payload
  * @property {number | null} claimedBy
  * @property {boolean} completed
@@ -36,19 +41,29 @@ export class JobBoard {
    * @returns {Job}
    */
   post(kind, payload = {}) {
-    const job = { id: _nextId++, kind, payload, claimedBy: null, completed: false };
+    const job = {
+      id: _nextId++,
+      kind,
+      tier: tierFor(kind),
+      payload,
+      claimedBy: null,
+      completed: false,
+    };
     this.jobs.push(job);
     this.version++;
     return job;
   }
 
   /**
-   * Find an unclaimed job of any kind. Optional priority: nearest by Chebyshev
-   * tile distance to (i, j) when both job and `near` are tile-anchored.
+   * Find an unclaimed job. Ordering: lowest tier (most urgent) first, then
+   * nearest by Chebyshev tile distance within the same tier. A tier-2 chop at
+   * the far edge of the map still beats a tier-3 haul next door — urgency is
+   * the primary axis.
    * @param {{ i: number, j: number }} [near]
    */
   findUnclaimed(near) {
     let best = null;
+    let bestTier = Number.POSITIVE_INFINITY;
     let bestD = Number.POSITIVE_INFINITY;
     for (const job of this.jobs) {
       if (job.claimedBy !== null || job.completed) continue;
@@ -56,7 +71,8 @@ export class JobBoard {
       if (near && job.payload.i !== undefined && job.payload.j !== undefined) {
         d = Math.max(Math.abs(job.payload.i - near.i), Math.abs(job.payload.j - near.j));
       }
-      if (d < bestD) {
+      if (job.tier < bestTier || (job.tier === bestTier && d < bestD)) {
+        bestTier = job.tier;
         bestD = d;
         best = job;
       }

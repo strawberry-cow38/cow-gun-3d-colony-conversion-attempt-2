@@ -33,6 +33,21 @@ describe('JobBoard', () => {
     expect(found).toBe(near);
   });
 
+  it('findUnclaimed picks lower tier first even when farther', () => {
+    const b = new JobBoard();
+    // haul (tier 3) is right next to us
+    b.post('haul', { fromI: 5, fromJ: 5, toI: 6, toJ: 6, i: 5, j: 5 });
+    // chop (tier 2) is across the map but more urgent
+    const chop = b.post('chop', { treeId: 1, i: 30, j: 30 });
+    expect(b.findUnclaimed({ i: 5, j: 5 })).toBe(chop);
+  });
+
+  it('post stamps tier from the kind', () => {
+    const b = new JobBoard();
+    expect(b.post('chop').tier).toBe(2);
+    expect(b.post('haul').tier).toBe(3);
+  });
+
   it('skips claimed and completed jobs', () => {
     const b = new JobBoard();
     const claimed = b.post('chop', { i: 0, j: 0 });
