@@ -5,11 +5,10 @@
  * (default 10).
  */
 
-import { countDrafted } from './boot/drafting.js';
+import { createHud } from './boot/hud.js';
 import { installKeyboard } from './boot/input.js';
 import { readBootParams } from './boot/params.js';
 import { spawnInitialCows } from './boot/spawn.js';
-import { countComp } from './boot/utils.js';
 import { registerComponents } from './components/index.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
@@ -42,15 +41,7 @@ import { spawnStressEntities, stressBounce } from './stress.js';
 import { makeCowBrainSystem, makeCowFollowPathSystem, makeHungerSystem } from './systems/cow.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
-import { ITEM_KINDS } from './world/items.js';
-import { BIOME, TileGrid } from './world/tileGrid.js';
-
-const BIOME_NAMES = /** @type {Record<number, string>} */ ({
-  [BIOME.GRASS]: 'grass',
-  [BIOME.DIRT]: 'dirt',
-  [BIOME.STONE]: 'stone',
-  [BIOME.SAND]: 'sand',
-});
+import { TileGrid } from './world/tileGrid.js';
 
 const { stressCount, cowCount, treeCount, gridW, gridH } = readBootParams();
 
@@ -142,6 +133,15 @@ const state = {
   tileMesh: buildTileMesh(tileGrid),
 };
 scene.add(state.tileMesh);
+
+// hudApi is populated below once all the refs (designators, fpCamera) exist,
+// but selection callbacks, designator callbacks, and the render loop all
+// reference updateHud/pruneStaleSelections during construction. Bouncing
+// through wrappers keeps the declaration order simple.
+/** @type {import('./boot/hud.js').HudApi | null} */
+let hudApi = null;
+const updateHud = () => hudApi?.updateHud();
+const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
 
 // Marquee BEFORE CowSelector so its capture-phase handler swallows the post-drag click first.
 new SelectionBox(canvas, camera, world, (ids, additive) => {
@@ -306,130 +306,25 @@ const loop = new SimLoop({
   },
 });
 
-function updateHud() {
-  if (!state.debugEnabled) {
-    hud.style.display = 'none';
-    return;
-  }
-  hud.style.display = '';
-  let cowLines = ['', 'click a cow to inspect'];
-  const selCount = state.selectedCows.size;
-  if (selCount > 0 && state.primaryCow !== null) {
-    const brain = world.get(state.primaryCow, 'Brain');
-    const hunger = world.get(state.primaryCow, 'Hunger');
-    const job = world.get(state.primaryCow, 'Job');
-    const path = world.get(state.primaryCow, 'Path');
-    const pos = world.get(state.primaryCow, 'Position');
-    if (brain) {
-      const header =
-        selCount === 1
-          ? `selected: ${brain.name}`
-          : `selected: ${selCount} cows (primary: ${brain.name})`;
-      cowLines = [
-        '',
-        header,
-        `  pos: x=${pos.x.toFixed(1)} z=${pos.z.toFixed(1)}`,
-        `  hunger: ${(hunger.value * 100).toFixed(0)}%`,
-        `  job: ${job.kind} / ${job.state}`,
-        `  path: ${path.index}/${path.steps.length} steps`,
-      ];
-    } else {
-      cowLines = ['', 'selected cow despawned'];
-      state.selectedCows.delete(state.primaryCow);
-      state.primaryCow =
-        state.selectedCows.size > 0
-          ? /** @type {number} */ (state.selectedCows.values().next().value)
-          : null;
-    }
-  }
-  let pickStr = 'pick: (click a tile)';
-  if (state.lastPick && tileGrid.inBounds(state.lastPick.i, state.lastPick.j)) {
-    const elev = tileGrid.getElevation(state.lastPick.i, state.lastPick.j);
-    const biomeId = tileGrid.getBiome(state.lastPick.i, state.lastPick.j);
-    const biomeName = BIOME_NAMES[biomeId] ?? `biome#${biomeId}`;
-    const walk = defaultWalkable(tileGrid, state.lastPick.i, state.lastPick.j) ? 'yes' : 'no';
-    pickStr = `pick: i=${state.lastPick.i} j=${state.lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
-  }
-  const lines = [
-    'phase 4: trees + chop + stacks + eat',
-    `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
-    `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
-    `render: ${measuredFps.toFixed(0)} fps`,
-    `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
-    `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
-    pickStr,
-    ...cowLines,
-    '',
-  ];
-  if (chopDesignator.active) {
-    lines.push('** CHOP DESIGNATE — click trees to mark, C or Esc to exit **');
-  }
-  if (stockpileDesignator.active) {
-    lines.push('** STOCKPILE DESIGNATE — LMB drag = add, Shift+drag = remove, B or Esc to exit **');
-  }
-  if (fpCamera.active) {
-    const viewed = fpCamera.cowId;
-    const viewedCow = viewed !== null ? world.get(viewed, 'Cow') : null;
-    const drafted = viewedCow?.drafted === true;
-    const mode = drafted ? 'DRAFTED (WASD + mouse)' : 'SPECTATE';
-    lines.push(
-      `** FIRST-PERSON ${mode} — cow #${viewed} — Q/E cycle, R ${drafted ? 'release' : 'draft'}, H exit **`,
-    );
-  } else if (state.followEnabled && state.primaryCow !== null) {
-    lines.push(
-      `** FOLLOWING cow #${state.primaryCow} — click a cow to switch, Q/E cycle, F or WASD release **`,
-    );
-  } else if (state.followEnabled) {
-    lines.push('** FOLLOW MODE — click a cow to lock onto them (F to disable) **');
-  }
-  const draftedCount = countDrafted(world);
-  lines.push(
-    `drafted: ${draftedCount}`,
-    'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
-    'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-    'C = chop designate,  B = stockpile designate',
-    'F = toggle follow (tracks selected cow; Q/E cycle, WASD releases),  H = first-person',
-    'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
-    'P = toggle debug menu  (also disables the debug-only keys below)',
-    'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',
-    'K = save, L = load',
-  );
-  hud.innerText = lines.join('\n');
-}
-
-/**
- * Mirror the debug flag out to the world-space overlays. Kept as one place
- * so a future overlay just needs to add a line here instead of chasing the
- * flag through the keydown handler.
- */
-function applyDebugVisibility() {
-  cowNameTags.setVisible(state.debugEnabled);
-  itemLabels.setVisible(state.debugEnabled);
-  stockpileOverlay.setVisible(state.debugEnabled);
-  pickTileOverlay.setVisible(state.debugEnabled);
-}
-
-function itemCountsStr() {
-  const totals = /** @type {Record<string, number>} */ ({});
-  for (const k of ITEM_KINDS) totals[k] = 0;
-  for (const { components } of world.query(['Item'])) {
-    const k = components.Item.kind;
-    totals[k] = (totals[k] ?? 0) + components.Item.count;
-  }
-  return ITEM_KINDS.map((k) => `${k}=${totals[k]}`).join(' ');
-}
-
-function pruneStaleSelections() {
-  for (const id of state.selectedCows) {
-    if (!world.get(id, 'Position')) state.selectedCows.delete(id);
-  }
-  if (state.primaryCow !== null && !state.selectedCows.has(state.primaryCow)) {
-    state.primaryCow =
-      state.selectedCows.size > 0
-        ? /** @type {number} */ (state.selectedCows.values().next().value)
-        : null;
-  }
-}
+hudApi = createHud({
+  hud,
+  world,
+  tileGrid,
+  pathCache,
+  jobBoard,
+  gridW,
+  gridH,
+  loop,
+  state,
+  fpCamera,
+  chopDesignator,
+  stockpileDesignator,
+  cowNameTags,
+  itemLabels,
+  stockpileOverlay,
+  pickTileOverlay,
+  getFps: () => measuredFps,
+});
 
 installKeyboard({
   world,
@@ -446,9 +341,9 @@ installKeyboard({
   gridW,
   gridH,
   state,
-  applyDebugVisibility,
-  updateHud,
+  applyDebugVisibility: hudApi.applyDebugVisibility,
+  updateHud: hudApi.updateHud,
 });
 
 loop.start();
-updateHud();
+hudApi.updateHud();
