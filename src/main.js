@@ -58,6 +58,8 @@ scheduler.add(applyVelocity);
 scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 
+let cowsSpawned = 0;
+
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialCows(cowCount);
 
@@ -109,8 +111,6 @@ const loop = new SimLoop({
     }
   },
 });
-
-let cowsSpawned = 0;
 
 /** @param {number} i @param {number} j */
 function spawnCowAt(i, j) {
