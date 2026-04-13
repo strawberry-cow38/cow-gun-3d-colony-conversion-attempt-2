@@ -55,6 +55,7 @@ describe('cow save/load roundtrip', () => {
       Brain: { name: 'bessie' },
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
+      Inventory: { itemKind: null },
       CowViz: {},
     });
 

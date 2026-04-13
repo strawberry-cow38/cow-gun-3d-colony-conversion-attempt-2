@@ -1,13 +1,14 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v3):
+ * Format (v4):
  * {
- *   version: 3,
- *   tileGrid: { W, H, elevation: number[], biome: number[] },
+ *   version: 4,
+ *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[] },
  *   cows: [ {
  *     name, position: {x,y,z}, hunger: number,
- *     job: { kind, state, payload }, path: { steps, index }
+ *     job: { kind, state, payload }, path: { steps, index },
+ *     inventory: { itemKind: string | null }
  *   } ]
  * }
  *
@@ -27,6 +28,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} hunger
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
+ * @property {{ itemKind: string | null }} inventory
  */
 
 /**
@@ -36,7 +38,15 @@ import { TileGrid } from './tileGrid.js';
 export function serializeState(tileGrid, world) {
   /** @type {SerializedCow[]} */
   const cows = [];
-  for (const { components } of world.query(['Cow', 'Position', 'Hunger', 'Brain', 'Job', 'Path'])) {
+  for (const { components } of world.query([
+    'Cow',
+    'Position',
+    'Hunger',
+    'Brain',
+    'Job',
+    'Path',
+    'Inventory',
+  ])) {
     cows.push({
       name: components.Brain.name,
       position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
@@ -50,6 +60,7 @@ export function serializeState(tileGrid, world) {
         steps: components.Path.steps.map((s) => ({ i: s.i, j: s.j })),
         index: components.Path.index,
       },
+      inventory: { itemKind: components.Inventory.itemKind },
     });
   }
   return {
@@ -59,18 +70,20 @@ export function serializeState(tileGrid, world) {
       H: tileGrid.H,
       elevation: Array.from(tileGrid.elevation),
       biome: Array.from(tileGrid.biome),
+      stockpile: Array.from(tileGrid.stockpile),
     },
     cows,
   };
 }
 
 /**
- * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[] } }} state
+ * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[] } }} state
  */
 export function hydrateTileGrid(state) {
   const tg = new TileGrid(state.tileGrid.W, state.tileGrid.H);
   tg.elevation.set(state.tileGrid.elevation);
   tg.biome.set(state.tileGrid.biome);
+  if (state.tileGrid.stockpile) tg.stockpile.set(state.tileGrid.stockpile);
   return tg;
 }
 
@@ -87,6 +100,7 @@ export function hydrateCows(world, state) {
   for (const c of cows) {
     const job = c.job ?? { kind: 'none', state: 'idle', payload: {} };
     const path = c.path ?? { steps: [], index: 0 };
+    const inv = c.inventory ?? { itemKind: null };
     world.spawn({
       Cow: {},
       Position: { ...c.position },
@@ -96,6 +110,7 @@ export function hydrateCows(world, state) {
       Brain: { name: c.name },
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
+      Inventory: { itemKind: inv.itemKind ?? null },
       CowViz: {},
     });
   }

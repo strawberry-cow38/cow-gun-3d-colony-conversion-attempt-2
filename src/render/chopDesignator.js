@@ -46,6 +46,12 @@ export class ChopDesignator {
     }
   }
 
+  deactivate() {
+    if (!this.active) return;
+    this.active = false;
+    this.onStateChanged();
+  }
+
   /** @param {MouseEvent} e */
   #onClick(e) {
     if (!this.active || e.button !== 0) return;

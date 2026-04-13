@@ -9,6 +9,7 @@ import { registerComponents } from './components/index.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
+import { makeHaulPostingSystem } from './jobs/haul.js';
 import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowInstancer } from './render/cowInstancer.js';
 import { createCowNameTags } from './render/cowNameTags.js';
@@ -20,6 +21,8 @@ import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
 import { createSelectionViz } from './render/selectionViz.js';
+import { StockpileDesignator } from './render/stockpileDesignator.js';
+import { createStockpileOverlay } from './render/stockpileOverlay.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { createTreeInstancer } from './render/treeInstancer.js';
@@ -87,9 +90,10 @@ registerComponents(world);
 const pathCache = new PathCache(tileGrid, defaultWalkable);
 const jobBoard = new JobBoard();
 
-// Forward-declared so the brain's onChopComplete can poke the renderers once
-// they're constructed below.
+// Forward-declared so the brain can poke the renderers once they're
+// constructed below.
 let onWorldChopComplete = () => {};
+let onWorldItemChange = () => {};
 
 const scheduler = new Scheduler();
 scheduler.add(snapshotPositions);
@@ -100,6 +104,7 @@ scheduler.add(
     walkable: defaultWalkable,
     board: jobBoard,
     onChopComplete: () => onWorldChopComplete(),
+    onItemChange: () => onWorldItemChange(),
   }),
 );
 scheduler.add(
@@ -108,6 +113,7 @@ scheduler.add(
 scheduler.add(applyVelocity);
 scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
+scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
 
 let cowsSpawned = 0;
 
@@ -125,11 +131,15 @@ const cowNameTags = createCowNameTags(scene);
 const selectionViz = createSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
 const itemInstancer = createItemInstancer(scene, 1024);
+const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
 
 onWorldChopComplete = () => {
   treeInstancer.markDirty();
   itemInstancer.markDirty();
   pathCache.clear();
+};
+onWorldItemChange = () => {
+  itemInstancer.markDirty();
 };
 
 const selectedCows = /** @type {Set<number>} */ (new Set());
@@ -191,9 +201,26 @@ new CowMoveCommand(
   scene,
 );
 
-const chopDesignator = new ChopDesignator(canvas, camera, treeInstancer, world, jobBoard, () =>
-  updateHud(),
+/** @type {StockpileDesignator | null} */
+let stockpileDesignatorRef = null;
+const chopDesignator = new ChopDesignator(canvas, camera, treeInstancer, world, jobBoard, () => {
+  if (chopDesignator.active && stockpileDesignatorRef) stockpileDesignatorRef.deactivate();
+  updateHud();
+});
+
+const stockpileDesignator = new StockpileDesignator(
+  canvas,
+  camera,
+  () => tileMesh,
+  tileGrid,
+  stockpileOverlay,
+  scene,
+  () => {
+    if (stockpileDesignator.active) chopDesignator.deactivate();
+    updateHud();
+  },
 );
+stockpileDesignatorRef = stockpileDesignator;
 
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
@@ -220,6 +247,7 @@ const loop = new SimLoop({
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
+    stockpileOverlay.update(tileGrid);
     pruneStaleSelections();
     selectionViz.update(world, selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
@@ -250,6 +278,7 @@ function spawnCowAt(i, j) {
     Brain: { name: `cow#${cowsSpawned}` },
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },
+    Inventory: { itemKind: null },
     CowViz: {},
   });
 }
@@ -333,7 +362,7 @@ function updateHud() {
     pickStr = `pick: i=${lastPick.i} j=${lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
   }
   const lines = [
-    'phase 4: trees + chop',
+    'phase 4: trees + chop + stockpile',
     `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
     `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/30  steps/frame=${loop.lastSteps}`,
     `render: ${measuredFps.toFixed(0)} fps`,
@@ -346,10 +375,13 @@ function updateHud() {
   if (chopDesignator.active) {
     lines.push('** CHOP DESIGNATE — click trees to mark, C or Esc to exit **');
   }
+  if (stockpileDesignator.active) {
+    lines.push('** STOCKPILE DESIGNATE — LMB drag = add, Shift+drag = remove, B or Esc to exit **');
+  }
   lines.push(
     'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
     'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-    'C = chop designate mode,  N = spawn cow at last clicked tile',
+    'C = chop designate,  B = stockpile designate,  N = spawn cow at last clicked tile',
     'K = save, L = load',
   );
   hud.innerText = lines.join('\n');
@@ -368,7 +400,7 @@ addEventListener('keydown', async (e) => {
       const json = JSON.stringify(state);
       const gz = await gzipString(json);
       const b64 = bytesToBase64(gz);
-      localStorage.setItem('save:v3', b64);
+      localStorage.setItem('save:v4', b64);
       console.log(
         '[save] ok — tiles:',
         tileGrid.W * tileGrid.H,
@@ -382,7 +414,10 @@ addEventListener('keydown', async (e) => {
     }
   }
   if (e.code === 'KeyL') {
-    const b64 = localStorage.getItem('save:v3') ?? localStorage.getItem('save:v2');
+    const b64 =
+      localStorage.getItem('save:v4') ??
+      localStorage.getItem('save:v3') ??
+      localStorage.getItem('save:v2');
     if (!b64) {
       console.warn('[load] no save in localStorage');
       return;
@@ -394,6 +429,7 @@ addEventListener('keydown', async (e) => {
     const loaded = hydrateTileGrid(migrated);
     tileGrid.elevation.set(loaded.elevation);
     tileGrid.biome.set(loaded.biome);
+    tileGrid.stockpile.set(loaded.stockpile);
     tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllCows(world);
@@ -404,6 +440,7 @@ addEventListener('keydown', async (e) => {
     spawnInitialTrees(world, tileGrid, treeCount);
     treeInstancer.markDirty();
     itemInstancer.markDirty();
+    stockpileOverlay.markDirty();
     hydrateCows(world, migrated);
     const fresh = buildTileMesh(tileGrid);
     scene.remove(tileMesh);

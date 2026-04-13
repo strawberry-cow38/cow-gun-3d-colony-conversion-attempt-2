@@ -21,7 +21,10 @@ describe('migration runner', () => {
     const out = runMigrations(v1);
     expect(out.version).toBe(CURRENT_VERSION);
     expect(out.cows).toEqual([]);
-    expect(out.tileGrid).toEqual(v1.tileGrid);
+    expect(out.tileGrid.W).toBe(v1.tileGrid.W);
+    expect(out.tileGrid.H).toBe(v1.tileGrid.H);
+    expect(out.tileGrid.elevation).toEqual(v1.tileGrid.elevation);
+    expect(out.tileGrid.biome).toEqual(v1.tileGrid.biome);
   });
 
   it('upgrades a v2 cow by adding default job + path fields', () => {
@@ -36,10 +39,30 @@ describe('migration runner', () => {
     expect(out.cows[0].path).toEqual({ steps: [], index: 0 });
   });
 
+  it('upgrades a v3 save by adding an empty stockpile + empty cow inventory', () => {
+    const v3 = {
+      version: 3,
+      tileGrid: { W: 2, H: 2, elevation: [0, 0, 0, 0], biome: [0, 0, 0, 0] },
+      cows: [
+        {
+          name: 'bessie',
+          position: { x: 0, y: 0, z: 0 },
+          hunger: 0.8,
+          job: { kind: 'none', state: 'idle', payload: {} },
+          path: { steps: [], index: 0 },
+        },
+      ],
+    };
+    const out = runMigrations(v3);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.tileGrid.stockpile).toEqual([0, 0, 0, 0]);
+    expect(out.cows[0].inventory).toEqual({ itemKind: null });
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,
-      tileGrid: { W: 1, H: 1, elevation: [0], biome: [0] },
+      tileGrid: { W: 1, H: 1, elevation: [0], biome: [0], stockpile: [0] },
       cows: [],
     };
     const out = runMigrations(cur);

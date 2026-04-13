@@ -6,6 +6,7 @@
  * - biome:     small enum uint8 (0=grass, 1=dirt, 2=stone, 3=sand)
  * - occupancy: uint8; nonzero = a world entity (tree, rock, building) blocks the tile.
  *              Transient — NOT serialized; rebuilt from entities on load.
+ * - stockpile: uint8; nonzero = player-designated stockpile tile. Serialized.
  */
 
 export const BIOME = Object.freeze({
@@ -26,6 +27,7 @@ export class TileGrid {
     this.elevation = new Float32Array(W * H);
     this.biome = new Uint8Array(W * H);
     this.occupancy = new Uint8Array(W * H);
+    this.stockpile = new Uint8Array(W * H);
   }
 
   /** @param {number} i @param {number} j */
@@ -41,6 +43,16 @@ export class TileGrid {
   /** @param {number} i @param {number} j */
   unblockTile(i, j) {
     this.occupancy[this.idx(i, j)] = 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isStockpile(i, j) {
+    return this.stockpile[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setStockpile(i, j, v) {
+    this.stockpile[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /**

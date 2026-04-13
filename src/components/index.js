@@ -16,6 +16,7 @@
  * TileAnchor   { i, j }              tile this world entity occupies
  * Item         { kind: string }      loose world item ('wood', 'stone', 'food'...)
  * ItemViz                            tag — item instancer renders these
+ * Inventory    { itemKind: string|null } — one-slot carry for cows hauling items.
  */
 
 /**
@@ -46,4 +47,8 @@ export function registerComponents(world) {
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
   world.defineComponent('Item', () => ({ kind: 'wood' }));
   world.defineComponent('ItemViz', () => ({}));
+  world.defineComponent('Inventory', () => ({
+    /** @type {string | null} */
+    itemKind: null,
+  }));
 }

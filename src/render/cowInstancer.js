@@ -28,6 +28,17 @@ const COW_BOB_FREQ_HZ = 6;
 const CHOP_PITCH_AMP = 0.44; // ≈ 25°
 const CHOP_PITCH_FREQ_HZ = 2.5;
 
+// Carried-item indicator: a small tinted cube hovering above the cow.
+const CARRY_SIZE = 0.35 * UNITS_PER_METER;
+const CARRY_OFFSET_Y = 0.25 * UNITS_PER_METER;
+/** @type {Record<string, THREE.Color>} */
+const CARRY_COLORS = {
+  wood: new THREE.Color(0x8a5a2e),
+  stone: new THREE.Color(0x8a8a92),
+  food: new THREE.Color(0xd64a4a),
+};
+const CARRY_FALLBACK = new THREE.Color(0xffffff);
+
 /**
  * @param {THREE.Scene} scene
  * @param {number} capacity
@@ -41,6 +52,13 @@ export function createCowInstancer(scene, capacity = 256) {
   mesh.count = 0;
   mesh.frustumCulled = false;
   scene.add(mesh);
+
+  const carryGeo = new THREE.BoxGeometry(CARRY_SIZE, CARRY_SIZE, CARRY_SIZE);
+  const carryMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
+  const carryMesh = new THREE.InstancedMesh(carryGeo, carryMat, capacity);
+  carryMesh.count = 0;
+  carryMesh.frustumCulled = false;
+  scene.add(carryMesh);
 
   /** @type {number[]} instance row → entity id */
   const slotToEntity = [];
@@ -57,6 +75,7 @@ export function createCowInstancer(scene, capacity = 256) {
    */
   function update(world, alpha, timeSec, grid) {
     let i = 0;
+    let c = 0;
     slotToEntity.length = 0;
     seen.clear();
     for (const { id, components } of world.query([
@@ -65,6 +84,7 @@ export function createCowInstancer(scene, capacity = 256) {
       'PrevPosition',
       'Velocity',
       'Job',
+      'Inventory',
       'CowViz',
     ])) {
       if (i >= capacity) break;
@@ -109,9 +129,23 @@ export function createCowInstancer(scene, capacity = 256) {
       mesh.setMatrixAt(i, _matrix);
       slotToEntity[i] = id;
       i++;
+
+      const carrying = components.Inventory.itemKind;
+      if (carrying) {
+        _euler.set(0, yaw, 0);
+        _quat.setFromEuler(_euler);
+        _position.set(x, y + COW_HEIGHT + CARRY_OFFSET_Y, z);
+        _matrix.compose(_position, _quat, _scale);
+        carryMesh.setMatrixAt(c, _matrix);
+        carryMesh.setColorAt(c, CARRY_COLORS[carrying] ?? CARRY_FALLBACK);
+        c++;
+      }
     }
     mesh.count = i;
     mesh.instanceMatrix.needsUpdate = true;
+    carryMesh.count = c;
+    carryMesh.instanceMatrix.needsUpdate = true;
+    if (carryMesh.instanceColor) carryMesh.instanceColor.needsUpdate = true;
     // Drop yaw entries for cows that went away so the map doesn't leak.
     if (lastYaw.size > seen.size) {
       for (const entId of lastYaw.keys()) {
