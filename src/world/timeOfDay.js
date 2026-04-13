@@ -10,9 +10,10 @@
 
 import * as THREE from 'three';
 
-// 8 real minutes per sim day. Short enough that debug testing doesn't need
-// scrubbing every time; long enough that the player isn't distracted.
-export const DAY_LENGTH_SEC = 480;
+// 24 real minutes per sim day — slow enough to feel natural but short enough
+// that a session sees multiple dawns. Debug T/Shift+T scrubs if you're
+// hunting a specific palette.
+export const DAY_LENGTH_SEC = 1440;
 export const HOURS_PER_DAY = 24;
 
 const SKY_UNIFORM_KEYS = /** @type {const} */ ([

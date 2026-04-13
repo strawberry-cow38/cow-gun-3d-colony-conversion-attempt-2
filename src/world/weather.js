@@ -21,10 +21,11 @@ export const WEATHER_KINDS = /** @type {const} */ (['clear', 'rain']);
  * @param {{
  *   scene: import('three').Scene,
  *   timeOfDay: import('./timeOfDay.js').TimeOfDay,
+ *   audio?: { startLoop: (kind: string) => void, stopLoop: (kind: string) => void },
  * }} opts
  */
 export function createWeather(opts) {
-  const { scene, timeOfDay } = opts;
+  const { scene, timeOfDay, audio } = opts;
   const rain = createRainParticles(scene);
 
   /** @type {Record<WeatherKind, { enter: () => void, tick: (dt: number, camPos: {x:number,y:number,z:number}) => void, exit: () => void }>} */
@@ -41,12 +42,14 @@ export function createWeather(opts) {
       enter() {
         rain.setVisible(true);
         timeOfDay.setOvercast(1);
+        audio?.startLoop('rain');
       },
       tick(dt, camPos) {
         rain.update(dt, camPos);
       },
       exit() {
         rain.setVisible(false);
+        audio?.stopLoop('rain');
       },
     },
   };

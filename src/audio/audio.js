@@ -19,6 +19,7 @@
  */
 
 import * as THREE from 'three';
+import { playRainLoop } from './ambient.js';
 import { playChop, playFootfall, playMunch } from './sfx.js';
 import {
   playClick,
@@ -73,6 +74,18 @@ const UI_SFX = {
 
 const UI_MAX_CONCURRENT = 6;
 
+/**
+ * Long-running ambient loops (rain, wind, ocean, …). Generators return a
+ * teardown function so the engine can fade them out cleanly when the weather
+ * or scene changes. Kept sibling to UI/spatial registries so every sound
+ * plug-in point lives in one file.
+ *
+ * @type {Record<string, import('./ambient.js').LoopSfxGenerator>}
+ */
+const LOOP_SFX = {
+  rain: playRainLoop,
+};
+
 const MASTER_GAIN = 0.35;
 const MAX_HEAR_DIST = 400; // units (≈ 9 tiles) — beyond this we don't allocate
 
@@ -88,6 +101,10 @@ export function createAudio({ camera }) {
   const active = /** @type {Record<string, number>} */ ({});
   for (const k of Object.keys(SFX)) active[k] = 0;
   let uiActive = 0;
+  /** @type {Record<string, (() => void) | undefined>} */
+  const activeLoops = {};
+  /** @type {Set<string>} — queued before the AudioContext exists */
+  const pendingLoops = new Set();
 
   const _camPos = new THREE.Vector3();
   const _camFwd = new THREE.Vector3();
@@ -112,6 +129,14 @@ export function createAudio({ camera }) {
   const resume = () => {
     const c = ensureContext();
     if (c && c.state === 'suspended') void c.resume();
+    // Flush any loops that were queued before we had a context.
+    if (c && master) {
+      for (const kind of pendingLoops) {
+        const gen = LOOP_SFX[kind];
+        if (gen && !activeLoops[kind]) activeLoops[kind] = gen(c, master);
+      }
+      pendingLoops.clear();
+    }
   };
   addEventListener('pointerdown', resume, { once: true });
   addEventListener('keydown', resume, { once: true });
@@ -209,5 +234,33 @@ export function createAudio({ camera }) {
     );
   }
 
-  return { update, playAt, play };
+  /**
+   * Start a looping ambient layer. If the AudioContext hasn't been created
+   * yet (no user gesture), the request is queued and flushed on the first
+   * pointerdown/keydown. Idempotent — calling with an already-active kind
+   * is a no-op.
+   *
+   * @param {string} kind
+   */
+  function startLoop(kind) {
+    if (!LOOP_SFX[kind]) return;
+    if (activeLoops[kind]) return;
+    if (!ctx || !master) {
+      pendingLoops.add(kind);
+      return;
+    }
+    activeLoops[kind] = LOOP_SFX[kind](ctx, master);
+  }
+
+  /** @param {string} kind */
+  function stopLoop(kind) {
+    pendingLoops.delete(kind);
+    const stop = activeLoops[kind];
+    if (stop) {
+      stop();
+      activeLoops[kind] = undefined;
+    }
+  }
+
+  return { update, playAt, play, startLoop, stopLoop };
 }
