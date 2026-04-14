@@ -139,6 +139,31 @@ describe('migration runner', () => {
     expect(out.walls).toEqual([]);
   });
 
+  it('upgrades a v9 save by adding empty torches + zero torch bitmap', () => {
+    const v9 = {
+      version: 9,
+      tileGrid: {
+        W: 2,
+        H: 1,
+        elevation: [0, 0],
+        biome: [0, 0],
+        stockpile: [0, 0],
+        wall: [0, 0],
+        door: [0, 0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+    };
+    const out = runMigrations(v9);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.tileGrid.torch).toEqual([0, 0]);
+    expect(out.torches).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

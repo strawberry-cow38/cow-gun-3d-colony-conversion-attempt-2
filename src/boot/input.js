@@ -19,6 +19,7 @@ import {
   hydrateDoors,
   hydrateItems,
   hydrateTileGrid,
+  hydrateTorches,
   hydrateTrees,
   hydrateWalls,
   loadState,
@@ -308,6 +309,7 @@ async function loadGame(ctx) {
     tileGrid.stockpile.set(loaded.stockpile);
     tileGrid.wall.set(loaded.wall);
     tileGrid.door.set(loaded.door);
+    tileGrid.torch.set(loaded.torch);
     tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllComp(world, 'Cow');
@@ -316,6 +318,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'BuildSite');
     despawnAllComp(world, 'Wall');
     despawnAllComp(world, 'Door');
+    despawnAllComp(world, 'Torch');
     jobBoard.jobs.length = 0;
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
@@ -328,6 +331,7 @@ async function loadGame(ctx) {
     hydrateBuildSites(world, tileGrid, migrated);
     hydrateWalls(world, tileGrid, migrated);
     hydrateDoors(world, tileGrid, migrated);
+    hydrateTorches(world, tileGrid, migrated);
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();

@@ -6,6 +6,7 @@ import {
   hydrateCows,
   hydrateItems,
   hydrateTileGrid,
+  hydrateTorches,
   hydrateTrees,
   loadState,
   serializeState,
@@ -162,6 +163,41 @@ describe('tree save/load roundtrip', () => {
     if (!marked) throw new Error('marked tree not found');
     expect(marked.components.Tree.markedJobId).toBeGreaterThan(0);
     expect(board.openCount).toBe(1);
+  });
+});
+
+describe('torch save/load roundtrip', () => {
+  it('preserves torch tile anchors + grid bitmap', () => {
+    const tg = new TileGrid(3, 3);
+    tg.setTorch(1, 2, 1);
+    tg.setTorch(0, 0, 1);
+    const w1 = makeWorld();
+    w1.spawn({
+      Torch: {},
+      TorchViz: {},
+      TileAnchor: { i: 1, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+    w1.spawn({
+      Torch: {},
+      TorchViz: {},
+      TileAnchor: { i: 0, j: 0 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    const state = serializeState(tg, w1);
+    expect(state.torches).toHaveLength(2);
+
+    const migrated = loadState(JSON.parse(JSON.stringify(state)));
+    const tg2 = hydrateTileGrid(migrated);
+    const w2 = makeWorld();
+    hydrateTorches(w2, tg2, migrated);
+
+    const torches = [...w2.query(['Torch', 'TileAnchor'])];
+    expect(torches).toHaveLength(2);
+    expect(tg2.isTorch(1, 2)).toBe(true);
+    expect(tg2.isTorch(0, 0)).toBe(true);
+    expect(tg2.isTorch(2, 2)).toBe(false);
   });
 });
 

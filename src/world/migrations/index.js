@@ -19,8 +19,9 @@ import { v5_to_v6 } from './v5_to_v6.js';
 import { v6_to_v7 } from './v6_to_v7.js';
 import { v7_to_v8 } from './v7_to_v8.js';
 import { v8_to_v9 } from './v8_to_v9.js';
+import { v9_to_v10 } from './v9_to_v10.js';
 
-export const CURRENT_VERSION = 9;
+export const CURRENT_VERSION = 10;
 
 /**
  * @typedef Migration
@@ -40,6 +41,7 @@ export const migrations = [
   v6_to_v7,
   v7_to_v8,
   v8_to_v9,
+  v9_to_v10,
 ];
 
 /**

@@ -39,6 +39,9 @@
  * Door         {} — tag for finished door entities. Doors are WALKABLE (no
  *              wall bit), so pathing routes cows through them freely. The
  *              tile's door bit just prevents double-designate.
+ * Torch        {} — tag for finished torch entities. Torches are decorative
+ *              and non-blocking; the tile's torch bit just prevents double-
+ *              designate.
  */
 
 /**
@@ -91,4 +94,6 @@ export function registerComponents(world) {
   world.defineComponent('WallViz', () => ({}));
   world.defineComponent('Door', () => ({}));
   world.defineComponent('DoorViz', () => ({}));
+  world.defineComponent('Torch', () => ({}));
+  world.defineComponent('TorchViz', () => ({}));
 }

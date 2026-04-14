@@ -538,10 +538,11 @@ function cowOnTileExcluding(world, grid, i, j, excludeId) {
 }
 
 /**
- * Convert a BuildSite entity into its finished form (Wall or Door based on
- * `site.kind`), update the matching tile bitmap so pathing + future
+ * Convert a BuildSite entity into its finished form (Wall / Door / Torch based
+ * on `site.kind`), update the matching tile bitmap so pathing + future
  * designations agree, and mark the job complete. Walls flip the `wall` bit
- * (blocking); doors flip the `door` bit only (walkable).
+ * (blocking); doors flip the `door` bit only (walkable); torches flip the
+ * `torch` bit only (walkable, decorative).
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -563,6 +564,14 @@ function finishBuild(world, grid, siteId, jobId, board) {
     world.spawn({
       Door: {},
       DoorViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
+  } else if (site.kind === 'torch') {
+    grid.setTorch(anchor.i, anchor.j, 1);
+    world.spawn({
+      Torch: {},
+      TorchViz: {},
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });

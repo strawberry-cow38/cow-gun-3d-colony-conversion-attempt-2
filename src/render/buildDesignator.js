@@ -1,14 +1,17 @@
 /**
- * Shared blueprint-designator (walls + doors).
+ * Shared blueprint-designator (walls, doors, torches).
  *
- * Activated from the build tab; LMB-drag a rectangle of tiles to spawn
- * BuildSite entities of the configured kind. Shift+drag cancels — each config
- * only cancels its own kind so wall and door modes never clobber each other's
- * blueprints. Press `Escape` to exit.
+ * Activated from the build tab. Two placement modes, chosen per config:
+ *  - drag (walls): LMB-drag a rectangle to spawn BuildSites across the range.
+ *  - single-place (doors, torches): LMB = place one tile; no drag, no rect.
+ *
+ * Shift cancels instead of placing, scoped to this config's kind so modes
+ * don't clobber each other's blueprints. `Escape` exits.
  *
  * Tiles that are blocked (tree, rock), already a door, or stockpile tiles are
- * skipped on ADD. Cancel pass ignores the blocked check so half-placed sites
- * can always be cleared.
+ * skipped on ADD. Torches additionally skip tiles that already have a torch.
+ * Cancel pass ignores the blocked check so half-placed sites can always be
+ * cleared.
  */
 
 import * as THREE from 'three';
@@ -21,10 +24,13 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
+ * @property {boolean} [singlePlace] - if true, mousedown places exactly one
+ *   tile (doors + torches). No drag, no size label; a one-tile hover preview
+ *   tracks the cursor instead.
  */
 
 /** @type {BuildDesignatorConfig} */
@@ -41,6 +47,16 @@ export const DOOR_DESIGNATOR_CONFIG = {
   previewColorAdd: 0xffb070,
   addVerb: 'door',
   cancelVerb: 'cancel door',
+  singlePlace: true,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const TORCH_DESIGNATOR_CONFIG = {
+  kind: 'torch',
+  previewColorAdd: 0xffb84a,
+  addVerb: 'torch',
+  cancelVerb: 'cancel torch',
+  singlePlace: true,
 };
 
 export class BuildDesignator {
@@ -143,6 +159,16 @@ export class BuildDesignator {
     if (!tile) return;
     e.stopImmediatePropagation();
     e.preventDefault();
+    if (this.config.singlePlace) {
+      // Single-place: no drag, no size label. Apply one tile and let the
+      // hover preview keep tracking the cursor for the next click.
+      this.#apply(tile, tile, e.shiftKey);
+      this.startTile = tile;
+      this.curTile = tile;
+      this.removing = e.shiftKey;
+      this.#renderPreview();
+      return;
+    }
     this.mousedown = true;
     this.removing = e.shiftKey;
     this.startTile = tile;
@@ -153,7 +179,23 @@ export class BuildDesignator {
 
   /** @param {MouseEvent} e */
   #onMove(e) {
-    if (!this.active || !this.mousedown) return;
+    if (!this.active) return;
+    if (this.config.singlePlace) {
+      // Hover preview: re-render against the tile under the cursor every
+      // move, even without a mousedown, so the player sees where the next
+      // click will land.
+      const tile = this.#pickTile(e);
+      if (!tile) {
+        this.#hidePreview();
+        return;
+      }
+      this.startTile = tile;
+      this.curTile = tile;
+      this.removing = e.shiftKey;
+      this.#renderPreview();
+      return;
+    }
+    if (!this.mousedown) return;
     const tile = this.#pickTile(e);
     if (!tile) return;
     this.curTile = tile;
@@ -163,6 +205,8 @@ export class BuildDesignator {
 
   /** @param {MouseEvent} e */
   #onUp(e) {
+    // Single-place already applied on mousedown; nothing to do on release.
+    if (this.config.singlePlace) return;
     if (!this.mousedown || e.button !== 0) return;
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -209,7 +253,11 @@ export class BuildDesignator {
   #designateTile(i, j) {
     if (this.tileGrid.isBlocked(i, j)) return false;
     if (this.tileGrid.isDoor(i, j)) return false;
-    if (this.tileGrid.isStockpile(i, j)) return false;
+    if (this.tileGrid.isTorch(i, j)) return false;
+    // Torches are decorative and non-blocking; letting them sit on stockpile
+    // tiles means players can light up a storage area without having to
+    // redraw the stockpile around them.
+    if (this.config.kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
     if (this.#findSiteAt(i, j) !== null) return false;
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({

@@ -14,6 +14,10 @@
  *              WALKABLE — `isBlocked` does not check this — they exist as a
  *              bitmap only so designators can reject double-placement.
  *              Serialized.
+ * - torch:     uint8; nonzero = finished torch on the tile. Torches are
+ *              decorative, non-blocking, and walkable. Stored as a bitmap so
+ *              designators can reject double-placement without scanning
+ *              entities. Serialized.
  */
 
 export const BIOME = Object.freeze({
@@ -37,6 +41,7 @@ export class TileGrid {
     this.stockpile = new Uint8Array(W * H);
     this.wall = new Uint8Array(W * H);
     this.door = new Uint8Array(W * H);
+    this.torch = new Uint8Array(W * H);
   }
 
   /** @param {number} i @param {number} j */
@@ -83,6 +88,16 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setDoor(i, j, v) {
     this.door[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isTorch(i, j) {
+    return this.torch[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setTorch(i, j, v) {
+    this.torch[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /**

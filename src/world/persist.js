@@ -1,10 +1,10 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v9):
+ * Format (v10):
  * {
- *   version: 9,
- *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[] },
+ *   version: 10,
+ *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
@@ -14,7 +14,8 @@
  *   items: [ { i, j, kind: string, count: number, capacity: number } ],
  *   buildSites: [ { i, j, kind, requiredKind, required, delivered, progress } ],
  *   walls: [ { i, j } ],
- *   doors: [ { i, j } ]
+ *   doors: [ { i, j } ],
+ *   torches: [ { i, j } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -74,6 +75,12 @@ import { TileGrid } from './tileGrid.js';
 
 /**
  * @typedef SerializedDoor
+ * @property {number} i
+ * @property {number} j
+ */
+
+/**
+ * @typedef SerializedTorch
  * @property {number} i
  * @property {number} j
  */
@@ -155,6 +162,11 @@ export function serializeState(tileGrid, world) {
   for (const { components } of world.query(['Door', 'TileAnchor'])) {
     doors.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
   }
+  /** @type {SerializedTorch[]} */
+  const torches = [];
+  for (const { components } of world.query(['Torch', 'TileAnchor'])) {
+    torches.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -165,6 +177,7 @@ export function serializeState(tileGrid, world) {
       stockpile: Array.from(tileGrid.stockpile),
       wall: Array.from(tileGrid.wall),
       door: Array.from(tileGrid.door),
+      torch: Array.from(tileGrid.torch),
     },
     cows,
     trees,
@@ -172,11 +185,12 @@ export function serializeState(tileGrid, world) {
     buildSites,
     walls,
     doors,
+    torches,
   };
 }
 
 /**
- * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[] } }} state
+ * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[] } }} state
  */
 export function hydrateTileGrid(state) {
   const tg = new TileGrid(state.tileGrid.W, state.tileGrid.H);
@@ -185,6 +199,7 @@ export function hydrateTileGrid(state) {
   if (state.tileGrid.stockpile) tg.stockpile.set(state.tileGrid.stockpile);
   if (state.tileGrid.wall) tg.wall.set(state.tileGrid.wall);
   if (state.tileGrid.door) tg.door.set(state.tileGrid.door);
+  if (state.tileGrid.torch) tg.torch.set(state.tileGrid.torch);
   return tg;
 }
 
@@ -349,10 +364,33 @@ export function hydrateDoors(world, grid, state) {
 }
 
 /**
+ * Spawn Torch entities from a (migrated) save state. Like walls/doors, the
+ * grid's `torch` bitmap is set from hydrateTileGrid; Torch entities just own
+ * the instance slot for rendering + round-tripping.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {{ torches?: SerializedTorch[] }} state
+ */
+export function hydrateTorches(world, grid, state) {
+  const torches = state.torches ?? [];
+  for (const t of torches) {
+    if (!grid.inBounds(t.i, t.j)) continue;
+    const w = tileToWorld(t.i, t.j, grid.W, grid.H);
+    world.spawn({
+      Torch: {},
+      TorchViz: {},
+      TileAnchor: { i: t.i, j: t.j },
+      Position: { x: w.x, y: grid.getElevation(t.i, t.j), z: w.z },
+    });
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

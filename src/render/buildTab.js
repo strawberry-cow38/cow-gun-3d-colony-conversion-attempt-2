@@ -28,6 +28,7 @@
  * @property {ToggleableDesignator} stockpileDesignator
  * @property {ToggleableDesignator} wallDesignator
  * @property {ToggleableDesignator} doorDesignator
+ * @property {ToggleableDesignator} torchDesignator
  */
 
 /** @param {BuildTabOpts} opts */
@@ -62,9 +63,17 @@ export function createBuildTab(opts) {
       id: 'door',
       label: 'Door',
       icon: '🚪',
-      hotkeyHint: 'build wooden doors',
+      hotkeyHint: 'click a tile to place a door',
       activeColor: '#ffb070',
       designator: opts.doorDesignator,
+    },
+    {
+      id: 'torch',
+      label: 'Torch',
+      icon: '🔥',
+      hotkeyHint: 'click a tile to place a torch',
+      activeColor: '#ffb84a',
+      designator: opts.torchDesignator,
     },
   ];
 

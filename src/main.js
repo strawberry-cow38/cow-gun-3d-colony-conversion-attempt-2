@@ -18,6 +18,7 @@ import { makeHaulPostingSystem } from './jobs/haul.js';
 import {
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
+  TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
 } from './render/buildDesignator.js';
 import { createBuildSiteInstancer } from './render/buildSiteInstancer.js';
@@ -45,6 +46,7 @@ import { StockpileDesignator } from './render/stockpileDesignator.js';
 import { createStockpileOverlay } from './render/stockpileOverlay.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
+import { createTorchInstancer } from './render/torchInstancer.js';
 import { createTreeInstancer } from './render/treeInstancer.js';
 import { createWallInstancer } from './render/wallInstancer.js';
 import { SimLoop } from './sim/loop.js';
@@ -150,6 +152,7 @@ const selectionViz = createSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
 const wallInstancer = createWallInstancer(scene, 2048);
 const doorInstancer = createDoorInstancer(scene, 512, audio);
+const torchInstancer = createTorchInstancer(scene, 512);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
@@ -287,12 +290,21 @@ new CowMoveCommand(
   audio,
 );
 
-/** @type {StockpileDesignator | null} */
-let stockpileDesignatorRef = null;
-/** @type {BuildDesignator | null} */
-let wallDesignatorRef = null;
-/** @type {BuildDesignator | null} */
-let doorDesignatorRef = null;
+/**
+ * The designators are mutually exclusive — activating one deactivates every
+ * other. Each one's onStateChanged just walks this list. The array is built
+ * up as constructors run; that forward-declared `null` slot is fine because
+ * onStateChanged only fires from event handlers that can't run before the
+ * whole list has been populated.
+ * @type {{ active: boolean, deactivate: () => void }[]}
+ */
+const designators = [];
+/** @param {{ active: boolean, deactivate: () => void }} self */
+const deactivateOthers = (self) => {
+  if (!self.active) return;
+  for (const d of designators) if (d !== self) d.deactivate();
+};
+
 const chopDesignator = new ChopDesignator(
   canvas,
   camera,
@@ -303,15 +315,12 @@ const chopDesignator = new ChopDesignator(
   jobBoard,
   scene,
   () => {
-    if (chopDesignator.active) {
-      stockpileDesignatorRef?.deactivate();
-      wallDesignatorRef?.deactivate();
-      doorDesignatorRef?.deactivate();
-    }
+    deactivateOthers(chopDesignator);
     updateHud();
   },
   audio,
 );
+designators.push(chopDesignator);
 
 const stockpileDesignator = new StockpileDesignator(
   canvas,
@@ -321,16 +330,12 @@ const stockpileDesignator = new StockpileDesignator(
   stockpileOverlay,
   scene,
   () => {
-    if (stockpileDesignator.active) {
-      chopDesignator.deactivate();
-      wallDesignatorRef?.deactivate();
-      doorDesignatorRef?.deactivate();
-    }
+    deactivateOthers(stockpileDesignator);
     updateHud();
   },
   audio,
 );
-stockpileDesignatorRef = stockpileDesignator;
+designators.push(stockpileDesignator);
 
 const wallDesignator = new BuildDesignator(
   WALL_DESIGNATOR_CONFIG,
@@ -343,16 +348,12 @@ const wallDesignator = new BuildDesignator(
   buildSiteInstancer,
   scene,
   () => {
-    if (wallDesignator.active) {
-      chopDesignator.deactivate();
-      stockpileDesignatorRef?.deactivate();
-      doorDesignatorRef?.deactivate();
-    }
+    deactivateOthers(wallDesignator);
     updateHud();
   },
   audio,
 );
-wallDesignatorRef = wallDesignator;
+designators.push(wallDesignator);
 
 const doorDesignator = new BuildDesignator(
   DOOR_DESIGNATOR_CONFIG,
@@ -365,16 +366,30 @@ const doorDesignator = new BuildDesignator(
   buildSiteInstancer,
   scene,
   () => {
-    if (doorDesignator.active) {
-      chopDesignator.deactivate();
-      stockpileDesignatorRef?.deactivate();
-      wallDesignatorRef?.deactivate();
-    }
+    deactivateOthers(doorDesignator);
     updateHud();
   },
   audio,
 );
-doorDesignatorRef = doorDesignator;
+designators.push(doorDesignator);
+
+const torchDesignator = new BuildDesignator(
+  TORCH_DESIGNATOR_CONFIG,
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    deactivateOthers(torchDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(torchDesignator);
 
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
 getDrivingCowId = () => fpCamera.drivingCowId;
@@ -386,6 +401,7 @@ const buildTab = createBuildTab({
   stockpileDesignator,
   wallDesignator,
   doorDesignator,
+  torchDesignator,
 });
 
 const cowPortraitBar = createCowPortraitBar({
@@ -462,6 +478,7 @@ const loop = new SimLoop({
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     wallInstancer.update(world, tileGrid);
     doorInstancer.update(world, tileGrid);
+    torchInstancer.update(world, tileGrid, tSec);
     buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
