@@ -431,6 +431,40 @@ describe('migration runner', () => {
     ]);
   });
 
+  it('adds an empty boulders list through the v18→v19 bump', () => {
+    const v18 = {
+      version: 18,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+        roof: [0],
+        ignoreRoof: [0],
+        floor: [0],
+        farmZone: [0],
+        tilled: [0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+      crops: [],
+    };
+    const out = runMigrations(v18);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.boulders).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

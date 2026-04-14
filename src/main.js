@@ -15,6 +15,7 @@ import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { makeHaulPostingSystem } from './jobs/haul.js';
+import { createBoulderInstancer } from './render/boulderInstancer.js';
 import {
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
@@ -50,6 +51,7 @@ import { createItemLabels } from './render/itemLabels.js';
 import { createItemSelectionViz } from './render/itemSelectionViz.js';
 import { ItemSelector } from './render/itemSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
+import { MineDesignator } from './render/mineDesignator.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { createPickTileOverlay } from './render/pickTileOverlay.js';
 import { TilePicker } from './render/picker.js';
@@ -72,6 +74,7 @@ import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
 import { runAutoRoof } from './systems/autoRoof.js';
+import { spawnInitialBoulders } from './systems/boulders.js';
 import {
   makeCowBrainSystem,
   makeCowFollowPathSystem,
@@ -113,6 +116,8 @@ const rooms = createRooms(tileGrid);
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldChopComplete = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldMineComplete = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldCowEat = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldCowStep = () => {};
@@ -141,6 +146,7 @@ scheduler.add(
     walkable: defaultWalkable,
     board: jobBoard,
     onChopComplete: (pos) => onWorldChopComplete(pos),
+    onMineComplete: (pos) => onWorldMineComplete(pos),
     onCowEat: (pos) => onWorldCowEat(pos),
     onCowHammer: (pos) => onWorldCowHammer(pos),
     onBuildComplete: (pos, kind) => onWorldBuildComplete(pos, kind),
@@ -172,6 +178,7 @@ scheduler.add(makeRoomsSystem({ rooms, onRebuilt: () => onRoomsRebuilt() }));
 
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialTrees(world, tileGrid, treeCount);
+spawnInitialBoulders(world, tileGrid, treeCount);
 spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
@@ -227,6 +234,7 @@ const cowThoughtBubbles = createCowThoughtBubbles(scene);
 const selectionViz = createSelectionViz(scene);
 const itemSelectionViz = createItemSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
+const boulderInstancer = createBoulderInstancer(scene, 4096);
 const wallInstancer = createWallInstancer(scene, 2048);
 const doorInstancer = createDoorInstancer(scene, 512, audio);
 const torchInstancer = createTorchInstancer(scene, 512);
@@ -247,6 +255,12 @@ const pickTileOverlay = createPickTileOverlay(scene);
 
 onWorldChopComplete = (pos) => {
   treeInstancer.markDirty();
+  itemInstancer.markDirty();
+  pathCache.clear();
+  audio.playAt('chop', pos);
+};
+onWorldMineComplete = (pos) => {
+  boulderInstancer.markDirty();
   itemInstancer.markDirty();
   pathCache.clear();
   audio.playAt('chop', pos);
@@ -503,6 +517,23 @@ const chopDesignator = new ChopDesignator(
 );
 designators.push(chopDesignator);
 
+const mineDesignator = new MineDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  boulderInstancer,
+  world,
+  jobBoard,
+  scene,
+  () => {
+    deactivateOthers(mineDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(mineDesignator);
+
 const stockpileDesignator = new StockpileDesignator(
   canvas,
   camera,
@@ -746,6 +777,7 @@ const draftBadge = createDraftBadge(scene, 256);
 
 const buildTab = createBuildTab({
   chopDesignator,
+  mineDesignator,
   stockpileDesignator,
   farmZoneDesignator,
   wallDesignator,
@@ -854,6 +886,8 @@ const loop = new SimLoop({
     draftBadge.update(world, tSec);
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);
+    boulderInstancer.update(world, tileGrid);
+    boulderInstancer.updateMarkers(world, tileGrid, tSec);
     wallInstancer.update(world, tileGrid);
     doorInstancer.update(world, tileGrid);
     torchInstancer.update(world, tileGrid, tSec, camera);
@@ -931,6 +965,7 @@ installKeyboard({
   itemInstancer,
   itemSelectionViz,
   treeInstancer,
+  boulderInstancer,
   stockpileOverlay,
   farmZoneOverlay,
   tilledOverlay,

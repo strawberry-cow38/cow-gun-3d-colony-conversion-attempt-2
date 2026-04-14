@@ -18,10 +18,12 @@ import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DECONSTRUCT_TICKS, findDeconstructStandTile } from '../jobs/deconstruct.js';
 import { HARVEST_TICKS } from '../jobs/harvest.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
+import { MINE_TICKS } from '../jobs/mine.js';
 import { PLANT_TICKS } from '../jobs/plant.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
 import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
+import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropKindFor } from '../world/crops.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
@@ -77,6 +79,7 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  * @typedef {PathDeps & {
  *   board: import('../jobs/board.js').JobBoard,
  *   onChopComplete: (pos: {x:number,y:number,z:number}) => void,
+ *   onMineComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onCowEat: (pos: {x:number,y:number,z:number}) => void,
  *   onCowHammer: (pos: {x:number,y:number,z:number}) => void,
  *   onBuildComplete: (pos: {x:number,y:number,z:number}, kind: string) => void,
@@ -135,6 +138,7 @@ export function makeCowBrainSystem(deps) {
         if (cow.drafted) {
           if (
             job.kind === 'chop' ||
+            job.kind === 'mine' ||
             job.kind === 'haul' ||
             job.kind === 'eat' ||
             job.kind === 'build' ||
@@ -253,6 +257,17 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (candidate && candidate.kind === 'mine' && board.claim(candidate.id, id)) {
+                job.kind = 'mine';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  boulderId: candidate.payload.boulderId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               } else if (candidate && candidate.kind === 'haul' && board.claim(candidate.id, id)) {
                 job.kind = 'haul';
                 job.state = 'pathing-to-item';
@@ -348,6 +363,8 @@ export function makeCowBrainSystem(deps) {
 
         if (job.kind === 'chop') {
           runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
+        } else if (job.kind === 'mine') {
+          runMineJob(world, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'build') {
           runBuildJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'deconstruct') {
@@ -502,6 +519,106 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
       job.payload = {};
     }
   }
+}
+
+/**
+ * Mine job state machine. Mirrors runChopJob but keyed on Boulder.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runMineJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+  const { boulderId, jobId } = /** @type {{ boulderId: number, jobId: number }} */ (job.payload);
+  const boardJob = board.get(jobId);
+  if (!world.get(boulderId, 'Boulder') || !boardJob || boardJob.completed) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    const boulder = world.get(boulderId, 'Boulder');
+    if (boulder) boulder.progress = 0;
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const adj = findAdjacentWalkable(grid, walkable, job.payload.i, job.payload.j);
+    if (!adj) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const route = paths.find(start, adj);
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'mining';
+      job.payload.ticksRemaining = MINE_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'mining') {
+    const remaining = (job.payload.ticksRemaining ?? MINE_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    const boulder = world.get(boulderId, 'Boulder');
+    if (boulder) boulder.progress = 1 - remaining / MINE_TICKS;
+    if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
+    if (remaining <= 0) {
+      deps.onMineComplete(pos);
+      finishMine(world, grid, boulderId, jobId, board);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} boulderId
+ * @param {number} jobId
+ * @param {import('../jobs/board.js').JobBoard} board
+ */
+function finishMine(world, grid, boulderId, jobId, board) {
+  const anchor = world.get(boulderId, 'TileAnchor');
+  const boulder = world.get(boulderId, 'Boulder');
+  if (anchor) {
+    grid.unblockTile(anchor.i, anchor.j);
+    const loot = boulder ? BOULDER_LOOT[boulder.kind] : null;
+    if (loot) {
+      for (let k = 0; k < loot.yield; k++)
+        addItemToTile(world, grid, loot.item, anchor.i, anchor.j);
+    }
+  }
+  world.despawn(boulderId);
+  board.complete(jobId);
 }
 
 /**

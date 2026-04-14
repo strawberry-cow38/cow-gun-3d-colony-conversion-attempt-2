@@ -30,6 +30,7 @@ import { dispatch } from './hotkeys.js';
  * @property {any} itemInstancer
  * @property {{ markDirty: () => void }} itemSelectionViz
  * @property {any} treeInstancer
+ * @property {any} boulderInstancer
  * @property {any} stockpileOverlay
  * @property {{ markDirty: () => void }} farmZoneOverlay
  * @property {{ markDirty: () => void }} tilledOverlay

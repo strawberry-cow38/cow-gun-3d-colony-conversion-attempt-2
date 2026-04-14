@@ -1,7 +1,7 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v18):
+ * Format (v19):
  * {
  *   version: 18,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
@@ -50,6 +50,15 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} progress  0..1 chop progress at save time
  * @property {string} kind      species: birch/pine/oak/maple
  * @property {number} growth    0..1 sapling→mature progress
+ */
+
+/**
+ * @typedef SerializedBoulder
+ * @property {number} i
+ * @property {number} j
+ * @property {boolean} marked
+ * @property {number} progress  0..1 mine progress at save time
+ * @property {string} kind      stone/metal/coal
  */
 
 /**
@@ -173,6 +182,17 @@ export function serializeState(tileGrid, world) {
       growth: components.Tree.growth,
     });
   }
+  /** @type {SerializedBoulder[]} */
+  const boulders = [];
+  for (const { components } of world.query(['Boulder', 'TileAnchor'])) {
+    boulders.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      marked: components.Boulder.markedJobId > 0,
+      progress: components.Boulder.progress,
+      kind: components.Boulder.kind,
+    });
+  }
   /** @type {SerializedItem[]} */
   const items = [];
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
@@ -284,6 +304,7 @@ export function serializeState(tileGrid, world) {
     },
     cows,
     trees,
+    boulders,
     items,
     buildSites,
     walls,
@@ -369,6 +390,35 @@ export function hydrateTrees(world, grid, board, state) {
       const job = board.post('chop', { treeId: id, i: t.i, j: t.j });
       const tree = world.get(id, 'Tree');
       if (tree) tree.markedJobId = job.id;
+    }
+  }
+}
+
+/**
+ * Spawn boulder entities from a (migrated) save state. Blocks their tiles on
+ * the grid; re-posts a mine job for any boulder that was marked at save time.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ boulders?: SerializedBoulder[] }} state
+ */
+export function hydrateBoulders(world, grid, board, state) {
+  const boulders = state.boulders ?? [];
+  for (const b of boulders) {
+    if (!grid.inBounds(b.i, b.j) || grid.isBlocked(b.i, b.j)) continue;
+    grid.blockTile(b.i, b.j);
+    const w = tileToWorld(b.i, b.j, grid.W, grid.H);
+    const id = world.spawn({
+      Boulder: { markedJobId: 0, progress: b.progress, kind: b.kind },
+      BoulderViz: {},
+      TileAnchor: { i: b.i, j: b.j },
+      Position: { x: w.x, y: grid.getElevation(b.i, b.j), z: w.z },
+    });
+    if (b.marked) {
+      const job = board.post('mine', { boulderId: id, i: b.i, j: b.j });
+      const boulder = world.get(id, 'Boulder');
+      if (boulder) boulder.markedJobId = job.id;
     }
   }
 }
@@ -560,7 +610,7 @@ export function hydrateCrops(world, grid, state) {
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

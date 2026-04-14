@@ -18,6 +18,7 @@ import { CURRENT_VERSION } from '../world/migrations/index.js';
 import {
   gunzipBytes,
   gzipString,
+  hydrateBoulders,
   hydrateBuildSites,
   hydrateCows,
   hydrateCrops,
@@ -356,6 +357,7 @@ async function loadGame(ctx) {
     jobBoard,
     scene,
     treeInstancer,
+    boulderInstancer,
     itemInstancer,
     stockpileOverlay,
     state,
@@ -394,6 +396,7 @@ async function loadGame(ctx) {
     pathCache.clear();
     despawnAllComp(world, 'Cow');
     despawnAllComp(world, 'Tree');
+    despawnAllComp(world, 'Boulder');
     despawnAllComp(world, 'Item');
     despawnAllComp(world, 'BuildSite');
     despawnAllComp(world, 'Wall');
@@ -410,6 +413,7 @@ async function loadGame(ctx) {
     } else {
       hydrateTrees(world, tileGrid, jobBoard, migrated);
     }
+    hydrateBoulders(world, tileGrid, jobBoard, migrated);
     hydrateItems(world, tileGrid, migrated);
     hydrateBuildSites(world, tileGrid, migrated);
     hydrateWalls(world, tileGrid, jobBoard, migrated);
@@ -424,6 +428,7 @@ async function loadGame(ctx) {
     ctx.roofInstancer.markDirty();
     ctx.floorInstancer.markDirty();
     treeInstancer.markDirty();
+    boulderInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();
     ctx.farmZoneOverlay.markDirty();

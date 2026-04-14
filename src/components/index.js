@@ -100,6 +100,12 @@ export function registerComponents(world) {
     growth: 1,
   }));
   world.defineComponent('TreeViz', () => ({}));
+  world.defineComponent('Boulder', () => ({
+    markedJobId: 0,
+    progress: 0,
+    kind: 'stone',
+  }));
+  world.defineComponent('BoulderViz', () => ({}));
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
   world.defineComponent('Item', () => ({ kind: 'wood', count: 1, capacity: 50, forbidden: false }));
   world.defineComponent('ItemViz', () => ({}));

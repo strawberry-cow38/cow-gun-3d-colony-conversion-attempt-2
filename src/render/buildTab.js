@@ -42,6 +42,7 @@ import { colorToCss } from './dragSizeLabel.js';
 /**
  * @typedef {Object} BuildTabOpts
  * @property {ToggleableDesignator} chopDesignator
+ * @property {ToggleableDesignator} mineDesignator
  * @property {ToggleableDesignator} stockpileDesignator
  * @property {ToggleableDesignator} farmZoneDesignator
  * @property {ToggleableDesignator} wallDesignator
@@ -68,6 +69,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'mark trees for felling',
       activeColor: '#ffae4a',
       designator: opts.chopDesignator,
+    },
+    {
+      id: 'mine',
+      label: 'Mine',
+      icon: '⛏️',
+      hotkeyHint: 'mark boulders for mining',
+      activeColor: '#bad9ff',
+      designator: opts.mineDesignator,
     },
     {
       id: 'stockpile',

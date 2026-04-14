@@ -5,13 +5,15 @@
 
 import { tileToWorld } from './coords.js';
 
-export const ITEM_KINDS = /** @type {const} */ (['wood', 'stone', 'food']);
+export const ITEM_KINDS = /** @type {const} */ (['wood', 'stone', 'food', 'metal_ore', 'coal']);
 
 /** @type {Record<string, number>} */
 export const MAX_STACK = {
   wood: 50,
   stone: 30,
   food: 20,
+  metal_ore: 30,
+  coal: 30,
 };
 
 /** @type {Record<string, { label: string, description: string }>} */
@@ -28,6 +30,14 @@ export const ITEM_INFO = {
     label: 'Food',
     description: 'Harvested crops. Cows eat one unit to restore hunger.',
   },
+  metal_ore: {
+    label: 'Metal Ore',
+    description: 'Mined from metal nodes. No use yet.',
+  },
+  coal: {
+    label: 'Coal',
+    description: 'Mined from coal seams. No use yet.',
+  },
 };
 
 /** Hunger restored per unit of food consumed (0..1 scale). */
@@ -41,6 +51,8 @@ export const KIND_COLOR = {
   wood: 0x8a5a2b,
   stone: 0x9aa0a6,
   food: 0xd66a3a,
+  metal_ore: 0xb0a48a,
+  coal: 0x2a2a2e,
 };
 
 /** @param {string} kind */
