@@ -41,7 +41,9 @@ const BIOME_NAMES = /** @type {Record<number, string>} */ ({
  * @property {{ setVisible(v: boolean): void }} cowThoughtBubbles
  * @property {{ setVisible(v: boolean): void }} itemLabels
  * @property {{ setVisible(v: boolean): void }} stockpileOverlay
+ * @property {{ setVisible(v: boolean): void }} roomOverlay
  * @property {{ setVisible(v: boolean): void }} pickTileOverlay
+ * @property {import('../systems/rooms.js').RoomRegistry} rooms
  * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
  * @property {import('../world/weather.js').Weather} weather
  * @property {() => number} getFps
@@ -66,6 +68,7 @@ export function createHud(ctx) {
     ctx.cowThoughtBubbles.setVisible(state.debugEnabled);
     ctx.itemLabels.setVisible(state.debugEnabled);
     ctx.stockpileOverlay.setVisible(state.debugEnabled);
+    ctx.roomOverlay.setVisible(state.debugEnabled);
     ctx.pickTileOverlay.setVisible(state.debugEnabled);
   }
 
@@ -156,6 +159,7 @@ export function createHud(ctx) {
       `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
       `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
       `time: ${ctx.timeOfDay.getHHMM()}  weather: ${ctx.weather.getCurrent()}  sun-light: ${sunPct}%`,
+      `rooms: ${ctx.rooms.rooms.size}`,
       pickStr,
       ...cowLines,
       '',

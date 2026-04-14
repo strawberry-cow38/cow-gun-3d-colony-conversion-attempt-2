@@ -39,6 +39,7 @@ import { createItemLabels } from './render/itemLabels.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { createPickTileOverlay } from './render/pickTileOverlay.js';
 import { TilePicker } from './render/picker.js';
+import { createRoomOverlay } from './render/roomOverlay.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
@@ -61,6 +62,7 @@ import {
 } from './systems/cow.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
+import { createRooms, makeRoomsSystem } from './systems/rooms.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { TILE_SIZE } from './world/coords.js';
 import { TileGrid } from './world/tileGrid.js';
@@ -77,6 +79,7 @@ registerComponents(world);
 
 const pathCache = new PathCache(tileGrid, defaultWalkable);
 const jobBoard = new JobBoard();
+const rooms = createRooms(tileGrid);
 
 // Forward-declared so the brain can poke the renderers + audio engine once
 // they're constructed below. Callbacks receive the emitter's world position
@@ -127,6 +130,10 @@ scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
+// Forward-declared so the rooms system can poke the overlay's dirty flag
+// once the renderer (constructed below) is in scope.
+let onRoomsRebuilt = () => {};
+scheduler.add(makeRoomsSystem({ rooms, onRebuilt: () => onRoomsRebuilt() }));
 
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialTrees(world, tileGrid, treeCount);
@@ -137,7 +144,7 @@ const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({ sun, hemi, sky });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
-const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
+const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay, rooms });
 scheduler.add(lightingSystem);
 // Seed the tile light grid so tick 0 already sees valid values — the cow
 // follow-path system reads it to apply the darkness slowdown.
@@ -164,6 +171,7 @@ const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
+const roomOverlay = createRoomOverlay(scene, gridW * gridH);
 const pickTileOverlay = createPickTileOverlay(scene);
 
 onWorldChopComplete = (pos) => {
@@ -185,7 +193,15 @@ onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
   buildSiteInstancer.markDirty();
   pathCache.clear();
+  // Walls/doors can open or close a room, so ask the rooms system to redo
+  // its flood-fill on the next tick. Torches don't affect topology but
+  // onBuildComplete is reused for deconstruct too, and the false positives
+  // are cheap compared to tracking the kind here.
+  scheduler.dirty.mark('topology');
   audio.playAt('hammer', pos);
+};
+onRoomsRebuilt = () => {
+  roomOverlay.markDirty();
 };
 onWorldItemChange = () => {
   itemInstancer.markDirty();
@@ -517,6 +533,7 @@ const loop = new SimLoop({
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
+    roomOverlay.update(tileGrid, rooms);
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
     cowPortraitBar.update();
@@ -551,7 +568,9 @@ hudApi = createHud({
   cowThoughtBubbles,
   itemLabels,
   stockpileOverlay,
+  roomOverlay,
   pickTileOverlay,
+  rooms,
   timeOfDay,
   weather,
   getFps: () => measuredFps,
@@ -568,6 +587,8 @@ installKeyboard({
   itemInstancer,
   treeInstancer,
   stockpileOverlay,
+  rooms,
+  roomOverlay,
   buildSiteInstancer,
   wallInstancer,
   treeCount,

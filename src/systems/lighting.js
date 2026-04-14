@@ -21,11 +21,12 @@ export const DARKNESS_SLOWDOWN_THRESHOLD = 0.4;
  * @param {{
  *   grid: import('../world/tileGrid.js').TileGrid,
  *   timeOfDay: { getSunLightPercent: () => number },
+ *   rooms?: import('./rooms.js').RoomRegistry,
  * }} opts
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
 export function makeLightingSystem(opts) {
-  const { grid, timeOfDay } = opts;
+  const { grid, timeOfDay, rooms } = opts;
   // TORCH_RADIUS_TILES counts the center tile in its span, so the euclidean
   // radius from the center is TORCH_RADIUS_TILES - 1.
   const radius = TORCH_RADIUS_TILES - 1;
@@ -36,10 +37,22 @@ export function makeLightingSystem(opts) {
     run() {
       const sun = Math.max(0, Math.min(1, timeOfDay.getSunLightPercent()));
       const base = Math.round(sun * 255);
-      grid.light.fill(base);
-      if (sun >= TORCH_LIGHT_PCT) return;
-      const torchVal = Math.round(TORCH_LIGHT_PCT * 255);
       const { W, H, torch, light } = grid;
+      // Roofed rooms get 0 sun contribution — torches still light them the
+      // same way (stamped below). With no roofs implemented yet, `tileHasRoof`
+      // always returns false and this branch is effectively a flat fill.
+      if (rooms) {
+        for (let k = 0; k < light.length; k++) {
+          light[k] = rooms.tileHasRoof(k) ? 0 : base;
+        }
+      } else {
+        light.fill(base);
+      }
+      // With rooms wired, roofed tiles sit at base 0 so torches still matter
+      // during full sun. Keep stamping; the inner `torchVal > light[k]` test
+      // makes it a no-op on tiles the sun already lights.
+      if (sun >= TORCH_LIGHT_PCT && !rooms) return;
+      const torchVal = Math.round(TORCH_LIGHT_PCT * 255);
       for (let j = 0; j < H; j++) {
         for (let i = 0; i < W; i++) {
           if (torch[j * W + i] === 0) continue;

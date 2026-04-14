@@ -70,6 +70,8 @@ const PAN_KEYS = new Set([
  * @property {any} stockpileOverlay
  * @property {{ markDirty: () => void } | null} [buildSiteInstancer]
  * @property {{ markDirty: () => void } | null} [wallInstancer]
+ * @property {import('../systems/rooms.js').RoomRegistry} rooms
+ * @property {{ markDirty: () => void }} roomOverlay
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH
@@ -348,6 +350,8 @@ async function loadGame(ctx) {
     hydrateWalls(world, tileGrid, jobBoard, migrated);
     hydrateDoors(world, tileGrid, jobBoard, migrated);
     hydrateTorches(world, tileGrid, jobBoard, migrated);
+    ctx.rooms.rebuild();
+    ctx.roomOverlay.markDirty();
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();
