@@ -111,6 +111,11 @@ async function handleKey(ctx, e) {
       ctx.audio.play('toggle_off');
     } else if (state.primaryCow !== null) {
       fpCamera.enter(state.primaryCow);
+      // Drop the world selection — the viewed cow is tracked via fpCamera.cowId
+      // while FP is active, and leaving them selected would re-target ghost
+      // commands (move-to, draft) at a cow the player can't see highlighted.
+      state.selectedCows.clear();
+      state.primaryCow = null;
       ctx.audio.play('toggle_on');
     } else {
       ctx.audio.play('deny');
