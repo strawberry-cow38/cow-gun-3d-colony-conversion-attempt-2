@@ -53,6 +53,8 @@ export function createDoorInstancer(scene, capacity, audio) {
   const slab = new THREE.InstancedMesh(slabGeo, slabMat, capacity);
   slab.count = 0;
   slab.frustumCulled = false;
+  slab.castShadow = true;
+  slab.receiveShadow = true;
   scene.add(slab);
 
   const frameGeo = new THREE.BoxGeometry(TILE_SIZE, TOP_FRAME_HEIGHT, TILE_SIZE);
@@ -60,6 +62,8 @@ export function createDoorInstancer(scene, capacity, audio) {
   const frame = new THREE.InstancedMesh(frameGeo, frameMat, capacity);
   frame.count = 0;
   frame.frustumCulled = false;
+  frame.castShadow = true;
+  frame.receiveShadow = true;
   scene.add(frame);
 
   /** @type {Map<number, { open: number, emittedSfx: boolean }>} */

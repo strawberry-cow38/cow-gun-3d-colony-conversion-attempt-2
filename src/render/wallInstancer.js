@@ -45,6 +45,8 @@ export function createWallInstancer(scene, capacity = 2048) {
   for (const m of faces) {
     m.count = 0;
     m.frustumCulled = false;
+    m.castShadow = true;
+    m.receiveShadow = true;
     scene.add(m);
   }
 

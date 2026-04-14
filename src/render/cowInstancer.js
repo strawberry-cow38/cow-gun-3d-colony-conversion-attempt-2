@@ -51,6 +51,8 @@ export function createCowInstancer(scene, capacity = 256) {
   const mesh = new THREE.InstancedMesh(geometry, material, capacity);
   mesh.count = 0;
   mesh.frustumCulled = false;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   scene.add(mesh);
 
   const carryGeo = new THREE.BoxGeometry(CARRY_SIZE, CARRY_SIZE, CARRY_SIZE);
@@ -58,6 +60,7 @@ export function createCowInstancer(scene, capacity = 256) {
   const carryMesh = new THREE.InstancedMesh(carryGeo, carryMat, capacity);
   carryMesh.count = 0;
   carryMesh.frustumCulled = false;
+  carryMesh.castShadow = true;
   scene.add(carryMesh);
 
   /** @type {number[]} instance row → entity id */

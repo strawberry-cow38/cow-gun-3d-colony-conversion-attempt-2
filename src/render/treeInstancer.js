@@ -53,6 +53,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
   const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, capacity);
   trunkMesh.count = 0;
   trunkMesh.frustumCulled = false;
+  trunkMesh.castShadow = true;
+  trunkMesh.receiveShadow = true;
   scene.add(trunkMesh);
 
   const canopyGeo = new THREE.ConeGeometry(CANOPY_RADIUS, CANOPY_HEIGHT, 7, 1);
@@ -61,6 +63,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
   const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, capacity);
   canopyMesh.count = 0;
   canopyMesh.frustumCulled = false;
+  canopyMesh.castShadow = true;
+  canopyMesh.receiveShadow = true;
   scene.add(canopyMesh);
 
   // Axe marker. Handle offset so the grip sits at y=0 and the head at the top.

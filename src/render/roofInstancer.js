@@ -51,6 +51,8 @@ export function createRoofInstancer(scene, capacity = 4096) {
   const mesh = new THREE.InstancedMesh(geo, mat, capacity);
   mesh.count = 0;
   mesh.frustumCulled = false;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   // Prime instance-color buffer so THREE allocates it before first render.
   const priming = new THREE.Color(1, 1, 1);
   mesh.setColorAt(0, priming);

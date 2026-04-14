@@ -97,5 +97,7 @@ export function buildTileMesh(tileGrid) {
     roughness: 1,
   });
 
-  return new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  return mesh;
 }

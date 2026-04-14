@@ -26,6 +26,10 @@ const FLAME_RADIUS = 0.18 * UNITS_PER_METER;
 // Flame tip sits roughly at stick top + half flame height.
 const FLAME_CENTER_Y = STICK_HEIGHT + FLAME_HEIGHT * 0.85;
 const POINT_LIGHT_POOL = 12;
+// Only the N closest torch lights cast real shadows — each shadow-casting
+// PointLight renders a 6-face cubemap per frame, so the cap keeps cost bounded
+// while still giving proper occlusion around the player's current position.
+const POINT_LIGHT_SHADOW_CASTERS = 2;
 // Match the tile-lighting reach: TORCH_RADIUS_TILES counts the center tile,
 // so the euclidean reach from the torch is (TORCH_RADIUS_TILES - 1) tiles.
 const POINT_LIGHT_DISTANCE = (TORCH_RADIUS_TILES - 1) * TILE_SIZE;
@@ -76,6 +80,21 @@ export function createTorchInstancer(scene, capacity = 512) {
   for (let i = 0; i < POINT_LIGHT_POOL; i++) {
     const pl = new THREE.PointLight(0xff8040, 0, POINT_LIGHT_DISTANCE, 2);
     pl.visible = false;
+    // First N slots in the pool are pre-configured with shadow cubemaps so
+    // we only allocate that VRAM up front, not one per torch. The nearest
+    // N torches end up in these slots each frame (sorted-by-distance
+    // assignment below).
+    if (i < POINT_LIGHT_SHADOW_CASTERS) {
+      pl.castShadow = true;
+      pl.shadow.mapSize.width = 512;
+      pl.shadow.mapSize.height = 512;
+      pl.shadow.camera.near = 1;
+      pl.shadow.camera.far = POINT_LIGHT_DISTANCE;
+      // Small negative bias kills shadow acne on flat walls/floors without
+      // introducing visible peter-panning at torch ranges.
+      pl.shadow.bias = -0.002;
+      pl.shadow.radius = 2;
+    }
     scene.add(pl);
     pointLights.push(pl);
   }
