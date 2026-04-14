@@ -317,6 +317,40 @@ describe('migration runner', () => {
     expect(out.crops).toEqual([]);
   });
 
+  it('preserves a v15 crops array through the v15→v16 bump', () => {
+    const v15 = {
+      version: 15,
+      tileGrid: {
+        W: 2,
+        H: 1,
+        elevation: [0, 0],
+        biome: [0, 0],
+        stockpile: [0, 0],
+        wall: [0, 0],
+        door: [0, 0],
+        torch: [0, 0],
+        roof: [0, 0],
+        ignoreRoof: [0, 0],
+        floor: [0, 0],
+        farmZone: [0, 0],
+        tilled: [0, 0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+      crops: [{ i: 1, j: 0, kind: 'corn', growthTicks: 42 }],
+    };
+    const out = runMigrations(v15);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.crops).toEqual([{ i: 1, j: 0, kind: 'corn', growthTicks: 42 }]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

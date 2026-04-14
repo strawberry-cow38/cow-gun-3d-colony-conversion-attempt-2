@@ -44,6 +44,13 @@
  *              > 0 = player marked it for demolition (a board job exists);
  *              `progress` 0..1 drives visual feedback while a cow is
  *              demolishing.
+ *
+ * Crop / CropViz  { kind, growthTicks }
+ *              A single plant on a tilled+zoned tile. `growthTicks` only
+ *              advances while the tile is sunlit ≥51% (see systems/growth.js).
+ *              Visible stage is derived from growthTicks via cropStageFor().
+ *              Board-level dedupe of plant/harvest jobs lives in the farm
+ *              poster (by tile index) — no per-entity jobId tracking needed.
  */
 
 /**
@@ -108,4 +115,9 @@ export function registerComponents(world) {
   world.defineComponent('RoofViz', () => ({}));
   world.defineComponent('Floor', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
   world.defineComponent('FloorViz', () => ({}));
+  world.defineComponent('Crop', () => ({
+    kind: 'corn',
+    growthTicks: 0,
+  }));
+  world.defineComponent('CropViz', () => ({}));
 }

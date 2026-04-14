@@ -20,6 +20,7 @@ import {
   gzipString,
   hydrateBuildSites,
   hydrateCows,
+  hydrateCrops,
   hydrateDoors,
   hydrateFloors,
   hydrateItems,
@@ -378,6 +379,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Torch');
     despawnAllComp(world, 'Roof');
     despawnAllComp(world, 'Floor');
+    despawnAllComp(world, 'Crop');
     jobBoard.jobs.length = 0;
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
@@ -393,6 +395,7 @@ async function loadGame(ctx) {
     hydrateTorches(world, tileGrid, jobBoard, migrated);
     hydrateRoofs(world, tileGrid, jobBoard, migrated);
     hydrateFloors(world, tileGrid, jobBoard, migrated);
+    hydrateCrops(world, tileGrid, migrated);
     ctx.rooms.rebuild();
     ctx.roomOverlay.markDirty();
     ctx.ignoreRoofOverlay.markDirty();
@@ -405,6 +408,7 @@ async function loadGame(ctx) {
     ctx.tilledOverlay.markDirty();
     ctx.buildSiteInstancer?.markDirty();
     ctx.wallInstancer?.markDirty();
+    ctx.cropInstancer.markDirty();
     hydrateCows(world, migrated);
     // Job board was cleared above; any serialized cow job references are
     // stale. Reset so the brain re-picks from the fresh board.

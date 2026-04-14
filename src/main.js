@@ -34,6 +34,7 @@ import { createCowNameTags } from './render/cowNameTags.js';
 import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
+import { createCropInstancer } from './render/cropInstancer.js';
 import { DeconstructDesignator } from './render/deconstructDesignator.js';
 import { createDeconstructOverlay } from './render/deconstructOverlay.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
@@ -75,6 +76,7 @@ import {
   makeHungerSystem,
 } from './systems/cow.js';
 import { makeFarmPostingSystem } from './systems/farm.js';
+import { makeGrowthSystem } from './systems/growth.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { runRoofCollapse } from './systems/roofCollapse.js';
@@ -113,6 +115,10 @@ let onWorldCowHammer = () => {};
 let onWorldBuildComplete = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldTillComplete = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldPlantComplete = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldHarvestComplete = () => {};
 let onWorldItemChange = () => {};
 // Forward-declared so cowFollowPath can ask the FP camera for the currently
 // driven cow without a construction-order tangle.
@@ -132,6 +138,8 @@ scheduler.add(
     onCowHammer: (pos) => onWorldCowHammer(pos),
     onBuildComplete: (pos) => onWorldBuildComplete(pos),
     onTillComplete: (pos) => onWorldTillComplete(pos),
+    onPlantComplete: (pos) => onWorldPlantComplete(pos),
+    onHarvestComplete: (pos) => onWorldHarvestComplete(pos),
     onItemChange: () => onWorldItemChange(),
   }),
 );
@@ -149,7 +157,7 @@ scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
-scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid));
+scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world));
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
 let onRoomsRebuilt = () => {};
@@ -166,6 +174,16 @@ const timeOfDay = createTimeOfDay({ sun, hemi, sky });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
 const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
 scheduler.add(lightingSystem);
+scheduler.add(
+  makeGrowthSystem({
+    grid: tileGrid,
+    timeOfDay,
+    onStageChange: () => {
+      // Forward-decl safe: cropInstancer exists by the time the first tick fires.
+      cropInstancer.markDirty();
+    },
+  }),
+);
 // Seed the tile light grid so tick 0 already sees valid values — the cow
 // follow-path system reads it to apply the darkness slowdown.
 lightingSystem.run(world, { tick: 0, dt: 0, dirty: scheduler.dirty });
@@ -191,6 +209,7 @@ const roofInstancer = createRoofInstancer(scene, gridW * gridH);
 const roofCollapseParticles = createRoofCollapseParticles(scene);
 const floorInstancer = createFloorInstancer(scene, gridW * gridH);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
+const cropInstancer = createCropInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
@@ -218,6 +237,15 @@ onWorldCowHammer = (pos) => {
 };
 onWorldTillComplete = (pos) => {
   tilledOverlay.markDirty();
+  audio.playAt('chop', pos);
+};
+onWorldPlantComplete = (pos) => {
+  cropInstancer.markDirty();
+  audio.playAt('chop', pos);
+};
+onWorldHarvestComplete = (pos) => {
+  cropInstancer.markDirty();
+  itemInstancer.markDirty();
   audio.playAt('chop', pos);
 };
 onWorldBuildComplete = (pos) => {
@@ -743,6 +771,7 @@ const loop = new SimLoop({
     floorInstancer.update(world, tileGrid);
     roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
+    cropInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
@@ -819,6 +848,7 @@ installKeyboard({
   floorInstancer,
   buildSiteInstancer,
   wallInstancer,
+  cropInstancer,
   treeCount,
   gridW,
   gridH,

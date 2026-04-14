@@ -1,9 +1,9 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v15):
+ * Format (v16):
  * {
- *   version: 15,
+ *   version: 16,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
@@ -17,7 +17,8 @@
  *   doors: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   torches: [ { i, j, decon: boolean, progress: number } ],
  *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ],
- *   floors: [ { i, j, stuff, decon: boolean, progress: number } ]
+ *   floors: [ { i, j, stuff, decon: boolean, progress: number } ],
+ *   crops: [ { i, j, kind: string, growthTicks: number } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -114,6 +115,14 @@ import { TileGrid } from './tileGrid.js';
  * @property {string} stuff
  * @property {boolean} decon
  * @property {number} progress
+ */
+
+/**
+ * @typedef SerializedCrop
+ * @property {number} i
+ * @property {number} j
+ * @property {string} kind
+ * @property {number} growthTicks
  */
 
 /**
@@ -240,6 +249,16 @@ export function serializeState(tileGrid, world) {
       progress: components.Floor.progress ?? 0,
     });
   }
+  /** @type {SerializedCrop[]} */
+  const crops = [];
+  for (const { components } of world.query(['Crop', 'TileAnchor'])) {
+    crops.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      kind: components.Crop.kind,
+      growthTicks: components.Crop.growthTicks,
+    });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -266,6 +285,7 @@ export function serializeState(tileGrid, world) {
     torches,
     roofs,
     floors,
+    crops,
   };
 }
 
@@ -504,10 +524,32 @@ export function hydrateFloors(world, grid, board, state) {
 }
 
 /**
+ * Spawn Crop entities from a (migrated) save state. Outstanding plant/harvest
+ * board jobs re-post next tick via the farm poster.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {{ crops?: SerializedCrop[] }} state
+ */
+export function hydrateCrops(world, grid, state) {
+  const crops = state.crops ?? [];
+  for (const c of crops) {
+    if (!grid.inBounds(c.i, c.j)) continue;
+    const w = tileToWorld(c.i, c.j, grid.W, grid.H);
+    world.spawn({
+      Crop: { kind: c.kind, growthTicks: c.growthTicks ?? 0 },
+      CropViz: {},
+      TileAnchor: { i: c.i, j: c.j },
+      Position: { x: w.x, y: grid.getElevation(c.i, c.j), z: w.z },
+    });
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

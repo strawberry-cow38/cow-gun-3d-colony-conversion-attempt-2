@@ -16,11 +16,14 @@
 import { buildTicksForKind, findBuildStandTile } from '../jobs/build.js';
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DECONSTRUCT_TICKS, findDeconstructStandTile } from '../jobs/deconstruct.js';
+import { HARVEST_TICKS } from '../jobs/harvest.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
+import { PLANT_TICKS } from '../jobs/plant.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
 import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
+import { cropKindFor } from '../world/crops.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
@@ -77,6 +80,8 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  *   onCowHammer: (pos: {x:number,y:number,z:number}) => void,
  *   onBuildComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onTillComplete: (pos: {x:number,y:number,z:number}) => void,
+ *   onPlantComplete: (pos: {x:number,y:number,z:number}) => void,
+ *   onHarvestComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onItemChange: () => void,
  * }} BrainDeps
  */
@@ -133,7 +138,9 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'eat' ||
             job.kind === 'build' ||
             job.kind === 'deconstruct' ||
-            job.kind === 'till'
+            job.kind === 'till' ||
+            job.kind === 'plant' ||
+            job.kind === 'harvest'
           ) {
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
@@ -296,6 +303,31 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (candidate && candidate.kind === 'plant' && board.claim(candidate.id, id)) {
+                job.kind = 'plant';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
+              } else if (
+                candidate &&
+                candidate.kind === 'harvest' &&
+                board.claim(candidate.id, id)
+              ) {
+                job.kind = 'harvest';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  cropId: candidate.payload.cropId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               }
             }
 
@@ -320,6 +352,10 @@ export function makeCowBrainSystem(deps) {
           runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'till') {
           runTillJob(job, path, pos, grid, paths, board, deps);
+        } else if (job.kind === 'plant') {
+          runPlantJob(world, job, path, pos, grid, paths, board, deps);
+        } else if (job.kind === 'harvest') {
+          runHarvestJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'haul') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -897,6 +933,177 @@ function runTillJob(job, path, pos, grid, paths, board, deps) {
       job.payload = {};
     }
   }
+}
+
+/**
+ * State machine for the plant job: walk onto a tilled + zoned tile, poke a
+ * seed in for PLANT_TICKS, spawn a Crop entity. Bails if the tile loses its
+ * zone, loses its tilled bit, or a crop already exists there (another cow
+ * beat us to it).
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runPlantJob(world, job, path, pos, grid, paths, board, deps) {
+  const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
+
+  const boardJob = board.jobs.find((x) => x.id === jobId);
+  const zoneId = grid.getFarmZone(i, j);
+  const kind = cropKindFor(zoneId);
+  const tileBusy = tileHasCrop(world, i, j);
+  if (
+    !boardJob ||
+    boardJob.completed ||
+    zoneId === 0 ||
+    kind === null ||
+    !grid.isTilled(i, j) ||
+    tileBusy
+  ) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i, j });
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'planting';
+      job.payload.ticksRemaining = PLANT_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'planting') {
+    const remaining = (job.payload.ticksRemaining ?? PLANT_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    if (remaining <= 0) {
+      const w = tileToWorld(i, j, grid.W, grid.H);
+      world.spawn({
+        Crop: { kind, growthTicks: 0 },
+        CropViz: {},
+        TileAnchor: { i, j },
+        Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
+      });
+      deps.onPlantComplete(pos);
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * State machine for the harvest job: walk onto a ready crop, pull it up for
+ * HARVEST_TICKS, drop a food item on the tile, despawn the crop. Tilled bit
+ * stays set so the next farm-poster tick re-posts a plant job → auto-replant.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runHarvestJob(world, job, path, pos, grid, paths, board, deps) {
+  const { i, j, jobId, cropId } =
+    /** @type {{ i: number, j: number, jobId: number, cropId: number }} */ (job.payload);
+
+  const boardJob = board.jobs.find((x) => x.id === jobId);
+  const crop = world.get(cropId, 'Crop');
+  const anchor = world.get(cropId, 'TileAnchor');
+  if (!boardJob || boardJob.completed || !crop || !anchor || anchor.i !== i || anchor.j !== j) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i, j });
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'harvesting';
+      job.payload.ticksRemaining = HARVEST_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'harvesting') {
+    const remaining = (job.payload.ticksRemaining ?? HARVEST_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    if (remaining <= 0) {
+      world.despawn(cropId);
+      addItemToTile(world, grid, 'food', i, j);
+      deps.onHarvestComplete(pos);
+      deps.onItemChange();
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} i
+ * @param {number} j
+ */
+function tileHasCrop(world, i, j) {
+  for (const { components } of world.query(['Crop', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    if (a.i === i && a.j === j) return true;
+  }
+  return false;
 }
 
 /**
