@@ -40,11 +40,15 @@ describe('TileGrid', () => {
     expect(g.inBounds(0, -1)).toBe(false);
   });
 
-  it('generateSimpleHeightmap fills both arrays', () => {
-    const g = new TileGrid(8, 8);
-    g.generateSimpleHeightmap(5);
+  it('generateTerrain paints biomes and leaves elevation flat', () => {
+    const g = new TileGrid(16, 16);
+    g.generateTerrain();
     let nonZero = 0;
     for (const v of g.elevation) if (v !== 0) nonZero++;
-    expect(nonZero).toBeGreaterThan(0);
+    expect(nonZero).toBe(0);
+    /** @type {Set<number>} */
+    const seen = new Set();
+    for (const v of g.biome) seen.add(v);
+    expect(seen.size).toBeGreaterThan(1);
   });
 });

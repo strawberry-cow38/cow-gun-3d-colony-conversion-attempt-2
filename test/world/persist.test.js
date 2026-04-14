@@ -22,7 +22,10 @@ function makeWorld() {
 describe('serializeState / hydrateTileGrid roundtrip', () => {
   it('preserves elevation + biome arrays exactly', () => {
     const orig = new TileGrid(8, 6);
-    orig.generateSimpleHeightmap(4);
+    orig.generateTerrain();
+    // Heightmap stays flat now — explicitly stamp a few elevations so the
+    // roundtrip actually exercises non-zero elevation values.
+    for (let i = 0; i < orig.W; i++) orig.setElevation(i, 0, (i - 4) * 0.75);
     for (let i = 0; i < orig.W; i++) orig.setBiome(i, 0, i % 4);
 
     const state = serializeState(orig, makeWorld());

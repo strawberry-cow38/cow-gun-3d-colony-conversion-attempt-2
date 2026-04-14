@@ -176,20 +176,23 @@ export class TileGrid {
   }
 
   /**
-   * Stamp a deterministic-ish heightmap on the grid using a couple of sin waves.
-   * Just for Phase 2 visual variety; will be replaced by real terrain gen later.
-   * @param {number} amp
+   * Paint biomes using a low-frequency sin/cos field so stone/sand land in
+   * coherent patches instead of salt-and-pepper. Elevation stays at zero —
+   * the world is a perfectly flat plane; all the `getElevation` callers still
+   * work, they just all get 0. Kept the biome zoning from the old heightmap
+   * generator so the map still has visual variety.
    */
-  generateSimpleHeightmap(amp = 8) {
+  generateTerrain() {
+    const bands = 8;
     for (let j = 0; j < this.H; j++) {
       for (let i = 0; i < this.W; i++) {
         const fx = i / this.W;
         const fz = j / this.H;
-        const e =
-          amp * Math.sin(fx * 6.28) * Math.cos(fz * 6.28) + amp * 0.4 * Math.sin(fx * 18 + fz * 11);
-        this.elevation[this.idx(i, j)] = e;
-        if (e > amp * 0.6) this.biome[this.idx(i, j)] = BIOME.STONE;
-        else if (e < -amp * 0.4) this.biome[this.idx(i, j)] = BIOME.SAND;
+        const n =
+          bands * Math.sin(fx * 6.28) * Math.cos(fz * 6.28) +
+          bands * 0.4 * Math.sin(fx * 18 + fz * 11);
+        if (n > bands * 0.6) this.biome[this.idx(i, j)] = BIOME.STONE;
+        else if (n < -bands * 0.4) this.biome[this.idx(i, j)] = BIOME.SAND;
         else if (Math.random() < 0.05) this.biome[this.idx(i, j)] = BIOME.DIRT;
         else this.biome[this.idx(i, j)] = BIOME.GRASS;
       }

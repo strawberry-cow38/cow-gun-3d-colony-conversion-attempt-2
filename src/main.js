@@ -77,7 +77,7 @@ import { createWeather } from './world/weather.js';
 const { stressCount, cowCount, treeCount, gridW, gridH } = readBootParams();
 
 const tileGrid = new TileGrid(gridW, gridH);
-tileGrid.generateSimpleHeightmap(8);
+tileGrid.generateTerrain();
 
 const world = new World();
 registerComponents(world);
