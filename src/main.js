@@ -518,7 +518,9 @@ const clockEl = /** @type {HTMLElement} */ (document.getElementById('clock'));
 /** @param {number} speed */
 function speedIcon(speed) {
   if (speed === 0) return '⏸';
-  if (speed === 6) return '⏩';
+  // 6x reads as "▶▶▶▶" — same arrow alphabet as 1/2/3x so the player
+  // doesn't read it as a distinct "turbo" tier, just "more arrows = faster".
+  if (speed === 6) return '▶▶▶▶';
   return '▶'.repeat(speed);
 }
 

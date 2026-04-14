@@ -38,16 +38,22 @@ export function runAutoRoof(world, grid, _board, rooms) {
     // Roofable tiles = interior ∪ the walls/doors that enclose them, so the
     // room's perimeter is covered too. Walls and doors can carry a roof bit —
     // the roof sits above, doesn't conflict with the occupant.
+    //
+    // 8-way scan (not just ortho) so diagonal corner walls get included — a
+    // rectangular room's corner wall only touches interior tiles diagonally.
     const roofable = new Set(room.tiles);
     for (const tileIdx of room.tiles) {
       const i = tileIdx % grid.W;
       const j = (tileIdx - i) / grid.W;
-      for (const [di, dj] of ORTHO) {
-        const ni = i + di;
-        const nj = j + dj;
-        if (!grid.inBounds(ni, nj)) continue;
-        const nidx = grid.idx(ni, nj);
-        if (grid.wall[nidx] !== 0 || grid.door[nidx] !== 0) roofable.add(nidx);
+      for (let dj = -1; dj <= 1; dj++) {
+        for (let di = -1; di <= 1; di++) {
+          if (di === 0 && dj === 0) continue;
+          const ni = i + di;
+          const nj = j + dj;
+          if (!grid.inBounds(ni, nj)) continue;
+          const nidx = grid.idx(ni, nj);
+          if (grid.wall[nidx] !== 0 || grid.door[nidx] !== 0) roofable.add(nidx);
+        }
       }
     }
     for (const tileIdx of roofable) {
