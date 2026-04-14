@@ -61,6 +61,9 @@ export function createRoofInstancer(scene, capacity = 4096) {
 
   _quat.identity();
   let dirty = true;
+  /** @type {Set<number> | null} Supported-set handed in by the topology
+   * pulse so we don't BFS again here. Cleared after consumption. */
+  let cachedSupported = null;
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -68,7 +71,8 @@ export function createRoofInstancer(scene, capacity = 4096) {
    */
   function update(world, grid) {
     if (!dirty) return;
-    const supported = findSupportedRoofTiles(grid);
+    const supported = cachedSupported ?? findSupportedRoofTiles(grid);
+    cachedSupported = null;
     let k = 0;
     for (const { components } of world.query(['Roof', 'TileAnchor', 'RoofViz'])) {
       if (k >= capacity) break;
@@ -93,8 +97,10 @@ export function createRoofInstancer(scene, capacity = 4096) {
     dirty = false;
   }
 
-  function markDirty() {
+  /** @param {Set<number>} [supported] precomputed supported tile set */
+  function markDirty(supported) {
     dirty = true;
+    if (supported) cachedSupported = supported;
   }
 
   /** @param {boolean} v */

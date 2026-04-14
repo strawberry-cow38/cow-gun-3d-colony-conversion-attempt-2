@@ -19,10 +19,13 @@ const ROOF_Y = 3 * UNITS_PER_METER;
 /**
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
- * @returns {Array<{x: number, y: number, z: number}>}  positions of roofs that just collapsed
+ * @returns {{
+ *   collapsed: Array<{x: number, y: number, z: number}>,
+ *   supported: Set<number>,
+ * }}  collapsed positions + the supported set (recomputed if roofs fell)
  */
 export function runRoofCollapse(world, grid) {
-  const supported = findSupportedRoofTiles(grid);
+  let supported = findSupportedRoofTiles(grid);
   /** @type {Array<{x: number, y: number, z: number}>} */
   const collapsed = [];
   /** @type {Array<{id: number, i: number, j: number}>} */
@@ -38,5 +41,9 @@ export function runRoofCollapse(world, grid) {
     const w = tileToWorld(i, j, grid.W, grid.H);
     collapsed.push({ x: w.x, y: grid.getElevation(i, j) + ROOF_Y, z: w.z });
   }
-  return collapsed;
+  // Despawning roofs invalidates the supported set (ex-supported tiles are
+  // now just unroofed tiles; downstream consumers like the renderer coloring
+  // still-standing roofs need the fresh set).
+  if (doomed.length > 0) supported = findSupportedRoofTiles(grid);
+  return { collapsed, supported };
 }

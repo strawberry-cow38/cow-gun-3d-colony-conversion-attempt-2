@@ -68,6 +68,38 @@ export class TileGrid {
     this.light = new Uint8Array(W * H);
     this.farmZone = new Uint8Array(W * H);
     this.tilled = new Uint8Array(W * H);
+    // Derived counters + torch index — maintained in the setters so lighting
+    // can skip its full-grid sweep. Call `recomputeCounts()` after any bulk
+    // write that bypasses the setters (e.g. save load).
+    this.wallCount = 0;
+    this.doorCount = 0;
+    this.roofCount = 0;
+    this.torchCount = 0;
+    /** @type {Set<number>} tile indices with torch=1 */
+    this.torchTiles = new Set();
+  }
+
+  /** Rebuild derived wall/door/roof counts + torch index from the bitmaps.
+   * Call after bulk writes that bypass the setters (save load, terrain init). */
+  recomputeCounts() {
+    let w = 0;
+    let d = 0;
+    let r = 0;
+    let t = 0;
+    this.torchTiles.clear();
+    for (let k = 0; k < this.wall.length; k++) {
+      if (this.wall[k] !== 0) w++;
+      if (this.door[k] !== 0) d++;
+      if (this.roof[k] !== 0) r++;
+      if (this.torch[k] !== 0) {
+        t++;
+        this.torchTiles.add(k);
+      }
+    }
+    this.wallCount = w;
+    this.doorCount = d;
+    this.roofCount = r;
+    this.torchCount = t;
   }
 
   /** @param {number} i @param {number} j */
@@ -103,7 +135,12 @@ export class TileGrid {
 
   /** @param {number} i @param {number} j @param {number} v */
   setWall(i, j, v) {
-    this.wall[this.idx(i, j)] = v ? 1 : 0;
+    const k = this.idx(i, j);
+    const was = this.wall[k];
+    const now = v ? 1 : 0;
+    if (was === now) return;
+    this.wall[k] = now;
+    this.wallCount += now - was;
   }
 
   /** @param {number} i @param {number} j */
@@ -113,7 +150,12 @@ export class TileGrid {
 
   /** @param {number} i @param {number} j @param {number} v */
   setDoor(i, j, v) {
-    this.door[this.idx(i, j)] = v ? 1 : 0;
+    const k = this.idx(i, j);
+    const was = this.door[k];
+    const now = v ? 1 : 0;
+    if (was === now) return;
+    this.door[k] = now;
+    this.doorCount += now - was;
   }
 
   /** @param {number} i @param {number} j */
@@ -123,7 +165,18 @@ export class TileGrid {
 
   /** @param {number} i @param {number} j @param {number} v */
   setTorch(i, j, v) {
-    this.torch[this.idx(i, j)] = v ? 1 : 0;
+    const k = this.idx(i, j);
+    const was = this.torch[k];
+    const now = v ? 1 : 0;
+    if (was === now) return;
+    this.torch[k] = now;
+    if (now) {
+      this.torchTiles.add(k);
+      this.torchCount++;
+    } else {
+      this.torchTiles.delete(k);
+      this.torchCount--;
+    }
   }
 
   /** @param {number} i @param {number} j */
@@ -133,7 +186,12 @@ export class TileGrid {
 
   /** @param {number} i @param {number} j @param {number} v */
   setRoof(i, j, v) {
-    this.roof[this.idx(i, j)] = v ? 1 : 0;
+    const k = this.idx(i, j);
+    const was = this.roof[k];
+    const now = v ? 1 : 0;
+    if (was === now) return;
+    this.roof[k] = now;
+    this.roofCount += now - was;
   }
 
   /** @param {number} i @param {number} j */

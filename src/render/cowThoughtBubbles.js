@@ -27,10 +27,14 @@ const _delta = new THREE.Vector3();
  */
 export function createCowThoughtBubbles(scene) {
   /**
-   * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, texture: THREE.CanvasTexture, text: string }>}
+   * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, text: string }>}
    */
   const bubbles = new Map();
-  /** @type {Map<string, { canvas: HTMLCanvasElement, aspect: number }>} */
+  // Cache canvas+texture+aspect keyed by text. Thought strings come from a
+  // small fixed vocab (thoughtFor), so this grows to a bounded ~dozen
+  // entries and never needs eviction. Textures are never disposed — sharing
+  // them across cows means a single GPU upload per unique phrase.
+  /** @type {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number }>} */
   const textureCache = new Map();
   let visible = true;
 
@@ -100,22 +104,23 @@ export function createCowThoughtBubbles(scene) {
 /**
  * @param {THREE.Scene} scene
  * @param {string} text
- * @param {Map<string, { canvas: HTMLCanvasElement, aspect: number }>} cache
+ * @param {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number }>} cache
  */
 function makeBubble(scene, text, cache) {
   let painted = cache.get(text);
   if (!painted) {
-    painted = renderTextToCanvas(text);
+    const { canvas, aspect } = renderTextToCanvas(text);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    painted = { canvas, texture, aspect };
     cache.set(text, painted);
   }
-  const texture = new THREE.CanvasTexture(painted.canvas);
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.anisotropy = 4;
-  texture.needsUpdate = true;
 
   const material = new THREE.SpriteMaterial({
-    map: texture,
+    map: painted.texture,
     transparent: true,
     depthWrite: false,
     depthTest: true,
@@ -124,16 +129,17 @@ function makeBubble(scene, text, cache) {
   sprite.scale.set(BUBBLE_HEIGHT_WORLD * painted.aspect, BUBBLE_HEIGHT_WORLD, 1);
   sprite.renderOrder = 11;
   scene.add(sprite);
-  return { sprite, material, texture, text };
+  return { sprite, material, text };
 }
 
 /**
  * @param {THREE.Scene} scene
- * @param {{ sprite: THREE.Sprite, material: THREE.SpriteMaterial, texture: THREE.CanvasTexture }} bubble
+ * @param {{ sprite: THREE.Sprite, material: THREE.SpriteMaterial }} bubble
  */
 function disposeBubble(scene, bubble) {
   scene.remove(bubble.sprite);
-  bubble.texture.dispose();
+  // Texture stays alive in the shared cache so another cow thinking the
+  // same phrase can reuse it — don't dispose it here.
   bubble.material.dispose();
 }
 

@@ -38,14 +38,9 @@ export function makeLightingSystem(opts) {
     run() {
       const sun = Math.max(0, Math.min(1, timeOfDay.getSunLightPercent()));
       const base = Math.round(sun * 255);
-      const { W, H, torch, light, roof, wall, door } = grid;
-      let anyRoof = false;
-      let anyBlocker = false;
-      for (let k = 0; k < roof.length; k++) {
-        if (roof[k] !== 0) anyRoof = true;
-        if (wall[k] !== 0 || door[k] !== 0) anyBlocker = true;
-        if (anyRoof && anyBlocker) break;
-      }
+      const { W, H, light, roof, wall, door } = grid;
+      const anyRoof = grid.roofCount > 0;
+      const anyBlocker = grid.wallCount > 0 || grid.doorCount > 0;
       if (!anyRoof) {
         light.fill(base);
       } else {
@@ -55,23 +50,22 @@ export function makeLightingSystem(opts) {
       }
       if (sun >= TORCH_LIGHT_PCT && !anyRoof) return;
       const torchVal = Math.round(TORCH_LIGHT_PCT * 255);
-      for (let j = 0; j < H; j++) {
-        for (let i = 0; i < W; i++) {
-          if (torch[j * W + i] === 0) continue;
-          const j0 = Math.max(0, j - radius);
-          const j1 = Math.min(H - 1, j + radius);
-          const i0 = Math.max(0, i - radius);
-          const i1 = Math.min(W - 1, i + radius);
-          for (let jj = j0; jj <= j1; jj++) {
-            const dj = jj - j;
-            const dj2 = dj * dj;
-            for (let ii = i0; ii <= i1; ii++) {
-              const di = ii - i;
-              if (di * di + dj2 > radius2) continue;
-              if (anyBlocker && !hasLineOfSight(W, wall, door, i, j, ii, jj)) continue;
-              const k = jj * W + ii;
-              if (torchVal > light[k]) light[k] = torchVal;
-            }
+      for (const k of grid.torchTiles) {
+        const i = k % W;
+        const j = (k - i) / W;
+        const j0 = Math.max(0, j - radius);
+        const j1 = Math.min(H - 1, j + radius);
+        const i0 = Math.max(0, i - radius);
+        const i1 = Math.min(W - 1, i + radius);
+        for (let jj = j0; jj <= j1; jj++) {
+          const dj = jj - j;
+          const dj2 = dj * dj;
+          for (let ii = i0; ii <= i1; ii++) {
+            const di = ii - i;
+            if (di * di + dj2 > radius2) continue;
+            if (anyBlocker && !hasLineOfSight(W, wall, door, i, j, ii, jj)) continue;
+            const kk = jj * W + ii;
+            if (torchVal > light[kk]) light[kk] = torchVal;
           }
         }
       }

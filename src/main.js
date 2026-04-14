@@ -273,15 +273,17 @@ onRoomsRebuilt = () => {
   // Collapse any roofs that lost their support chain (a wall got demolished
   // out from under them). Fires BEFORE auto-roof so the auto-roofer doesn't
   // immediately re-queue blueprints for tiles that are about to be torn down.
-  const collapsed = runRoofCollapse(world, tileGrid);
+  const { collapsed, supported } = runRoofCollapse(world, tileGrid);
   for (const pos of collapsed) {
     roofCollapseParticles.burst(pos.x, pos.y, pos.z);
     audio.playAt('chop', pos);
   }
-  if (collapsed.length > 0) {
-    roofInstancer.markDirty();
-    pathCache.clear();
-  }
+  if (collapsed.length > 0) pathCache.clear();
+  // Hand the freshly-computed supported set to the renderer so it doesn't
+  // BFS again on its own dirty pulse. Mark dirty unconditionally — a
+  // topology change could have colored a standing roof differently even if
+  // no roofs collapsed.
+  roofInstancer.markDirty(supported);
   // Auto-queue roofs for newly enclosed rooms. Runs in the same tick as the
   // flood-fill so the next rare haul-poster tick sees the fresh BuildSites.
   runAutoRoof(world, tileGrid, jobBoard, rooms);

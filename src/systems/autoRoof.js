@@ -20,6 +20,14 @@ import { tileToWorld } from '../world/coords.js';
 
 export const ROOF_MAX_WALL_DISTANCE = 6;
 
+// Module-scoped scratch bitmaps, resized on demand. Both are cleared at the
+// top of each runAutoRoof call; the `roofable` buffer is also cleared between
+// rooms within the same call.
+let _pending = new Uint8Array(0);
+let _roofable = new Uint8Array(0);
+/** @type {number[]} */
+const _roofableTiles = [];
+
 /**
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -27,11 +35,17 @@ export const ROOF_MAX_WALL_DISTANCE = 6;
  * @param {import('./rooms.js').RoomRegistry} rooms
  */
 export function runAutoRoof(world, grid, _board, rooms) {
-  const pending = new Set();
+  const size = grid.W * grid.H;
+  if (_pending.length < size) {
+    _pending = new Uint8Array(size);
+    _roofable = new Uint8Array(size);
+  } else {
+    _pending.fill(0, 0, size);
+  }
   for (const { components } of world.query(['BuildSite', 'TileAnchor'])) {
     if (components.BuildSite.kind !== 'roof') continue;
     const a = components.TileAnchor;
-    pending.add(a.j * grid.W + a.i);
+    _pending[a.j * grid.W + a.i] = 1;
   }
 
   for (const room of rooms.rooms.values()) {
@@ -41,8 +55,12 @@ export function runAutoRoof(world, grid, _board, rooms) {
     //
     // 8-way scan (not just ortho) so diagonal corner walls get included — a
     // rectangular room's corner wall only touches interior tiles diagonally.
-    const roofable = new Set(room.tiles);
+    _roofableTiles.length = 0;
     for (const tileIdx of room.tiles) {
+      if (_roofable[tileIdx] === 0) {
+        _roofable[tileIdx] = 1;
+        _roofableTiles.push(tileIdx);
+      }
       const i = tileIdx % grid.W;
       const j = (tileIdx - i) / grid.W;
       for (let dj = -1; dj <= 1; dj++) {
@@ -52,14 +70,18 @@ export function runAutoRoof(world, grid, _board, rooms) {
           const nj = j + dj;
           if (!grid.inBounds(ni, nj)) continue;
           const nidx = grid.idx(ni, nj);
-          if (grid.wall[nidx] !== 0 || grid.door[nidx] !== 0) roofable.add(nidx);
+          if ((grid.wall[nidx] !== 0 || grid.door[nidx] !== 0) && _roofable[nidx] === 0) {
+            _roofable[nidx] = 1;
+            _roofableTiles.push(nidx);
+          }
         }
       }
     }
-    for (const tileIdx of roofable) {
+    for (const tileIdx of _roofableTiles) {
+      _roofable[tileIdx] = 0;
       if (grid.roof[tileIdx] !== 0) continue;
       if (grid.ignoreRoof[tileIdx] !== 0) continue;
-      if (pending.has(tileIdx)) continue;
+      if (_pending[tileIdx] !== 0) continue;
       const i = tileIdx % grid.W;
       const j = (tileIdx - i) / grid.W;
       if (!structureWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE)) continue;
@@ -77,7 +99,7 @@ export function runAutoRoof(world, grid, _board, rooms) {
         TileAnchor: { i, j },
         Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
       });
-      pending.add(tileIdx);
+      _pending[tileIdx] = 1;
     }
   }
 }

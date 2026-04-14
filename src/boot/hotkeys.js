@@ -388,6 +388,9 @@ async function loadGame(ctx) {
     tileGrid.farmZone.set(loaded.farmZone);
     tileGrid.tilled.set(loaded.tilled);
     tileGrid.occupancy.fill(0);
+    // Bulk set() bypasses the wall/door/torch/roof setters, so the derived
+    // counters + torchTiles Set are stale until rebuilt.
+    tileGrid.recomputeCounts();
     pathCache.clear();
     despawnAllComp(world, 'Cow');
     despawnAllComp(world, 'Tree');
