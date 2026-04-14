@@ -31,7 +31,7 @@ const POINT_LIGHT_POOL = 12;
 const POINT_LIGHT_DISTANCE = (TORCH_RADIUS_TILES - 1) * TILE_SIZE;
 // Three r155+ uses physical units with decay=2; tuned so a torch clearly
 // lights the ground out to POINT_LIGHT_DISTANCE without overpowering day.
-const POINT_LIGHT_INTENSITY = 12000;
+const POINT_LIGHT_INTENSITY = 20000;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
