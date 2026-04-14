@@ -16,6 +16,7 @@
  * motion reads as a real action instead of a teleport.
  */
 
+import { roofIsSupported } from '../systems/autoRoof.js';
 import { maxStack } from '../world/items.js';
 
 export const PICKUP_TICKS = 12;
@@ -324,7 +325,11 @@ export function makeHaulPostingSystem(board, grid) {
         }
 
         // Pass 0b: fully-delivered sites with no build job yet → post one.
+        // Roof sites additionally require the tile to be valid (supported +
+        // within reach) — blueprints on invalid tiles wait until a nearby
+        // wall/roof makes them valid, or the player cancels them.
         if (site.delivered >= site.required && site.buildJobId === 0) {
+          if (site.kind === 'roof' && !roofIsSupported(grid, a.i, a.j)) continue;
           const job = board.post('build', { siteId, i: a.i, j: a.j });
           site.buildJobId = job.id;
         }

@@ -24,13 +24,6 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
- * Maximum Chebyshev distance in tiles from a roof blueprint to any wall. Per
- * spec the wall itself counts as tile 1, so the roof may sit up to 6 tiles
- * out from a wall ("7 tiles away from a wall (this INCLUDES the wall)").
- */
-export const ROOF_MAX_WALL_DISTANCE = 6;
-
-/**
  * @typedef {Object} BuildDesignatorConfig
  * @property {'wall' | 'door' | 'torch' | 'roof'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
@@ -280,11 +273,10 @@ export class BuildDesignator {
   #designateTile(i, j) {
     const isRoof = this.config.kind === 'roof';
     if (isRoof) {
-      // Walls don't block roofs — only trees/rocks do. Hence occupancy-only.
-      if (this.tileGrid.occupancy[this.tileGrid.idx(i, j)] !== 0) return false;
+      // Roofs can be designated anywhere — the haul poster gates the actual
+      // build job on support + reach, so unsupported blueprints just wait
+      // until a nearby wall makes them valid. We only reject true duplicates.
       if (this.tileGrid.isRoof(i, j)) return false;
-      if (this.tileGrid.isIgnoreRoof(i, j)) return false;
-      if (!roofIsSupported(this.tileGrid, i, j)) return false;
     } else {
       if (this.tileGrid.isBlocked(i, j)) return false;
       if (this.tileGrid.isDoor(i, j)) return false;
@@ -449,56 +441,6 @@ export class BuildDesignator {
 /** @param {number} hex */
 function colorToCss(hex) {
   return `#${hex.toString(16).padStart(6, '0')}`;
-}
-
-/**
- * True if (i,j) satisfies the roof support + reach rule:
- *   - orthogonally adjacent to an existing wall or roof, AND
- *   - within ROOF_MAX_WALL_DISTANCE Chebyshev of at least one wall.
- * The adjacency check uses existing walls/roofs only (not blueprints) — the
- * auto-roof system grows roofs outward along a frontier of built tiles.
- *
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {number} i @param {number} j
- */
-export function roofIsSupported(grid, i, j) {
-  const orthoNbrs = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
-  let touching = false;
-  for (const [di, dj] of orthoNbrs) {
-    const ni = i + di;
-    const nj = j + dj;
-    if (!grid.inBounds(ni, nj)) continue;
-    if (grid.isWall(ni, nj) || grid.isRoof(ni, nj)) {
-      touching = true;
-      break;
-    }
-  }
-  if (!touching) return false;
-  return wallWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE);
-}
-
-/**
- * True if any wall tile sits within a Chebyshev distance of `r` from (i,j).
- *
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {number} i @param {number} j @param {number} r
- */
-export function wallWithinChebyshev(grid, i, j, r) {
-  const i0 = Math.max(0, i - r);
-  const i1 = Math.min(grid.W - 1, i + r);
-  const j0 = Math.max(0, j - r);
-  const j1 = Math.min(grid.H - 1, j + r);
-  for (let jj = j0; jj <= j1; jj++) {
-    for (let ii = i0; ii <= i1; ii++) {
-      if (grid.isWall(ii, jj)) return true;
-    }
-  }
-  return false;
 }
 
 /**
