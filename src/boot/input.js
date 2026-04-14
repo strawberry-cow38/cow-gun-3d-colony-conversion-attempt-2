@@ -17,6 +17,7 @@ import {
   hydrateBuildSites,
   hydrateCows,
   hydrateDoors,
+  hydrateFloors,
   hydrateItems,
   hydrateRoofs,
   hydrateTileGrid,
@@ -76,6 +77,7 @@ const PAN_KEYS = new Set([
  * @property {{ markDirty: () => void }} roomOverlay
  * @property {{ markDirty: () => void }} ignoreRoofOverlay
  * @property {{ markDirty: () => void }} roofInstancer
+ * @property {{ markDirty: () => void }} floorInstancer
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH
@@ -341,6 +343,7 @@ async function loadGame(ctx) {
     tileGrid.torch.set(loaded.torch);
     tileGrid.roof.set(loaded.roof);
     tileGrid.ignoreRoof.set(loaded.ignoreRoof);
+    tileGrid.floor.set(loaded.floor);
     tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllComp(world, 'Cow');
@@ -351,6 +354,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Door');
     despawnAllComp(world, 'Torch');
     despawnAllComp(world, 'Roof');
+    despawnAllComp(world, 'Floor');
     jobBoard.jobs.length = 0;
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
@@ -365,10 +369,12 @@ async function loadGame(ctx) {
     hydrateDoors(world, tileGrid, jobBoard, migrated);
     hydrateTorches(world, tileGrid, jobBoard, migrated);
     hydrateRoofs(world, tileGrid, jobBoard, migrated);
+    hydrateFloors(world, tileGrid, jobBoard, migrated);
     ctx.rooms.rebuild();
     ctx.roomOverlay.markDirty();
     ctx.ignoreRoofOverlay.markDirty();
     ctx.roofInstancer.markDirty();
+    ctx.floorInstancer.markDirty();
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();

@@ -1,10 +1,10 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v13):
+ * Format (v14):
  * {
- *   version: 13,
- *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[] },
+ *   version: 14,
+ *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
@@ -16,7 +16,8 @@
  *   walls: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   doors: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   torches: [ { i, j, decon: boolean, progress: number } ],
- *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ]
+ *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ],
+ *   floors: [ { i, j, stuff, decon: boolean, progress: number } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -99,6 +100,15 @@ import { TileGrid } from './tileGrid.js';
 
 /**
  * @typedef SerializedRoof
+ * @property {number} i
+ * @property {number} j
+ * @property {string} stuff
+ * @property {boolean} decon
+ * @property {number} progress
+ */
+
+/**
+ * @typedef SerializedFloor
  * @property {number} i
  * @property {number} j
  * @property {string} stuff
@@ -219,6 +229,17 @@ export function serializeState(tileGrid, world) {
       progress: components.Roof.progress ?? 0,
     });
   }
+  /** @type {SerializedFloor[]} */
+  const floors = [];
+  for (const { components } of world.query(['Floor', 'TileAnchor'])) {
+    floors.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      stuff: components.Floor.stuff ?? 'wood',
+      decon: components.Floor.deconstructJobId > 0,
+      progress: components.Floor.progress ?? 0,
+    });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -232,6 +253,7 @@ export function serializeState(tileGrid, world) {
       torch: Array.from(tileGrid.torch),
       roof: Array.from(tileGrid.roof),
       ignoreRoof: Array.from(tileGrid.ignoreRoof),
+      floor: Array.from(tileGrid.floor),
     },
     cows,
     trees,
@@ -241,11 +263,12 @@ export function serializeState(tileGrid, world) {
     doors,
     torches,
     roofs,
+    floors,
   };
 }
 
 /**
- * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[], roof?: number[], ignoreRoof?: number[] } }} state
+ * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[], roof?: number[], ignoreRoof?: number[], floor?: number[] } }} state
  */
 export function hydrateTileGrid(state) {
   const tg = new TileGrid(state.tileGrid.W, state.tileGrid.H);
@@ -257,6 +280,7 @@ export function hydrateTileGrid(state) {
   if (state.tileGrid.torch) tg.torch.set(state.tileGrid.torch);
   if (state.tileGrid.roof) tg.roof.set(state.tileGrid.roof);
   if (state.tileGrid.ignoreRoof) tg.ignoreRoof.set(state.tileGrid.ignoreRoof);
+  if (state.tileGrid.floor) tg.floor.set(state.tileGrid.floor);
   return tg;
 }
 
@@ -386,13 +410,14 @@ export function hydrateBuildSites(world, grid, state) {
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {Array<{i: number, j: number, stuff?: string, decon?: boolean, progress?: number, wallMounted?: boolean, yaw?: number}>} items
- * @param {'wall'|'door'|'torch'|'roof'} kind
+ * @param {'wall'|'door'|'torch'|'roof'|'floor'} kind
  */
 const STRUCT_COMP_BY_KIND = /** @type {const} */ ({
   wall: 'Wall',
   door: 'Door',
   torch: 'Torch',
   roof: 'Roof',
+  floor: 'Floor',
 });
 
 function hydrateStructures(world, grid, board, items, kind) {
@@ -465,10 +490,20 @@ export function hydrateRoofs(world, grid, board, state) {
 }
 
 /**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ floors?: SerializedFloor[] }} state
+ */
+export function hydrateFloors(world, grid, board, state) {
+  hydrateStructures(world, grid, board, state.floors ?? [], 'floor');
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

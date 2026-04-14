@@ -35,6 +35,7 @@ export const DECON_KINDS = /** @type {const} */ ([
   { comp: 'Wall', kind: 'wall' },
   { comp: 'Door', kind: 'door' },
   { comp: 'Torch', kind: 'torch' },
+  { comp: 'Floor', kind: 'floor' },
 ]);
 
 export class DeconstructDesignator {

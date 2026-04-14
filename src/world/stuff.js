@@ -18,6 +18,7 @@
  * @property {number} doorSlabColor    doorInstancer — moving panel
  * @property {number} doorFrameColor   doorInstancer — surrounding jamb
  * @property {number} roofColor        roofInstancer — supported-roof tint
+ * @property {number} floorColor       floorInstancer — finished floor tint
  * @property {number} blueprintTint    buildSiteInstancer — mixed into waiting-color
  */
 
@@ -31,6 +32,7 @@ export const STUFF = {
     doorSlabColor: 0xb87333,
     doorFrameColor: 0x8a5a2b,
     roofColor: 0x8a5a2b,
+    floorColor: 0xa0703a,
     blueprintTint: 0xb8864a,
   },
   stone: {
@@ -41,6 +43,7 @@ export const STUFF = {
     doorSlabColor: 0x8a8a8a,
     doorFrameColor: 0x6a6a6a,
     roofColor: 0x8a8a8a,
+    floorColor: 0x909498,
     blueprintTint: 0x9aa0a6,
   },
 };

@@ -254,6 +254,36 @@ describe('migration runner', () => {
     expect(out.roofs).toEqual([]);
   });
 
+  it('upgrades a v13 save by adding an empty floor bitmap + empty floors array', () => {
+    const v13 = {
+      version: 13,
+      tileGrid: {
+        W: 2,
+        H: 1,
+        elevation: [0, 0],
+        biome: [0, 0],
+        stockpile: [0, 0],
+        wall: [0, 0],
+        door: [0, 0],
+        torch: [0, 0],
+        roof: [0, 0],
+        ignoreRoof: [0, 0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+    };
+    const out = runMigrations(v13);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.tileGrid.floor).toEqual([0, 0]);
+    expect(out.floors).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

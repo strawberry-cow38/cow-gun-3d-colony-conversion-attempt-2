@@ -32,7 +32,7 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -96,6 +96,15 @@ export const ROOF_DESIGNATOR_CONFIG = {
   addVerb: 'roof',
   cancelVerb: 'cancel roof',
   required: 0,
+  stuffed: true,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const FLOOR_DESIGNATOR_CONFIG = {
+  kind: 'floor',
+  previewColorAdd: 0xbf9a6a,
+  addVerb: 'floor',
+  cancelVerb: 'cancel floor',
   stuffed: true,
 };
 
@@ -317,9 +326,17 @@ export class BuildDesignator {
     const isRoof = kind === 'roof';
     const isDoor = kind === 'door';
     const isWallTorch = kind === 'wallTorch';
+    const isFloor = kind === 'floor';
     if (isRoof) {
       if (this.tileGrid.isRoof(i, j)) return false;
       if (!hasRoofSupport(this.tileGrid, this.world, i, j)) return false;
+    } else if (isFloor) {
+      // Floors sit on the ground plane but don't block anything. Skip tiles
+      // already floored, walled (wall replaces the ground), or occupied by
+      // natural blockers (tree/rock). Doors, torches, stockpiles, and roofs
+      // are fine overhead or co-located — they don't hide the floor.
+      if (this.tileGrid.isFloor(i, j)) return false;
+      if (this.tileGrid.isBlocked(i, j)) return false;
     } else {
       // Doors can be placed on built walls — queued as "deconstruct wall,
       // then build door on the cleared tile" below. Everything else keeps
@@ -331,19 +348,26 @@ export class BuildDesignator {
     // Wall torches need an orthogonal wall to mount on — they hang off its
     // face and would be visually orphaned floating in an open tile.
     if (isWallTorch && !hasOrthoStructure(this.tileGrid, i, j)) return false;
-    // Torches are decorative and non-blocking; letting them sit on stockpile
-    // tiles means players can light up a storage area without having to
-    // redraw the stockpile around them. Roofs don't touch the ground plane
-    // so stockpiles underneath them are fine too.
-    if (!isRoof && kind !== 'torch' && !isWallTorch && this.tileGrid.isStockpile(i, j)) {
+    // Torches + floors are decorative and non-blocking; letting them sit on
+    // stockpile tiles means players can floor/light a storage area without
+    // having to redraw the stockpile around them. Roofs don't touch the
+    // ground plane so stockpiles underneath them are fine too.
+    if (
+      !isRoof &&
+      !isFloor &&
+      kind !== 'torch' &&
+      !isWallTorch &&
+      this.tileGrid.isStockpile(i, j)
+    ) {
       return false;
     }
-    // Roofs sit above the ground plane so they don't conflict with wall/door/
-    // torch blueprints — only with other roofs. Ground-plane blueprints
-    // conflict with each other but not with roofs.
+    // Roofs sit above, floors below, and everything else shares the ground
+    // plane. Blueprints only conflict with others in the same plane.
     const samePlane = isRoof
       ? /** @param {string} k */ (k) => k === 'roof'
-      : /** @param {string} k */ (k) => k !== 'roof';
+      : isFloor
+        ? /** @param {string} k */ (k) => k === 'floor'
+        : /** @param {string} k */ (k) => k !== 'roof' && k !== 'floor';
     const existingSiteId = this.#findSiteAt(i, j, samePlane);
     if (existingSiteId !== null) {
       // Door over wall blueprint: upgrade the plan in-place — cancel the

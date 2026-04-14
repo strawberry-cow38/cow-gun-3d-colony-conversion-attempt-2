@@ -18,6 +18,7 @@ import { makeHaulPostingSystem } from './jobs/haul.js';
 import {
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
+  FLOOR_DESIGNATOR_CONFIG,
   ROOF_DESIGNATOR_CONFIG,
   TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
@@ -38,6 +39,7 @@ import { createDeconstructOverlay } from './render/deconstructOverlay.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
+import { createFloorInstancer } from './render/floorInstancer.js';
 import { IgnoreRoofDesignator } from './render/ignoreRoofDesignator.js';
 import { createIgnoreRoofOverlay } from './render/ignoreRoofOverlay.js';
 import { createItemInstancer } from './render/itemInstancer.js';
@@ -179,6 +181,7 @@ const doorInstancer = createDoorInstancer(scene, 512, audio);
 const torchInstancer = createTorchInstancer(scene, 512);
 const roofInstancer = createRoofInstancer(scene, gridW * gridH);
 const roofCollapseParticles = createRoofCollapseParticles(scene);
+const floorInstancer = createFloorInstancer(scene, gridW * gridH);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
@@ -206,6 +209,7 @@ onWorldCowHammer = (pos) => {
 onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
   roofInstancer.markDirty();
+  floorInstancer.markDirty();
   buildSiteInstancer.markDirty();
   deconstructOverlay.markDirty();
   pathCache.clear();
@@ -483,6 +487,24 @@ const roofDesignator = new BuildDesignator(
 );
 designators.push(roofDesignator);
 
+const floorDesignator = new BuildDesignator(
+  FLOOR_DESIGNATOR_CONFIG,
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    deactivateOthers(floorDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(floorDesignator);
+
 const ignoreRoofDesignator = new IgnoreRoofDesignator(
   canvas,
   camera,
@@ -505,7 +527,7 @@ const deconstructDesignator = new DeconstructDesignator(
   tileGrid,
   world,
   jobBoard,
-  [wallInstancer, deconstructOverlay],
+  [wallInstancer, floorInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(deconstructDesignator);
@@ -541,7 +563,7 @@ const cancelDesignator = new CancelDesignator(
   world,
   jobBoard,
   buildSiteInstancer,
-  [wallInstancer, roofInstancer, deconstructOverlay],
+  [wallInstancer, roofInstancer, floorInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(cancelDesignator);
@@ -564,6 +586,7 @@ const buildTab = createBuildTab({
   torchDesignator,
   wallTorchDesignator,
   roofDesignator,
+  floorDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,
@@ -657,6 +680,7 @@ const loop = new SimLoop({
     doorInstancer.update(world, tileGrid);
     torchInstancer.update(world, tileGrid, tSec, camera);
     roofInstancer.update(world, tileGrid);
+    floorInstancer.update(world, tileGrid);
     roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
@@ -728,6 +752,7 @@ installKeyboard({
   roomOverlay,
   ignoreRoofOverlay,
   roofInstancer,
+  floorInstancer,
   buildSiteInstancer,
   wallInstancer,
   treeCount,

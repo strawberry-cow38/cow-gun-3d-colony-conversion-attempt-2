@@ -42,6 +42,7 @@ import { STUFF, STUFF_ORDER } from '../world/stuff.js';
  * @property {ToggleableDesignator} torchDesignator
  * @property {ToggleableDesignator} wallTorchDesignator
  * @property {ToggleableDesignator} roofDesignator
+ * @property {ToggleableDesignator} floorDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
@@ -110,6 +111,16 @@ export function createBuildTab(opts) {
         'drag to designate roofs (free; right-click for material — walls must match to support)',
       activeColor: '#c0a080',
       designator: opts.roofDesignator,
+      stuffed: true,
+    },
+    {
+      id: 'floor',
+      label: 'Floor',
+      icon: '🟫',
+      hotkeyHint:
+        'drag to designate floors — cows walk at full speed on floors, 85% off them (right-click for material)',
+      activeColor: '#bf9a6a',
+      designator: opts.floorDesignator,
       stuffed: true,
     },
     {

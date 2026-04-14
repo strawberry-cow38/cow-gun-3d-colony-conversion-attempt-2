@@ -629,6 +629,14 @@ function finishBuild(world, grid, siteId, jobId, board) {
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });
+  } else if (site.kind === 'floor') {
+    grid.setFloor(anchor.i, anchor.j, 1);
+    world.spawn({
+      Floor: { stuff },
+      FloorViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
   } else {
     grid.setWall(anchor.i, anchor.j, 1);
     world.spawn({
@@ -673,6 +681,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   door: 'Door',
   torch: 'Torch',
   roof: 'Roof',
+  floor: 'Floor',
 });
 
 /**
@@ -693,8 +702,8 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
 function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
-  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'} */ (
-    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'} */ (kind)] ?? 'Wall'
+  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'} */ (
+    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'} */ (kind)] ?? 'Wall'
   );
   const tag = world.get(entityId, compName);
   const boardJob = board.jobs.find((j) => j.id === jobId);
@@ -784,6 +793,7 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   else if (kind === 'door') grid.setDoor(anchor.i, anchor.j, 0);
   else if (kind === 'torch') grid.setTorch(anchor.i, anchor.j, 0);
   else if (kind === 'roof') grid.setRoof(anchor.i, anchor.j, 0);
+  else if (kind === 'floor') grid.setFloor(anchor.i, anchor.j, 0);
   // Wall/door/torch cost 1 wood → 50% refund = 1. Roofs are free so they
   // refund nothing. When buildings diverge further, the original
   // `required`/`requiredKind` will need to live on the finished-structure
@@ -1272,6 +1282,9 @@ export function makeCowFollowPathSystem(deps) {
         const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
         if (grid.inBounds(cur.i, cur.j)) {
           pos.y = grid.getElevation(cur.i, cur.j);
+          // Finished floor tiles are full speed; bare terrain drags to 85%.
+          // Applied before the darkness check so both stack multiplicatively.
+          if (!grid.isFloor(cur.i, cur.j)) speed *= 0.85;
           // Half speed on dim tiles (<40% light) — cows stumble in the dark.
           if (grid.getLight(cur.i, cur.j) < DARK_LIGHT_BYTE) speed *= 0.5;
         }

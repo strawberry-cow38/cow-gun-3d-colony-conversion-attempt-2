@@ -24,6 +24,10 @@
  *              need entity lookups. Serialized.
  * - ignoreRoof: uint8; nonzero = player designated "don't auto-roof this tile".
  *              Auto-roof skips these. Serialized.
+ * - floor:     uint8; nonzero = finished floor on the tile. Floors are
+ *              walkable, non-blocking ground-layer tiles. Cows move at 100%
+ *              speed on floors and 85% off them (before lighting modifiers).
+ *              Serialized.
  * - light:     uint8; 0..255 mapping to 0..100% tile illumination. Derived
  *              from sun% and torches by the lighting system — NOT serialized.
  *              Cows move at half speed on tiles with light below 40%.
@@ -53,6 +57,7 @@ export class TileGrid {
     this.torch = new Uint8Array(W * H);
     this.roof = new Uint8Array(W * H);
     this.ignoreRoof = new Uint8Array(W * H);
+    this.floor = new Uint8Array(W * H);
     this.light = new Uint8Array(W * H);
   }
 
@@ -130,6 +135,16 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setIgnoreRoof(i, j, v) {
     this.ignoreRoof[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isFloor(i, j) {
+    return this.floor[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setFloor(i, j, v) {
+    this.floor[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /** @param {number} i @param {number} j */

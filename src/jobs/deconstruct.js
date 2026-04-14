@@ -32,7 +32,7 @@ const NBRS = [
  */
 export function findDeconstructStandTile(grid, walkable, kind, i, j) {
   if (kind !== 'wall') {
-    // Doors and torches are walkable; stand on the target tile itself.
+    // Doors, torches, floors are walkable; stand on the target tile itself.
     if (grid.inBounds(i, j) && walkable(grid, i, j)) return { i, j };
   }
   for (const [di, dj] of NBRS) {
