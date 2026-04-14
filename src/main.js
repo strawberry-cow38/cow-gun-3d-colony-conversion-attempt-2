@@ -33,6 +33,7 @@ import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
 import { DeconstructDesignator } from './render/deconstructDesignator.js';
+import { createDeconstructOverlay } from './render/deconstructOverlay.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
@@ -180,6 +181,7 @@ const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
 const roomOverlay = createRoomOverlay(scene, gridW * gridH);
 const ignoreRoofOverlay = createIgnoreRoofOverlay(scene, gridW * gridH);
+const deconstructOverlay = createDeconstructOverlay(scene, gridW * gridH);
 const pickTileOverlay = createPickTileOverlay(scene);
 
 onWorldChopComplete = (pos) => {
@@ -201,6 +203,7 @@ onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
   roofInstancer.markDirty();
   buildSiteInstancer.markDirty();
+  deconstructOverlay.markDirty();
   pathCache.clear();
   // Walls/doors can open or close a room, so ask the rooms system to redo
   // its flood-fill on the next tick. Torches don't affect topology but
@@ -467,7 +470,7 @@ const deconstructDesignator = new DeconstructDesignator(
   tileGrid,
   world,
   jobBoard,
-  [wallInstancer, roofInstancer],
+  [wallInstancer, roofInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(deconstructDesignator);
@@ -485,7 +488,7 @@ const cancelDesignator = new CancelDesignator(
   world,
   jobBoard,
   buildSiteInstancer,
-  [wallInstancer, roofInstancer],
+  [wallInstancer, roofInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(cancelDesignator);
@@ -605,6 +608,7 @@ const loop = new SimLoop({
     stockpileOverlay.update(tileGrid);
     roomOverlay.update(tileGrid, rooms);
     ignoreRoofOverlay.update(tileGrid);
+    deconstructOverlay.update(world, tileGrid);
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
     cowPortraitBar.update();
