@@ -24,11 +24,11 @@ import {
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
+import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
-const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
  * @typedef {Object} BuildDesignatorConfig
@@ -160,7 +160,12 @@ export class BuildDesignator {
     this.curTile = null;
 
     this.preview = buildPreview(scene, config.previewColorAdd);
-    this.sizeLabel = buildSizeLabel(colorToCss(config.previewColorAdd));
+    this.sizeLabel = createDragSizeLabel({
+      addVerb: config.addVerb,
+      cancelVerb: config.cancelVerb,
+      addHex: config.previewColorAdd,
+      removeHex: PREVIEW_COLOR_REMOVE,
+    });
     this.radiusRing = config.previewRadiusTiles
       ? buildRadiusRing(scene, config.previewColorAdd, (config.previewRadiusTiles - 1) * TILE_SIZE)
       : null;
@@ -220,7 +225,7 @@ export class BuildDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
-    this.#hideSizeLabel();
+    this.sizeLabel.hide();
   }
 
   /** @param {MouseEvent} e */
@@ -245,7 +250,7 @@ export class BuildDesignator {
     this.startTile = tile;
     this.curTile = tile;
     this.#renderPreview();
-    this.#renderSizeLabel(e);
+    this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
 
   /** @param {MouseEvent} e */
@@ -271,7 +276,7 @@ export class BuildDesignator {
     if (!tile) return;
     this.curTile = tile;
     this.#renderPreview();
-    this.#renderSizeLabel(e);
+    this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
 
   /** @param {MouseEvent} e */
@@ -287,7 +292,7 @@ export class BuildDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
-    this.#hideSizeLabel();
+    this.sizeLabel.hide();
     if (!start || !end) return;
     this.#apply(start, end, this.removing);
   }
@@ -524,31 +529,6 @@ export class BuildDesignator {
     if (this.radiusRing) this.radiusRing.line.visible = false;
   }
 
-  /** @param {MouseEvent} e */
-  #renderSizeLabel(e) {
-    if (!this.startTile || !this.curTile) {
-      this.#hideSizeLabel();
-      return;
-    }
-    const w = Math.abs(this.curTile.i - this.startTile.i) + 1;
-    const h = Math.abs(this.curTile.j - this.startTile.j) + 1;
-    const meters = TILE_SIZE / UNITS_PER_METER;
-    const wm = (w * meters).toFixed(1);
-    const hm = (h * meters).toFixed(1);
-    const verb = this.removing ? this.config.cancelVerb : this.config.addVerb;
-    this.sizeLabel.textContent = `${verb}: ${w} × ${h} tiles (${wm}m × ${hm}m, ${w * h})`;
-    this.sizeLabel.style.left = `${e.clientX + 16}px`;
-    this.sizeLabel.style.top = `${e.clientY + 16}px`;
-    this.sizeLabel.style.borderColor = this.removing
-      ? PREVIEW_COLOR_REMOVE_CSS
-      : colorToCss(this.config.previewColorAdd);
-    this.sizeLabel.style.display = 'block';
-  }
-
-  #hideSizeLabel() {
-    this.sizeLabel.style.display = 'none';
-  }
-
   /**
    * @param {MouseEvent} e
    * @returns {{ i: number, j: number } | null}
@@ -618,11 +598,6 @@ export function releaseBuildSite(world, board, tileGrid, site, i, j) {
   }
 }
 
-/** @param {number} hex */
-function colorToCss(hex) {
-  return `#${hex.toString(16).padStart(6, '0')}`;
-}
-
 /**
  * @param {THREE.Scene} scene
  * @param {number} color
@@ -659,23 +634,4 @@ function buildRadiusRing(scene, color, radius) {
   line.visible = false;
   scene.add(line);
   return { geo, line };
-}
-
-/** @param {string} borderCss */
-function buildSizeLabel(borderCss) {
-  const el = document.createElement('div');
-  el.style.position = 'fixed';
-  el.style.display = 'none';
-  el.style.padding = '4px 8px';
-  el.style.background = 'rgba(14, 18, 24, 0.85)';
-  el.style.color = '#ffffff';
-  el.style.font = '12px/1.2 system-ui, -apple-system, Segoe UI, sans-serif';
-  el.style.fontWeight = '600';
-  el.style.border = `1px solid ${borderCss}`;
-  el.style.borderRadius = '3px';
-  el.style.pointerEvents = 'none';
-  el.style.zIndex = '50';
-  el.style.whiteSpace = 'nowrap';
-  document.body.appendChild(el);
-  return el;
 }

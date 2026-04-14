@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -47,6 +48,12 @@ export class IgnoreRoofDesignator {
     this.curTile = null;
 
     this.preview = buildPreview(scene);
+    this.sizeLabel = createDragSizeLabel({
+      addVerb: 'no-roof',
+      cancelVerb: 'clear no-roof',
+      addHex: PREVIEW_COLOR_ADD,
+      removeHex: PREVIEW_COLOR_REMOVE,
+    });
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -89,6 +96,7 @@ export class IgnoreRoofDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.sizeLabel.hide();
   }
 
   /** @param {MouseEvent} e */
@@ -103,6 +111,7 @@ export class IgnoreRoofDesignator {
     this.startTile = tile;
     this.curTile = tile;
     this.#renderPreview();
+    this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
 
   /** @param {MouseEvent} e */
@@ -112,6 +121,7 @@ export class IgnoreRoofDesignator {
     if (!tile) return;
     this.curTile = tile;
     this.#renderPreview();
+    this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
 
   /** @param {MouseEvent} e */
@@ -125,6 +135,7 @@ export class IgnoreRoofDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.sizeLabel.hide();
     if (!start || !end) return;
     this.#apply(start, end, this.removing);
   }

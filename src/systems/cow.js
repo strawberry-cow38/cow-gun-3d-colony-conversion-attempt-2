@@ -100,6 +100,9 @@ export function makeCowBrainSystem(deps) {
           board.release(j.id);
         }
       }
+      // Food existence is a world-level signal; scan once per tick instead of
+      // once per hungry cow so a foodless colony doesn't pay O(items × cows).
+      const anyFood = hasAnyFood(world);
       for (const { id, components } of world.query([
         'Cow',
         'Position',
@@ -174,8 +177,14 @@ export function makeCowBrainSystem(deps) {
         // when it's starving drops what it's carrying and bails to eat; the
         // next tick's decide block will self-assign an eat job. Jobs below
         // HUNGER_PREEMPT_TIER (eat itself) are already urgent enough to let
-        // run to completion.
-        if (hunger.value < HUNGER_CRITICAL_THRESHOLD && tierFor(job.kind) >= HUNGER_PREEMPT_TIER) {
+        // run to completion. Skip the preempt entirely when the colony has no
+        // food — otherwise the cow oscillates between "drop work" and "no food
+        // to plan for, re-claim work" every tick and never makes progress.
+        if (
+          hunger.value < HUNGER_CRITICAL_THRESHOLD &&
+          tierFor(job.kind) >= HUNGER_PREEMPT_TIER &&
+          anyFood
+        ) {
           if (job.payload?.jobId != null) board.release(job.payload.jobId);
           if (inv.itemKind !== null) {
             dropCarriedItem(world, grid, inv, pos);
@@ -1096,6 +1105,14 @@ function findNearestFood(world, near) {
     }
   }
   return best;
+}
+
+/** @param {import('../ecs/world.js').World} world */
+function hasAnyFood(world) {
+  for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    if (components.Item.kind === 'food' && components.Item.count > 0) return true;
+  }
+  return false;
 }
 
 /**

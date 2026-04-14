@@ -551,7 +551,13 @@ const removeRoofDesignator = new DeconstructDesignator(
     updateHud();
   },
   audio,
-  { kinds: [{ comp: 'Roof', kind: 'roof' }], previewColor: 0xff8fd0, tagIgnoreRoof: true },
+  {
+    kinds: [{ comp: 'Roof', kind: 'roof' }],
+    previewColor: 0xff8fd0,
+    tagIgnoreRoof: true,
+    addVerb: 'un-roof',
+    cancelVerb: 'cancel un-roof',
+  },
 );
 designators.push(removeRoofDesignator);
 
@@ -569,7 +575,12 @@ const removeFloorDesignator = new DeconstructDesignator(
     updateHud();
   },
   audio,
-  { kinds: [{ comp: 'Floor', kind: 'floor' }], previewColor: 0xd4a14a },
+  {
+    kinds: [{ comp: 'Floor', kind: 'floor' }],
+    previewColor: 0xd4a14a,
+    addVerb: 'un-floor',
+    cancelVerb: 'cancel un-floor',
+  },
 );
 designators.push(removeFloorDesignator);
 

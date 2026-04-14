@@ -19,6 +19,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -50,7 +51,7 @@ export class DeconstructDesignator {
    * @param {THREE.Scene} scene
    * @param {() => void} onStateChanged
    * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ kinds?: readonly { comp: string, kind: string }[], previewColor?: number, tagIgnoreRoof?: boolean }} [opts]  Roof-only mode uses `kinds: [{comp:'Roof',kind:'roof'}]` + its own preview color so the player can demolish roofs without also hitting the walls holding them up. `tagIgnoreRoof` additionally flips the tile's ignoreRoof bit on demolish so the auto-roofer doesn't rebuild what the player just tore down; the reverse path (shift-drag to cancel) clears it again.
+   * @param {{ kinds?: readonly { comp: string, kind: string }[], previewColor?: number, tagIgnoreRoof?: boolean, addVerb?: string, cancelVerb?: string }} [opts]  Roof-only mode uses `kinds: [{comp:'Roof',kind:'roof'}]` + its own preview color so the player can demolish roofs without also hitting the walls holding them up. `tagIgnoreRoof` additionally flips the tile's ignoreRoof bit on demolish so the auto-roofer doesn't rebuild what the player just tore down; the reverse path (shift-drag to cancel) clears it again. `addVerb`/`cancelVerb` label the size guide — default "demolish"/"cancel demolish".
    */
   constructor(
     dom,
@@ -77,6 +78,8 @@ export class DeconstructDesignator {
     this.kinds = opts?.kinds ?? DECON_KINDS;
     this.previewColor = opts?.previewColor ?? DECONSTRUCT_PREVIEW_COLOR;
     this.tagIgnoreRoof = opts?.tagIgnoreRoof === true;
+    this.addVerb = opts?.addVerb ?? 'demolish';
+    this.cancelVerb = opts?.cancelVerb ?? 'cancel demolish';
     this.active = false;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
@@ -87,6 +90,12 @@ export class DeconstructDesignator {
     this.curTile = null;
 
     this.preview = buildPreview(scene);
+    this.sizeLabel = createDragSizeLabel({
+      addVerb: this.addVerb,
+      cancelVerb: this.cancelVerb,
+      addHex: this.previewColor,
+      removeHex: PREVIEW_COLOR_REMOVE,
+    });
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -129,6 +138,7 @@ export class DeconstructDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.sizeLabel.hide();
   }
 
   /** @param {MouseEvent} e */
@@ -143,6 +153,7 @@ export class DeconstructDesignator {
     this.startTile = tile;
     this.curTile = tile;
     this.#renderPreview();
+    this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
 
   /** @param {MouseEvent} e */
@@ -152,6 +163,7 @@ export class DeconstructDesignator {
     if (!tile) return;
     this.curTile = tile;
     this.#renderPreview();
+    this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
 
   /** @param {MouseEvent} e */
@@ -165,6 +177,7 @@ export class DeconstructDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.sizeLabel.hide();
     if (!start || !end) return;
     this.#apply(start, end, this.removing);
   }

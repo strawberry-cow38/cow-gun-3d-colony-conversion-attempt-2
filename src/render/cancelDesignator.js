@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { releaseBuildSite } from './buildDesignator.js';
+import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -68,6 +69,10 @@ export class CancelDesignator {
     this.curTile = null;
 
     this.preview = buildPreview(scene);
+    this.sizeLabel = createDragSizeLabel({
+      addVerb: 'cancel',
+      addHex: CANCEL_PREVIEW_COLOR,
+    });
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -110,6 +115,7 @@ export class CancelDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.sizeLabel.hide();
   }
 
   /** @param {MouseEvent} e */
@@ -123,6 +129,7 @@ export class CancelDesignator {
     this.startTile = tile;
     this.curTile = tile;
     this.#renderPreview();
+    this.sizeLabel.render(e, this.startTile, this.curTile, false);
   }
 
   /** @param {MouseEvent} e */
@@ -132,6 +139,7 @@ export class CancelDesignator {
     if (!tile) return;
     this.curTile = tile;
     this.#renderPreview();
+    this.sizeLabel.render(e, this.startTile, this.curTile, false);
   }
 
   /** @param {MouseEvent} e */
@@ -145,6 +153,7 @@ export class CancelDesignator {
     this.startTile = null;
     this.curTile = null;
     this.#hidePreview();
+    this.sizeLabel.hide();
     if (!start || !end) return;
     this.#apply(start, end);
   }
