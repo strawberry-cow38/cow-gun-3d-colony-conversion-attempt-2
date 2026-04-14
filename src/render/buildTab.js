@@ -46,6 +46,7 @@ import { STUFF, STUFF_ORDER } from '../world/stuff.js';
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
+ * @property {ToggleableDesignator} removeFloorDesignator
  * @property {ToggleableDesignator} cancelDesignator
  */
 
@@ -146,6 +147,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to remove roofs only (leaves the walls under them standing)',
       activeColor: '#ff8fd0',
       designator: opts.removeRoofDesignator,
+    },
+    {
+      id: 'remove-floor',
+      label: 'Un-floor',
+      icon: '🪵',
+      hotkeyHint: 'drag to tear up floors only (walls/doors/roofs untouched)',
+      activeColor: '#d4a14a',
+      designator: opts.removeFloorDesignator,
     },
     {
       id: 'cancel',

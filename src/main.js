@@ -555,6 +555,24 @@ const removeRoofDesignator = new DeconstructDesignator(
 );
 designators.push(removeRoofDesignator);
 
+const removeFloorDesignator = new DeconstructDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  [floorInstancer, deconstructOverlay],
+  scene,
+  () => {
+    deactivateOthers(removeFloorDesignator);
+    updateHud();
+  },
+  audio,
+  { kinds: [{ comp: 'Floor', kind: 'floor' }], previewColor: 0xd4a14a },
+);
+designators.push(removeFloorDesignator);
+
 const cancelDesignator = new CancelDesignator(
   canvas,
   camera,
@@ -590,6 +608,7 @@ const buildTab = createBuildTab({
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,
+  removeFloorDesignator,
   cancelDesignator,
 });
 

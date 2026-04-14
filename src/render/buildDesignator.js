@@ -390,6 +390,19 @@ export class BuildDesignator {
     if (isDoor && this.tileGrid.isWall(i, j)) {
       this.#queueWallDeconstructAt(i, j);
     }
+    // A finished wall covers the floor entirely, so a pending floor blueprint
+    // under the wall is wasted work — cancel it (refunds delivered materials).
+    // Doors don't trigger this: they're walkable + floor stays visible/usable.
+    if (kind === 'wall') {
+      const floorSiteId = this.#findSiteAt(i, j, (k) => k === 'floor');
+      if (floorSiteId !== null) {
+        const floorSite = this.world.get(floorSiteId, 'BuildSite');
+        if (floorSite) {
+          releaseBuildSite(this.world, this.board, this.tileGrid, floorSite, i, j);
+          this.world.despawn(floorSiteId);
+        }
+      }
+    }
     const stuff = this.config.stuffed ? this.currentStuff : null;
     const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);

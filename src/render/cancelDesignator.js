@@ -2,9 +2,10 @@
  * Cancel designation mode.
  *
  * LMB-drag a rectangle to cancel, inside the rect:
- *   - any BuildSite blueprint (wall/door/torch/roof) — despawned; delivered
- *     resources drop back as a loose item stack.
- *   - any pending deconstruct mark on Wall/Door/Torch/Roof — job cancelled.
+ *   - any BuildSite blueprint (wall/door/torch/roof/floor) — despawned;
+ *     delivered resources drop back as a loose item stack.
+ *   - any pending deconstruct mark on Wall/Door/Torch/Roof/Floor — job
+ *     cancelled.
  *
  * Consolidates cancel across blueprints + demolition queue + auto-roof so
  * players have one undo tool instead of needing to remember which designator
@@ -19,7 +20,7 @@ const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 export const CANCEL_PREVIEW_COLOR = 0xffe24a;
 
-const DECON_COMPS = /** @type {const} */ (['Wall', 'Door', 'Torch', 'Roof']);
+const DECON_COMPS = /** @type {const} */ (['Wall', 'Door', 'Torch', 'Roof', 'Floor']);
 
 export class CancelDesignator {
   /**
