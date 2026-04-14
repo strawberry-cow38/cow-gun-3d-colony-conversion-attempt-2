@@ -538,10 +538,12 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
       // Hold at 99% if any cow is currently standing on the build tile —
       // closing the wall on top of them would seal them in. The builder
       // themselves stand at an adjacent tile, so they don't trigger this.
-      // Roofs don't block pathing so they skip this stall.
+      // Roofs + floors don't block pathing so they skip this stall — cows
+      // happily stand on finished flooring.
       const anchor = world.get(siteId, 'TileAnchor');
       if (
         site.kind !== 'roof' &&
+        site.kind !== 'floor' &&
         anchor &&
         cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId)
       ) {
