@@ -32,6 +32,7 @@
  * @property {ToggleableDesignator} roofDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
+ * @property {ToggleableDesignator} cancelDesignator
  */
 
 /** @param {BuildTabOpts} opts */
@@ -101,6 +102,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
       activeColor: '#ff4a4a',
       designator: opts.deconstructDesignator,
+    },
+    {
+      id: 'cancel',
+      label: 'Cancel',
+      icon: '❌',
+      hotkeyHint: 'drag to cancel blueprints + pending demolition (refunds delivered resources)',
+      activeColor: '#ffe24a',
+      designator: opts.cancelDesignator,
     },
   ];
 

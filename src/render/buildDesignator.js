@@ -320,22 +320,7 @@ export class BuildDesignator {
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
-    if (site.buildJobId > 0) this.board.complete(site.buildJobId);
-    // Drop any delivered units back as a loose stack so they aren't lost.
-    if (site.delivered > 0) {
-      const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
-      this.world.spawn({
-        Item: { kind: site.requiredKind, count: site.delivered, capacity: 50 },
-        ItemViz: {},
-        TileAnchor: { i, j },
-        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
-      });
-    }
-    for (const job of this.board.jobs) {
-      if (job.completed || job.kind !== 'haul') continue;
-      if (job.payload.toBuildSite !== true) continue;
-      if (job.payload.toI === i && job.payload.toJ === j) this.board.complete(job.id);
-    }
+    releaseBuildSite(this.world, this.board, this.tileGrid, site, i, j);
     this.world.despawn(id);
     return true;
   }
@@ -447,6 +432,36 @@ export class BuildDesignator {
     const t = worldToTile(p.x, p.z, this.tileGrid.W, this.tileGrid.H);
     if (t.i < 0) return null;
     return t;
+  }
+}
+
+/**
+ * Release the resources a BuildSite was holding: cancel its build job, drop
+ * any delivered units as a loose Item stack, and cancel haul jobs targeting
+ * this tile. Caller is responsible for despawning the BuildSite entity
+ * afterward (the two-pass pattern matters when iterating a world.query).
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {import('../world/tileGrid.js').TileGrid} tileGrid
+ * @param {{ buildJobId: number, delivered: number, requiredKind: string }} site
+ * @param {number} i @param {number} j
+ */
+export function releaseBuildSite(world, board, tileGrid, site, i, j) {
+  if (site.buildJobId > 0) board.complete(site.buildJobId);
+  if (site.delivered > 0) {
+    const w = tileToWorld(i, j, tileGrid.W, tileGrid.H);
+    world.spawn({
+      Item: { kind: site.requiredKind, count: site.delivered, capacity: 50 },
+      ItemViz: {},
+      TileAnchor: { i, j },
+      Position: { x: w.x, y: tileGrid.getElevation(i, j), z: w.z },
+    });
+  }
+  for (const job of board.jobs) {
+    if (job.completed || job.kind !== 'haul') continue;
+    if (job.payload.toBuildSite !== true) continue;
+    if (job.payload.toI === i && job.payload.toJ === j) board.complete(job.id);
   }
 }
 

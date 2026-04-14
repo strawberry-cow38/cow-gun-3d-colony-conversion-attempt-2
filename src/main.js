@@ -24,6 +24,7 @@ import {
 } from './render/buildDesignator.js';
 import { createBuildSiteInstancer } from './render/buildSiteInstancer.js';
 import { createBuildTab } from './render/buildTab.js';
+import { CancelDesignator } from './render/cancelDesignator.js';
 import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
@@ -476,6 +477,24 @@ const deconstructDesignator = new DeconstructDesignator(
 );
 designators.push(deconstructDesignator);
 
+const cancelDesignator = new CancelDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  [wallInstancer, roofInstancer],
+  scene,
+  () => {
+    deactivateOthers(cancelDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(cancelDesignator);
+
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
 getDrivingCowId = () => fpCamera.drivingCowId;
 const cowCamOverlay = createCowCamOverlay();
@@ -490,6 +509,7 @@ const buildTab = createBuildTab({
   roofDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
+  cancelDesignator,
 });
 
 const cowPortraitBar = createCowPortraitBar({
