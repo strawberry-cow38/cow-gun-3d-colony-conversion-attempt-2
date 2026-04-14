@@ -52,7 +52,7 @@ export function createScene(canvas) {
 }
 
 function buildSky() {
-  const geo = new THREE.SphereGeometry(40000, 64, 32);
+  const geo = new THREE.SphereGeometry(44000, 64, 32);
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       zenithColor: { value: new THREE.Color(0x2a1838) },
