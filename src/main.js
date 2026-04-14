@@ -451,6 +451,14 @@ const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCou
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
 const clockEl = /** @type {HTMLElement} */ (document.getElementById('clock'));
+
+/** @param {number} speed */
+function speedIcon(speed) {
+  if (speed === 0) return '⏸';
+  if (speed === 6) return '⏩';
+  return '▶'.repeat(speed);
+}
+
 let renderFrameCount = 0;
 let renderFpsSampleStart = performance.now();
 let measuredFps = 0;
@@ -514,8 +522,7 @@ const loop = new SimLoop({
     cowPortraitBar.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
-    clockEl.textContent =
-      loop.speed === 0 ? `${timeOfDay.getHHMM()} ⏸` : `${timeOfDay.getHHMM()} · ${loop.speed}x`;
+    clockEl.textContent = `${timeOfDay.getHHMM()} ${speedIcon(loop.speed)}`;
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
