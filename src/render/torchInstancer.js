@@ -25,8 +25,11 @@ const FLAME_RADIUS = 0.18 * UNITS_PER_METER;
 // Flame tip sits roughly at stick top + half flame height.
 const FLAME_CENTER_Y = STICK_HEIGHT + FLAME_HEIGHT * 0.85;
 const POINT_LIGHT_POOL = 12;
-const POINT_LIGHT_DISTANCE = 8 * UNITS_PER_METER;
-const POINT_LIGHT_INTENSITY = 2.2;
+const POINT_LIGHT_DISTANCE = 10 * UNITS_PER_METER;
+// Three r155+ uses physical units with decay=2, so this is a much larger
+// number than looks reasonable — tune until the torch visibly spills onto
+// nearby ground tiles at night without overpowering the daylit scene.
+const POINT_LIGHT_INTENSITY = 40;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();

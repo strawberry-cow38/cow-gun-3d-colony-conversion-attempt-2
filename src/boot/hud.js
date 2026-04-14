@@ -128,8 +128,12 @@ export function createHud(ctx) {
       const biomeId = tileGrid.getBiome(state.lastPick.i, state.lastPick.j);
       const biomeName = BIOME_NAMES[biomeId] ?? `biome#${biomeId}`;
       const walk = defaultWalkable(tileGrid, state.lastPick.i, state.lastPick.j) ? 'yes' : 'no';
-      pickStr = `pick: i=${state.lastPick.i} j=${state.lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}`;
+      const lightPct = Math.round(
+        (tileGrid.getLight(state.lastPick.i, state.lastPick.j) / 255) * 100,
+      );
+      pickStr = `pick: i=${state.lastPick.i} j=${state.lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}  light=${lightPct}%`;
     }
+    const sunPct = Math.round(ctx.timeOfDay.getSunLightPercent() * 100);
     const lines = [
       'phase 4: trees + chop + stacks + eat',
       `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
@@ -137,7 +141,7 @@ export function createHud(ctx) {
       `render: ${ctx.getFps().toFixed(0)} fps`,
       `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
       `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
-      `time: ${ctx.timeOfDay.getHHMM()}  weather: ${ctx.weather.getCurrent()}`,
+      `time: ${ctx.timeOfDay.getHHMM()}  weather: ${ctx.weather.getCurrent()}  sun-light: ${sunPct}%`,
       pickStr,
       ...cowLines,
       '',
