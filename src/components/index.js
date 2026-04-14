@@ -94,7 +94,12 @@ export function registerComponents(world) {
   world.defineComponent('WallViz', () => ({}));
   world.defineComponent('Door', () => ({ deconstructJobId: 0, progress: 0 }));
   world.defineComponent('DoorViz', () => ({}));
-  world.defineComponent('Torch', () => ({ deconstructJobId: 0, progress: 0 }));
+  world.defineComponent('Torch', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    wallMounted: false,
+    yaw: 0,
+  }));
   world.defineComponent('TorchViz', () => ({}));
   world.defineComponent('Roof', () => ({ deconstructJobId: 0, progress: 0 }));
   world.defineComponent('RoofViz', () => ({}));

@@ -29,6 +29,7 @@
  * @property {ToggleableDesignator} wallDesignator
  * @property {ToggleableDesignator} doorDesignator
  * @property {ToggleableDesignator} torchDesignator
+ * @property {ToggleableDesignator} wallTorchDesignator
  * @property {ToggleableDesignator} roofDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
@@ -79,6 +80,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a torch',
       activeColor: '#ffb84a',
       designator: opts.torchDesignator,
+    },
+    {
+      id: 'wall-torch',
+      label: 'Wall Torch',
+      icon: '🕯️',
+      hotkeyHint: 'click a tile next to a wall to mount a torch on it',
+      activeColor: '#ffd070',
+      designator: opts.wallTorchDesignator,
     },
     {
       id: 'roof',

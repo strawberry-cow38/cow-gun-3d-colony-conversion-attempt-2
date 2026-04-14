@@ -41,6 +41,13 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+// Wall-mounted torches are tilted up and pushed outward from the wall so the
+// flame appears to stick out of the wall face rather than float above a tile.
+const WALL_TORCH_TILT = -0.35; // radians; negative pitch = flame points slightly up
+const WALL_TORCH_MOUNT_HEIGHT = 1.8 * UNITS_PER_METER;
+const WALL_TORCH_OUTWARD_OFFSET = TILE_SIZE * 0.35;
 
 /**
  * @param {THREE.Scene} scene
@@ -118,6 +125,7 @@ export function createTorchInstancer(scene, capacity = 512) {
     for (const { id, components } of world.query(['Torch', 'TileAnchor', 'TorchViz'])) {
       if (n >= capacity) break;
       const a = components.TileAnchor;
+      const torch = components.Torch;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j);
 
@@ -127,29 +135,51 @@ export function createTorchInstancer(scene, capacity = 512) {
       const t = tSec * 6.0 + phase * Math.PI * 2;
       const flicker = 0.85 + 0.18 * Math.sin(t) + 0.1 * Math.sin(t * 1.73 + 1.1);
 
+      let baseX;
+      let baseY;
+      let baseZ;
+      let lightY;
+      if (torch.wallMounted) {
+        // Walk back toward the wall by the outward-offset distance (yaw points
+        // AWAY from the wall, so the wall side is -sin/-cos). Raise the mount
+        // point up the wall so the flame sits at a reading light height.
+        const ox = -Math.sin(torch.yaw) * WALL_TORCH_OUTWARD_OFFSET;
+        const oz = -Math.cos(torch.yaw) * WALL_TORCH_OUTWARD_OFFSET;
+        baseX = w.x + ox;
+        baseY = y + WALL_TORCH_MOUNT_HEIGHT;
+        baseZ = w.z + oz;
+        _euler.set(WALL_TORCH_TILT, torch.yaw, 0);
+        _quat.setFromEuler(_euler);
+        lightY = baseY + FLAME_CENTER_Y * 0.4;
+      } else {
+        baseX = w.x;
+        baseY = y;
+        baseZ = w.z;
+        _quat.identity();
+        lightY = y + FLAME_CENTER_Y;
+      }
+
       _scale.set(1, 1, 1);
-      _position.set(w.x, y, w.z);
+      _position.set(baseX, baseY, baseZ);
       _matrix.compose(_position, _quat, _scale);
       stick.setMatrixAt(n, _matrix);
 
       _scale.set(flicker, flicker, flicker);
-      _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       flame.setMatrixAt(n, _matrix);
 
-      const lightY = y + FLAME_CENTER_Y;
-      const dx = w.x - camX;
+      const dx = baseX - camX;
       const dy = lightY - camY;
-      const dz = w.z - camZ;
+      const dz = baseZ - camZ;
       const d2 = dx * dx + dy * dy + dz * dz;
       let slot = scratch[scratchN];
       if (!slot) {
         slot = [0, 0, 0, 0, 0];
         scratch[scratchN] = slot;
       }
-      slot[0] = w.x;
+      slot[0] = baseX;
       slot[1] = lightY;
-      slot[2] = w.z;
+      slot[2] = baseZ;
       slot[3] = flicker;
       slot[4] = d2;
       scratchN++;

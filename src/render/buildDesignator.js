@@ -25,7 +25,7 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'roof'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -62,6 +62,16 @@ export const TORCH_DESIGNATOR_CONFIG = {
   previewColorAdd: 0xffb84a,
   addVerb: 'torch',
   cancelVerb: 'cancel torch',
+  singlePlace: true,
+  previewRadiusTiles: TORCH_RADIUS_TILES,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const WALL_TORCH_DESIGNATOR_CONFIG = {
+  kind: 'wallTorch',
+  previewColorAdd: 0xffd070,
+  addVerb: 'wall torch',
+  cancelVerb: 'cancel wall torch',
   singlePlace: true,
   previewRadiusTiles: TORCH_RADIUS_TILES,
 };
@@ -277,6 +287,7 @@ export class BuildDesignator {
     const kind = this.config.kind;
     const isRoof = kind === 'roof';
     const isDoor = kind === 'door';
+    const isWallTorch = kind === 'wallTorch';
     if (isRoof) {
       // Roofs can be designated anywhere — the haul poster gates the actual
       // build job on support + reach, so unsupported blueprints just wait
@@ -290,11 +301,16 @@ export class BuildDesignator {
       if (this.tileGrid.isDoor(i, j)) return false;
       if (this.tileGrid.isTorch(i, j)) return false;
     }
+    // Wall torches need an orthogonal wall to mount on — they hang off its
+    // face and would be visually orphaned floating in an open tile.
+    if (isWallTorch && !hasOrthoWall(this.tileGrid, i, j)) return false;
     // Torches are decorative and non-blocking; letting them sit on stockpile
     // tiles means players can light up a storage area without having to
     // redraw the stockpile around them. Roofs don't touch the ground plane
     // so stockpiles underneath them are fine too.
-    if (!isRoof && kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
+    if (!isRoof && kind !== 'torch' && !isWallTorch && this.tileGrid.isStockpile(i, j)) {
+      return false;
+    }
     // Roofs sit above the ground plane so they don't conflict with wall/door/
     // torch blueprints — only with other roofs. Ground-plane blueprints
     // conflict with each other but not with roofs.
@@ -482,6 +498,30 @@ export class BuildDesignator {
     if (t.i < 0) return null;
     return t;
   }
+}
+
+const ORTHO_WALL_DIRS = /** @type {const} */ ([
+  { di: 1, dj: 0 },
+  { di: -1, dj: 0 },
+  { di: 0, dj: 1 },
+  { di: 0, dj: -1 },
+]);
+
+/**
+ * True if (i,j) has an orthogonal neighbor that's a wall or door — wall
+ * torches mount on the face of a wall/door.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j
+ */
+export function hasOrthoWall(grid, i, j) {
+  for (const { di, dj } of ORTHO_WALL_DIRS) {
+    const ni = i + di;
+    const nj = j + dj;
+    if (!grid.inBounds(ni, nj)) continue;
+    if (grid.isWall(ni, nj) || grid.isDoor(ni, nj)) return true;
+  }
+  return false;
 }
 
 /**

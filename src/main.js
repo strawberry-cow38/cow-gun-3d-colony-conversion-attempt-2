@@ -21,6 +21,7 @@ import {
   ROOF_DESIGNATOR_CONFIG,
   TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
+  WALL_TORCH_DESIGNATOR_CONFIG,
 } from './render/buildDesignator.js';
 import { createBuildSiteInstancer } from './render/buildSiteInstancer.js';
 import { createBuildTab } from './render/buildTab.js';
@@ -431,6 +432,24 @@ const torchDesignator = new BuildDesignator(
 );
 designators.push(torchDesignator);
 
+const wallTorchDesignator = new BuildDesignator(
+  WALL_TORCH_DESIGNATOR_CONFIG,
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    deactivateOthers(wallTorchDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(wallTorchDesignator);
+
 const roofDesignator = new BuildDesignator(
   ROOF_DESIGNATOR_CONFIG,
   canvas,
@@ -528,6 +547,7 @@ const buildTab = createBuildTab({
   wallDesignator,
   doorDesignator,
   torchDesignator,
+  wallTorchDesignator,
   roofDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,

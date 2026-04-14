@@ -607,6 +607,19 @@ function finishBuild(world, grid, siteId, jobId, board) {
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });
+  } else if (site.kind === 'wallTorch') {
+    grid.setTorch(anchor.i, anchor.j, 1);
+    world.spawn({
+      Torch: {
+        deconstructJobId: 0,
+        progress: 0,
+        wallMounted: true,
+        yaw: yawAwayFromWallAt(grid, anchor.i, anchor.j),
+      },
+      TorchViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
   } else if (site.kind === 'roof') {
     grid.setRoof(anchor.i, anchor.j, 1);
     world.spawn({
@@ -626,6 +639,31 @@ function finishBuild(world, grid, siteId, jobId, board) {
   }
   world.despawn(siteId);
   board.complete(jobId);
+}
+
+/**
+ * Yaw (radians, Y-axis) a wall torch at (i,j) should face so its flame points
+ * away from the wall it's mounted to. Inlined here so the build-finish path
+ * stays in the systems layer (no reverse import from render/).
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j
+ */
+function yawAwayFromWallAt(grid, i, j) {
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (const [di, dj] of dirs) {
+    const ni = i + di;
+    const nj = j + dj;
+    if (!grid.inBounds(ni, nj)) continue;
+    if (!grid.isWall(ni, nj) && !grid.isDoor(ni, nj)) continue;
+    return Math.atan2(-di, -dj);
+  }
+  return 0;
 }
 
 /** Component name for each deconstructable kind. Lower-case kind → component tag. */

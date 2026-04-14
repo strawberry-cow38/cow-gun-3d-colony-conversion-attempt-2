@@ -90,6 +90,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} j
  * @property {boolean} decon
  * @property {number} progress
+ * @property {boolean} [wallMounted]
+ * @property {number} [yaw]
  */
 
 /**
@@ -195,6 +197,8 @@ export function serializeState(tileGrid, world) {
       j: components.TileAnchor.j,
       decon: components.Torch.deconstructJobId > 0,
       progress: components.Torch.progress ?? 0,
+      wallMounted: components.Torch.wallMounted === true,
+      yaw: components.Torch.yaw ?? 0,
     });
   }
   /** @type {SerializedRoof[]} */
@@ -372,7 +376,7 @@ export function hydrateBuildSites(world, grid, state) {
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
- * @param {Array<{i: number, j: number, decon?: boolean, progress?: number}>} items
+ * @param {Array<{i: number, j: number, decon?: boolean, progress?: number, wallMounted?: boolean, yaw?: number}>} items
  * @param {'wall'|'door'|'torch'|'roof'} kind
  */
 const STRUCT_COMP_BY_KIND = /** @type {const} */ ({
@@ -388,16 +392,22 @@ function hydrateStructures(world, grid, board, items, kind) {
   for (const s of items) {
     if (!grid.inBounds(s.i, s.j)) continue;
     const w = tileToWorld(s.i, s.j, grid.W, grid.H);
+    /** @type {Record<string, any>} */
+    const tag = { deconstructJobId: 0, progress: s.progress ?? 0 };
+    if (kind === 'torch') {
+      tag.wallMounted = s.wallMounted === true;
+      tag.yaw = s.yaw ?? 0;
+    }
     const id = world.spawn({
-      [compName]: { deconstructJobId: 0, progress: s.progress ?? 0 },
+      [compName]: tag,
       [vizName]: {},
       TileAnchor: { i: s.i, j: s.j },
       Position: { x: w.x, y: grid.getElevation(s.i, s.j), z: w.z },
     });
     if (s.decon) {
       const job = board.post('deconstruct', { entityId: id, kind, i: s.i, j: s.j });
-      const tag = world.get(id, compName);
-      if (tag) tag.deconstructJobId = job.id;
+      const rec = world.get(id, compName);
+      if (rec) rec.deconstructJobId = job.id;
     }
   }
 }
