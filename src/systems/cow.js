@@ -22,7 +22,7 @@ import { PLANT_TICKS } from '../jobs/plant.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
 import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
-import { tileToWorld, worldToTileClamp } from '../world/coords.js';
+import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropKindFor } from '../world/crops.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -617,7 +617,8 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
 /**
  * True if any cow other than `excludeId` currently occupies tile (i, j).
  * Used by the builder to stall completion until the destination is clear so
- * we never finish a wall on top of a cow.
+ * we never finish a wall on top of a cow. Coord math is inlined — calling
+ * `worldToTileClamp` per cow would allocate an object each iteration.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -625,10 +626,20 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
  * @param {number} excludeId
  */
 function cowOnTileExcluding(world, grid, i, j, excludeId) {
+  const W = grid.W;
+  const H = grid.H;
+  const halfW = W / 2;
+  const halfH = H / 2;
   for (const { id, components } of world.query(['Cow', 'Position'])) {
     if (id === excludeId) continue;
-    const t = worldToTileClamp(components.Position.x, components.Position.z, grid.W, grid.H);
-    if (t.i === i && t.j === j) return true;
+    const pos = components.Position;
+    let ti = Math.floor(pos.x / TILE_SIZE + halfW);
+    let tj = Math.floor(pos.z / TILE_SIZE + halfH);
+    if (ti < 0) ti = 0;
+    else if (ti >= W) ti = W - 1;
+    if (tj < 0) tj = 0;
+    else if (tj >= H) tj = H - 1;
+    if (ti === i && tj === j) return true;
   }
   return false;
 }
