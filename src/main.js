@@ -38,6 +38,8 @@ import { DeconstructDesignator } from './render/deconstructDesignator.js';
 import { createDeconstructOverlay } from './render/deconstructOverlay.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
+import { FarmZoneDesignator } from './render/farmZoneDesignator.js';
+import { createFarmZoneOverlay } from './render/farmZoneOverlay.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createFloorInstancer } from './render/floorInstancer.js';
 import { IgnoreRoofDesignator } from './render/ignoreRoofDesignator.js';
@@ -58,6 +60,7 @@ import { StockpileDesignator } from './render/stockpileDesignator.js';
 import { createStockpileOverlay } from './render/stockpileOverlay.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
+import { createTilledOverlay } from './render/tilledOverlay.js';
 import { createTorchInstancer } from './render/torchInstancer.js';
 import { createTreeInstancer } from './render/treeInstancer.js';
 import { createWallInstancer } from './render/wallInstancer.js';
@@ -71,6 +74,7 @@ import {
   makeCowWallCollisionSystem,
   makeHungerSystem,
 } from './systems/cow.js';
+import { makeFarmPostingSystem } from './systems/farm.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { runRoofCollapse } from './systems/roofCollapse.js';
@@ -107,6 +111,8 @@ let onWorldCowStep = () => {};
 let onWorldCowHammer = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldBuildComplete = () => {};
+/** @type {(pos: {x:number,y:number,z:number}) => void} */
+let onWorldTillComplete = () => {};
 let onWorldItemChange = () => {};
 // Forward-declared so cowFollowPath can ask the FP camera for the currently
 // driven cow without a construction-order tangle.
@@ -125,6 +131,7 @@ scheduler.add(
     onCowEat: (pos) => onWorldCowEat(pos),
     onCowHammer: (pos) => onWorldCowHammer(pos),
     onBuildComplete: (pos) => onWorldBuildComplete(pos),
+    onTillComplete: (pos) => onWorldTillComplete(pos),
     onItemChange: () => onWorldItemChange(),
   }),
 );
@@ -142,6 +149,7 @@ scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
+scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid));
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
 let onRoomsRebuilt = () => {};
@@ -186,6 +194,8 @@ const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
+const farmZoneOverlay = createFarmZoneOverlay(scene, gridW * gridH);
+const tilledOverlay = createTilledOverlay(scene, gridW * gridH);
 const roomOverlay = createRoomOverlay(scene, gridW * gridH);
 const ignoreRoofOverlay = createIgnoreRoofOverlay(scene, gridW * gridH);
 const deconstructOverlay = createDeconstructOverlay(scene, gridW * gridH);
@@ -205,6 +215,10 @@ onWorldCowStep = (pos) => {
 };
 onWorldCowHammer = (pos) => {
   audio.playAt('hammer', pos);
+};
+onWorldTillComplete = (pos) => {
+  tilledOverlay.markDirty();
+  audio.playAt('chop', pos);
 };
 onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
@@ -395,6 +409,21 @@ const stockpileDesignator = new StockpileDesignator(
   audio,
 );
 designators.push(stockpileDesignator);
+
+const farmZoneDesignator = new FarmZoneDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  farmZoneOverlay,
+  scene,
+  () => {
+    deactivateOthers(farmZoneDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(farmZoneDesignator);
 
 const wallDesignator = new BuildDesignator(
   WALL_DESIGNATOR_CONFIG,
@@ -610,6 +639,7 @@ const draftBadge = createDraftBadge(scene, 256);
 const buildTab = createBuildTab({
   chopDesignator,
   stockpileDesignator,
+  farmZoneDesignator,
   wallDesignator,
   doorDesignator,
   torchDesignator,
@@ -716,6 +746,8 @@ const loop = new SimLoop({
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
+    farmZoneOverlay.update(tileGrid);
+    tilledOverlay.update(tileGrid);
     roomOverlay.update(tileGrid, rooms);
     ignoreRoofOverlay.update(tileGrid);
     deconstructOverlay.update(world, tileGrid);
@@ -778,6 +810,8 @@ installKeyboard({
   itemInstancer,
   treeInstancer,
   stockpileOverlay,
+  farmZoneOverlay,
+  tilledOverlay,
   rooms,
   roomOverlay,
   ignoreRoofOverlay,

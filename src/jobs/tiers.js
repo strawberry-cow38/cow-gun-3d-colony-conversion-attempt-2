@@ -25,6 +25,7 @@ export const JOB_TIERS = {
   move: 2,
   build: 2,
   deconstruct: 2,
+  till: 2,
   haul: 3,
   wander: 4,
   none: 5,

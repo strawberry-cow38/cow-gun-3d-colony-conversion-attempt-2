@@ -1,10 +1,10 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v14):
+ * Format (v15):
  * {
- *   version: 14,
- *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[] },
+ *   version: 15,
+ *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
@@ -254,6 +254,8 @@ export function serializeState(tileGrid, world) {
       roof: Array.from(tileGrid.roof),
       ignoreRoof: Array.from(tileGrid.ignoreRoof),
       floor: Array.from(tileGrid.floor),
+      farmZone: Array.from(tileGrid.farmZone),
+      tilled: Array.from(tileGrid.tilled),
     },
     cows,
     trees,
@@ -268,7 +270,7 @@ export function serializeState(tileGrid, world) {
 }
 
 /**
- * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[], roof?: number[], ignoreRoof?: number[], floor?: number[] } }} state
+ * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[], roof?: number[], ignoreRoof?: number[], floor?: number[], farmZone?: number[], tilled?: number[] } }} state
  */
 export function hydrateTileGrid(state) {
   const tg = new TileGrid(state.tileGrid.W, state.tileGrid.H);
@@ -281,6 +283,8 @@ export function hydrateTileGrid(state) {
   if (state.tileGrid.roof) tg.roof.set(state.tileGrid.roof);
   if (state.tileGrid.ignoreRoof) tg.ignoreRoof.set(state.tileGrid.ignoreRoof);
   if (state.tileGrid.floor) tg.floor.set(state.tileGrid.floor);
+  if (state.tileGrid.farmZone) tg.farmZone.set(state.tileGrid.farmZone);
+  if (state.tileGrid.tilled) tg.tilled.set(state.tileGrid.tilled);
   return tg;
 }
 
@@ -503,7 +507,7 @@ export function hydrateFloors(world, grid, board, state) {
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

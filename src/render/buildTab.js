@@ -37,6 +37,7 @@ import { STUFF, STUFF_ORDER } from '../world/stuff.js';
  * @typedef {Object} BuildTabOpts
  * @property {ToggleableDesignator} chopDesignator
  * @property {ToggleableDesignator} stockpileDesignator
+ * @property {ToggleableDesignator} farmZoneDesignator
  * @property {ToggleableDesignator} wallDesignator
  * @property {ToggleableDesignator} doorDesignator
  * @property {ToggleableDesignator} torchDesignator
@@ -69,6 +70,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'designate storage tiles',
       activeColor: '#90d0ff',
       designator: opts.stockpileDesignator,
+    },
+    {
+      id: 'farm',
+      label: 'Farm',
+      icon: '🌾',
+      hotkeyHint: 'designate growing zones — cows till + plant corn',
+      activeColor: '#6fe2a0',
+      designator: opts.farmZoneDesignator,
     },
     {
       id: 'wall',

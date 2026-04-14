@@ -365,6 +365,8 @@ async function loadGame(ctx) {
     tileGrid.roof.set(loaded.roof);
     tileGrid.ignoreRoof.set(loaded.ignoreRoof);
     tileGrid.floor.set(loaded.floor);
+    tileGrid.farmZone.set(loaded.farmZone);
+    tileGrid.tilled.set(loaded.tilled);
     tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllComp(world, 'Cow');
@@ -399,6 +401,8 @@ async function loadGame(ctx) {
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();
+    ctx.farmZoneOverlay.markDirty();
+    ctx.tilledOverlay.markDirty();
     ctx.buildSiteInstancer?.markDirty();
     ctx.wallInstancer?.markDirty();
     hydrateCows(world, migrated);

@@ -33,6 +33,7 @@ const LISTENER_OWNERS = [
   'RtsCamera',
   'ChopDesignator',
   'StockpileDesignator',
+  'FarmZoneDesignator',
 ];
 
 describe('listener-owning classes are constructed exactly once', () => {

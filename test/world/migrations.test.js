@@ -284,6 +284,39 @@ describe('migration runner', () => {
     expect(out.floors).toEqual([]);
   });
 
+  it('upgrades a v14 save by adding farmZone + tilled bitmaps + empty crops array', () => {
+    const v14 = {
+      version: 14,
+      tileGrid: {
+        W: 2,
+        H: 1,
+        elevation: [0, 0],
+        biome: [0, 0],
+        stockpile: [0, 0],
+        wall: [0, 0],
+        door: [0, 0],
+        torch: [0, 0],
+        roof: [0, 0],
+        ignoreRoof: [0, 0],
+        floor: [0, 0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+    };
+    const out = runMigrations(v14);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.tileGrid.farmZone).toEqual([0, 0]);
+    expect(out.tileGrid.tilled).toEqual([0, 0]);
+    expect(out.crops).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

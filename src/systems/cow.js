@@ -18,6 +18,7 @@ import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DECONSTRUCT_TICKS, findDeconstructStandTile } from '../jobs/deconstruct.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
+import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
@@ -75,6 +76,7 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  *   onCowEat: (pos: {x:number,y:number,z:number}) => void,
  *   onCowHammer: (pos: {x:number,y:number,z:number}) => void,
  *   onBuildComplete: (pos: {x:number,y:number,z:number}) => void,
+ *   onTillComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onItemChange: () => void,
  * }} BrainDeps
  */
@@ -130,7 +132,8 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'haul' ||
             job.kind === 'eat' ||
             job.kind === 'build' ||
-            job.kind === 'deconstruct'
+            job.kind === 'deconstruct' ||
+            job.kind === 'till'
           ) {
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
@@ -283,6 +286,16 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (candidate && candidate.kind === 'till' && board.claim(candidate.id, id)) {
+                job.kind = 'till';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               }
             }
 
@@ -305,6 +318,8 @@ export function makeCowBrainSystem(deps) {
           runBuildJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'deconstruct') {
           runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps);
+        } else if (job.kind === 'till') {
+          runTillJob(job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'haul') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -814,6 +829,74 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   world.despawn(entityId);
   board.complete(jobId);
+}
+
+/**
+ * State machine for the till job: walk onto the farm tile, break ground for
+ * TILL_TICKS, flip the grid's tilled bit. Bails if the tile stops being a
+ * farm zone or another cow tilled it first.
+ *
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runTillJob(job, path, pos, grid, paths, board, deps) {
+  const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
+
+  const boardJob = board.jobs.find((x) => x.id === jobId);
+  // Zone cleared, tile already tilled, or board job cancelled/completed → bail.
+  if (!boardJob || boardJob.completed || grid.getFarmZone(i, j) === 0 || grid.isTilled(i, j)) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i, j });
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'tilling';
+      job.payload.ticksRemaining = TILL_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'tilling') {
+    const remaining = (job.payload.ticksRemaining ?? TILL_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    if (remaining <= 0) {
+      grid.setTilled(i, j, 1);
+      deps.onTillComplete(pos);
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
 }
 
 /**

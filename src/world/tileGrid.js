@@ -31,7 +31,16 @@
  * - light:     uint8; 0..255 mapping to 0..100% tile illumination. Derived
  *              from sun% and torches by the lighting system — NOT serialized.
  *              Cows move at half speed on tiles with light below 40%.
+ * - farmZone:  uint8; 0 = not a farm tile, 1=corn, 2=carrot, 3=potato. Single
+ *              field so zone membership + crop choice share storage; the
+ *              non-zero value *is* the desired crop. Serialized.
+ * - tilled:    uint8; nonzero = soil has been worked into planting rows.
+ *              Independent of farmZone so an un-zoned tilled tile still
+ *              renders as soil (e.g. after un-zoning a planted patch).
+ *              Serialized.
  */
+
+export const CROP_CORN = 1;
 
 export const BIOME = Object.freeze({
   GRASS: 0,
@@ -59,6 +68,8 @@ export class TileGrid {
     this.ignoreRoof = new Uint8Array(W * H);
     this.floor = new Uint8Array(W * H);
     this.light = new Uint8Array(W * H);
+    this.farmZone = new Uint8Array(W * H);
+    this.tilled = new Uint8Array(W * H);
   }
 
   /** @param {number} i @param {number} j */
@@ -145,6 +156,26 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setFloor(i, j, v) {
     this.floor[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  getFarmZone(i, j) {
+    return this.farmZone[this.idx(i, j)];
+  }
+
+  /** @param {number} i @param {number} j @param {number} cropId */
+  setFarmZone(i, j, cropId) {
+    this.farmZone[this.idx(i, j)] = cropId & 0xff;
+  }
+
+  /** @param {number} i @param {number} j */
+  isTilled(i, j) {
+    return this.tilled[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setTilled(i, j, v) {
+    this.tilled[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /** @param {number} i @param {number} j */

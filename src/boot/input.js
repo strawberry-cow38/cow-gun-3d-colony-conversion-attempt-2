@@ -29,6 +29,8 @@ import { dispatch } from './hotkeys.js';
  * @property {any} itemInstancer
  * @property {any} treeInstancer
  * @property {any} stockpileOverlay
+ * @property {{ markDirty: () => void }} farmZoneOverlay
+ * @property {{ markDirty: () => void }} tilledOverlay
  * @property {{ markDirty: () => void } | null} [buildSiteInstancer]
  * @property {{ markDirty: () => void } | null} [wallInstancer]
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
