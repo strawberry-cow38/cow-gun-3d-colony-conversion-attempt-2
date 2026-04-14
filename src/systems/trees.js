@@ -5,7 +5,7 @@
  */
 
 import { TIER_PERIODS } from '../ecs/schedule.js';
-import { tileToWorld } from '../world/coords.js';
+import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 import { TREE_GROWTH_TICKS, randomTreeKind } from '../world/trees.js';
 
@@ -123,6 +123,16 @@ export function makeSaplingSpawnSystem({ grid, onSpawn }) {
       let current = 0;
       for (const _ of world.query(['Tree'])) current++;
       if (current >= targetTrees) return;
+      // Cows don't mark tile occupancy, so a blindly-placed sapling can block
+      // the tile a cow is standing on — then every pathfind bails at the
+      // start-walkable gate and the cow looks catatonic. Collect cow tiles
+      // up-front and skip them.
+      const cowTiles = new Set();
+      for (const { components } of world.query(['Cow', 'Position'])) {
+        const p = components.Position;
+        const t = worldToTileClamp(p.x, p.z, grid.W, grid.H);
+        cowTiles.add(t.j * grid.W + t.i);
+      }
       let placed = 0;
       let attempts = 0;
       const maxAttempts = SAPLING_SPAWN_PER_RUN * 16;
@@ -132,6 +142,7 @@ export function makeSaplingSpawnSystem({ grid, onSpawn }) {
         const j = Math.floor(Math.random() * grid.H);
         if (!isTreeBiome(grid, i, j)) continue;
         if (grid.isBlocked(i, j)) continue;
+        if (cowTiles.has(j * grid.W + i)) continue;
         if (nearColonyFootprint(grid, i, j, SAPLING_SAFE_RADIUS)) continue;
         const kind = randomTreeKind();
         if (spawnTree(world, grid, i, j, { kind, growth: 0 }) !== -1) placed++;

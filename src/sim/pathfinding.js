@@ -81,7 +81,11 @@ function ensureScratch(size) {
  */
 export function findPath(grid, start, goal, walkable = defaultWalkable) {
   if (!grid.inBounds(start.i, start.j) || !grid.inBounds(goal.i, goal.j)) return null;
-  if (!walkable(grid, start.i, start.j) || !walkable(grid, goal.i, goal.j)) return null;
+  // Start-tile walkability is intentionally not gated: the cow is already
+  // standing there, so refusing to find a path would leave it stranded if
+  // anything ever blocks the tile under it (e.g. a sapling spawning on the
+  // cow's grass). Goal still must be walkable.
+  if (!walkable(grid, goal.i, goal.j)) return null;
   if (start.i === goal.i && start.j === goal.j) return [{ i: start.i, j: start.j }];
 
   const W = grid.W;
