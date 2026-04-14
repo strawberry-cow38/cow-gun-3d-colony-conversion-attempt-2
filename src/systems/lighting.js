@@ -38,13 +38,13 @@ export function makeLightingSystem(opts) {
     run() {
       const sun = Math.max(0, Math.min(1, timeOfDay.getSunLightPercent()));
       const base = Math.round(sun * 255);
-      const { W, H, torch, light, roof } = grid;
+      const { W, H, torch, light, roof, wall, door } = grid;
       let anyRoof = false;
+      let anyBlocker = false;
       for (let k = 0; k < roof.length; k++) {
-        if (roof[k] !== 0) {
-          anyRoof = true;
-          break;
-        }
+        if (roof[k] !== 0) anyRoof = true;
+        if (wall[k] !== 0 || door[k] !== 0) anyBlocker = true;
+        if (anyRoof && anyBlocker) break;
       }
       if (!anyRoof) {
         light.fill(base);
@@ -68,6 +68,7 @@ export function makeLightingSystem(opts) {
             for (let ii = i0; ii <= i1; ii++) {
               const di = ii - i;
               if (di * di + dj2 > radius2) continue;
+              if (anyBlocker && !hasLineOfSight(W, wall, door, i, j, ii, jj)) continue;
               const k = jj * W + ii;
               if (torchVal > light[k]) light[k] = torchVal;
             }
@@ -76,4 +77,32 @@ export function makeLightingSystem(opts) {
       }
     },
   };
+}
+
+/**
+ * True if the straight line from (fromI,fromJ) to (toI,toJ) isn't blocked by a
+ * wall or door on any tile strictly between the endpoints. Walls/doors at the
+ * endpoint can still be lit (so the wall tiles themselves glow next to a
+ * torch); the torch tile itself is always the source.
+ *
+ * DDA-style integer supercover trace: sample `steps` points along the segment,
+ * round to tile coords, and reject if any intermediate tile is solid.
+ *
+ * @param {number} W
+ * @param {Uint8Array} wall
+ * @param {Uint8Array} door
+ */
+function hasLineOfSight(W, wall, door, fromI, fromJ, toI, toJ) {
+  const dx = toI - fromI;
+  const dy = toJ - fromJ;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  if (steps <= 1) return true;
+  for (let s = 1; s < steps; s++) {
+    const t = s / steps;
+    const ix = Math.round(fromI + dx * t);
+    const iy = Math.round(fromJ + dy * t);
+    const k = iy * W + ix;
+    if (wall[k] !== 0 || door[k] !== 0) return false;
+  }
+  return true;
 }

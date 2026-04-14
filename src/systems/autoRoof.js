@@ -12,8 +12,8 @@
  * promotes the site to a build job on the next rare tick (provided the tile
  * is roof-valid per `roofIsSupported`).
  *
- * `roofIsSupported` / `wallWithinChebyshev` live here rather than in a render
- * module so jobs/haul.js can import them without pulling in THREE.
+ * `roofIsSupported` / `structureWithinChebyshev` live here rather than in a
+ * render module so jobs/haul.js can import them without pulling in THREE.
  */
 
 import { tileToWorld } from '../world/coords.js';
@@ -56,7 +56,7 @@ export function runAutoRoof(world, grid, _board, rooms) {
       if (pending.has(tileIdx)) continue;
       const i = tileIdx % grid.W;
       const j = (tileIdx - i) / grid.W;
-      if (!wallWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE)) continue;
+      if (!structureWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE)) continue;
       const w = tileToWorld(i, j, grid.W, grid.H);
       world.spawn({
         BuildSite: {
@@ -94,40 +94,36 @@ const ORTHO = /** @type {const} */ ([
  * @param {number} i @param {number} j
  */
 export function roofIsSupported(grid, i, j) {
-  const orthoNbrs = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
   let touching = false;
-  for (const [di, dj] of orthoNbrs) {
+  for (const [di, dj] of ORTHO) {
     const ni = i + di;
     const nj = j + dj;
     if (!grid.inBounds(ni, nj)) continue;
-    if (grid.isWall(ni, nj) || grid.isRoof(ni, nj)) {
+    if (grid.isWall(ni, nj) || grid.isDoor(ni, nj) || grid.isRoof(ni, nj)) {
       touching = true;
       break;
     }
   }
   if (!touching) return false;
-  return wallWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE);
+  return structureWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE);
 }
 
 /**
- * True if any wall tile sits within Chebyshev distance `r` of (i,j).
+ * True if any wall or door tile sits within Chebyshev distance `r` of (i,j).
+ * Doors count alongside walls — they're part of the enclosing structure so
+ * roofs can sit on them and roofs adjacent to isolated doors still find reach.
  *
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} i @param {number} j @param {number} r
  */
-export function wallWithinChebyshev(grid, i, j, r) {
+export function structureWithinChebyshev(grid, i, j, r) {
   const i0 = Math.max(0, i - r);
   const i1 = Math.min(grid.W - 1, i + r);
   const j0 = Math.max(0, j - r);
   const j1 = Math.min(grid.H - 1, j + r);
   for (let jj = j0; jj <= j1; jj++) {
     for (let ii = i0; ii <= i1; ii++) {
-      if (grid.isWall(ii, jj)) return true;
+      if (grid.isWall(ii, jj) || grid.isDoor(ii, jj)) return true;
     }
   }
   return false;
