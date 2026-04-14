@@ -591,6 +591,10 @@ const loop = new SimLoop({
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     clockEl.textContent = `${timeOfDay.getHHMM()} ${speedIcon(loop.speed)}`;
+    // Anchor the sky sphere to the camera so no amount of zoom-out or pan
+    // can put the camera outside the sky — the purple scene.background stays
+    // hidden regardless of camera distance from the world origin.
+    sky.position.copy(camera.position);
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
