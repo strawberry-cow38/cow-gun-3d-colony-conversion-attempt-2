@@ -1151,6 +1151,28 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     return;
   }
 
+  // Item got forbidden after the cow claimed the haul. Release pre-pickup —
+  // post-pickup the carried unit is already off the tile, so let the cow
+  // finish dropping it. Blueprint-clear relocations intentionally move
+  // forbidden stacks and are exempt.
+  if (
+    !toRelocation &&
+    (job.state === 'pathing-to-item' ||
+      job.state === 'walking-to-item' ||
+      job.state === 'picking-up')
+  ) {
+    const srcItem = world.get(itemId, 'Item');
+    if (srcItem?.forbidden === true) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      path.steps = [];
+      path.index = 0;
+      return;
+    }
+  }
+
   if (job.state === 'pathing-to-item') {
     // The source Item must still exist and be somewhere pickup-able.
     const anchor = world.get(itemId, 'TileAnchor');
