@@ -143,12 +143,10 @@ export function createHud(ctx) {
       '',
     ];
     if (ctx.chopDesignator.active) {
-      lines.push('** CHOP DESIGNATE — LMB drag = mark, Shift+drag = unmark, C or Esc to exit **');
+      lines.push('** CHOP DESIGNATE — LMB drag = mark, Shift+drag = unmark, Esc to exit **');
     }
     if (ctx.stockpileDesignator.active) {
-      lines.push(
-        '** STOCKPILE DESIGNATE — LMB drag = add, Shift+drag = remove, B or Esc to exit **',
-      );
+      lines.push('** STOCKPILE DESIGNATE — LMB drag = add, Shift+drag = remove, Esc to exit **');
     }
     if (ctx.fpCamera.active) {
       const viewed = ctx.fpCamera.cowId;
@@ -170,7 +168,7 @@ export function createHud(ctx) {
       `drafted: ${draftedCount}`,
       'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
       'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-      'C = chop designate,  B = stockpile designate,  V = wall designate,  M = door designate',
+      'build tab (bottom-left) = chop / stockpile / wall / door  (Esc to exit a mode)',
       'F = toggle follow (tracks selected cow; Q/E cycle, WASD releases),  H = first-person',
       'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
       'P = toggle debug menu  (also disables the debug-only keys below)',

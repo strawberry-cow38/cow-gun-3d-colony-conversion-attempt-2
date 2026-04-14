@@ -1,8 +1,8 @@
 /**
  * Stockpile designation mode.
  *
- * Press `B` to enter; LMB drag a rectangle of tiles to toggle them on. Press
- * `B` or `Escape` to exit. Shift+drag removes tiles from the stockpile.
+ * Activated from the build tab; LMB drag a rectangle of tiles to toggle them
+ * on. `Escape` exits. Shift+drag removes tiles from the stockpile.
  *
  * While active we swallow LMB down/move/up at the capture phase so SelectBox /
  * CowSelector / CowMoveCommand don't react. A live wire-rectangle preview is
@@ -65,17 +65,14 @@ export class StockpileDesignator {
 
   /** @param {KeyboardEvent} e */
   #onKey(e) {
-    if (e.code === 'KeyB') {
-      this.active = !this.active;
-      if (!this.active) this.#cancelDrag();
-      this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
-      this.onStateChanged();
-    } else if (e.code === 'Escape' && this.active) {
-      this.active = false;
-      this.#cancelDrag();
-      this.audio?.play('toggle_off');
-      this.onStateChanged();
-    }
+    if (e.code === 'Escape' && this.active) this.deactivate();
+  }
+
+  activate() {
+    if (this.active) return;
+    this.active = true;
+    this.audio?.play('toggle_on');
+    this.onStateChanged();
   }
 
   deactivate() {

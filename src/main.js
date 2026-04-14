@@ -21,6 +21,7 @@ import {
   WALL_DESIGNATOR_CONFIG,
 } from './render/buildDesignator.js';
 import { createBuildSiteInstancer } from './render/buildSiteInstancer.js';
+import { createBuildTab } from './render/buildTab.js';
 import { ChopDesignator } from './render/chopDesignator.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowInstancer } from './render/cowInstancer.js';
@@ -370,6 +371,13 @@ getDrivingCowId = () => fpCamera.drivingCowId;
 const cowCamOverlay = createCowCamOverlay();
 const draftBadge = createDraftBadge(scene, 256);
 
+const buildTab = createBuildTab({
+  chopDesignator,
+  stockpileDesignator,
+  wallDesignator,
+  doorDesignator,
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -451,6 +459,7 @@ const loop = new SimLoop({
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
     cowPortraitBar.update();
+    buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     renderer.render(scene, camera);
     renderFrameCount++;

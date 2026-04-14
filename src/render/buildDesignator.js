@@ -1,10 +1,10 @@
 /**
  * Shared blueprint-designator (walls + doors).
  *
- * Press the configured key to enter; LMB drag a rectangle of tiles to spawn
+ * Activated from the build tab; LMB-drag a rectangle of tiles to spawn
  * BuildSite entities of the configured kind. Shift+drag cancels — each config
  * only cancels its own kind so wall and door modes never clobber each other's
- * blueprints. Press the same key or `Escape` to exit.
+ * blueprints. Press `Escape` to exit.
  *
  * Tiles that are blocked (tree, rock), already a door, or stockpile tiles are
  * skipped on ADD. Cancel pass ignores the blocked check so half-placed sites
@@ -21,7 +21,6 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {string} keyCode - KeyboardEvent.code that toggles this mode
  * @property {'wall' | 'door'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
@@ -30,7 +29,6 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /** @type {BuildDesignatorConfig} */
 export const WALL_DESIGNATOR_CONFIG = {
-  keyCode: 'KeyV',
   kind: 'wall',
   previewColorAdd: 0xe9d477,
   addVerb: 'build',
@@ -39,7 +37,6 @@ export const WALL_DESIGNATOR_CONFIG = {
 
 /** @type {BuildDesignatorConfig} */
 export const DOOR_DESIGNATOR_CONFIG = {
-  keyCode: 'KeyM',
   kind: 'door',
   previewColorAdd: 0xffb070,
   addVerb: 'door',
@@ -113,17 +110,14 @@ export class BuildDesignator {
 
   /** @param {KeyboardEvent} e */
   #onKey(e) {
-    if (e.code === this.config.keyCode) {
-      this.active = !this.active;
-      if (!this.active) this.#cancelDrag();
-      this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
-      this.onStateChanged();
-    } else if (e.code === 'Escape' && this.active) {
-      this.active = false;
-      this.#cancelDrag();
-      this.audio?.play('toggle_off');
-      this.onStateChanged();
-    }
+    if (e.code === 'Escape' && this.active) this.deactivate();
+  }
+
+  activate() {
+    if (this.active) return;
+    this.active = true;
+    this.audio?.play('toggle_on');
+    this.onStateChanged();
   }
 
   deactivate() {

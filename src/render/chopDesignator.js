@@ -1,9 +1,9 @@
 /**
  * Chop designation mode.
  *
- * Press `C` to enter; LMB drag a rectangle of tiles to mark every Tree inside
- * the rect for chopping (posts a chop job, sets `tree.markedJobId`). Shift+drag
- * cancels existing chop jobs inside the rect. Press `C` or `Escape` to exit.
+ * Activated from the build tab; LMB drag a rectangle of tiles to mark every
+ * Tree inside the rect for chopping (posts a chop job, sets `tree.markedJobId`).
+ * Shift+drag cancels existing chop jobs inside the rect. `Escape` exits.
  *
  * The drag interaction mirrors StockpileDesignator/BuildDesignator: mousedown/
  * move/up captured at the dom+window level so CowSelector/SelectionBox/
@@ -82,17 +82,14 @@ export class ChopDesignator {
 
   /** @param {KeyboardEvent} e */
   #onKey(e) {
-    if (e.code === 'KeyC') {
-      this.active = !this.active;
-      if (!this.active) this.#cancelDrag();
-      this.audio?.play(this.active ? 'toggle_on' : 'toggle_off');
-      this.onStateChanged();
-    } else if (e.code === 'Escape' && this.active) {
-      this.active = false;
-      this.#cancelDrag();
-      this.audio?.play('toggle_off');
-      this.onStateChanged();
-    }
+    if (e.code === 'Escape' && this.active) this.deactivate();
+  }
+
+  activate() {
+    if (this.active) return;
+    this.active = true;
+    this.audio?.play('toggle_on');
+    this.onStateChanged();
   }
 
   deactivate() {
