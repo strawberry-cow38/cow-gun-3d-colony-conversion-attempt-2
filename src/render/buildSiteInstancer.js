@@ -1,21 +1,46 @@
 /**
  * BuildSite render: translucent blueprint frames for designated-but-unbuilt
- * walls. Height grows with `delivered / required` so players can see how much
- * material has arrived, and shifts to a warmer tint once a builder has started
- * hammering (`progress > 0`). Per-frame updates are cheap — site count stays
- * small in practice.
+ * structures. One shared unit-box geometry is reused for every kind — per
+ * instance we scale/translate the box to match what the finished structure
+ * will look like (full-height wall box, narrow door slot, thin torch rod,
+ * flat roof plate at roof height). Per-kind tinting on top of the
+ * waiting→building lerp so the player can tell kinds apart at a glance.
+ *
+ * Height grows with `delivered / required` so players can see how much
+ * material has arrived, and shifts to a warmer tint once a builder has
+ * started hammering (`progress > 0`).
  */
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
-const FRAME_HEIGHT = 3 * UNITS_PER_METER;
-const FRAME_WIDTH = TILE_SIZE;
-const FRAME_DEPTH = TILE_SIZE;
+const WALL_HEIGHT = 3 * UNITS_PER_METER;
+// Match roofInstancer.ROOF_DROP so blueprints sit at the same plane the
+// finished roof will occupy.
+const ROOF_DROP = 1;
+const DOOR_HEIGHT = WALL_HEIGHT * 0.7;
+const DOOR_THICKNESS = TILE_SIZE * 0.35;
+const TORCH_HEIGHT = 1.6 * UNITS_PER_METER;
+const TORCH_THICKNESS = TILE_SIZE * 0.25;
+const ROOF_THICKNESS = 2;
 const MIN_DELIVERED_FRAC = 0.15;
 
-const COLOR_WAITING = new THREE.Color(0x9ad0ff);
+const COLOR_WAITING_WALL = new THREE.Color(0x9ad0ff);
+const COLOR_WAITING_DOOR = new THREE.Color(0xffb070);
+const COLOR_WAITING_TORCH = new THREE.Color(0xffd070);
+const COLOR_WAITING_ROOF = new THREE.Color(0xc0a080);
 const COLOR_BUILDING = new THREE.Color(0xffd080);
+
+/**
+ * @param {string} kind
+ * @returns {THREE.Color}
+ */
+function waitingColorFor(kind) {
+  if (kind === 'door') return COLOR_WAITING_DOOR;
+  if (kind === 'torch' || kind === 'wallTorch') return COLOR_WAITING_TORCH;
+  if (kind === 'roof') return COLOR_WAITING_ROOF;
+  return COLOR_WAITING_WALL;
+}
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
@@ -28,8 +53,10 @@ const _color = new THREE.Color();
  * @param {number} capacity
  */
 export function createBuildSiteInstancer(scene, capacity = 1024) {
-  const geo = new THREE.BoxGeometry(FRAME_WIDTH, FRAME_HEIGHT, FRAME_DEPTH);
-  geo.translate(0, FRAME_HEIGHT * 0.5, 0);
+  // Unit box with its base on Y=0 so per-instance Y scaling grows upward
+  // without shifting the footing.
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  geo.translate(0, 0.5, 0);
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     flatShading: true,
@@ -41,49 +68,60 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
   mesh.frustumCulled = false;
   scene.add(mesh);
 
-  let dirty = true;
-  // The instancer runs every frame for visual updates (progress tint), but we
-  // only rebuild the matrix buffer when site topology changes.
-  let topologyDirty = true;
-
   /**
    * @param {import('../ecs/world.js').World} world
    * @param {import('../world/tileGrid.js').TileGrid} grid
    */
   function update(world, grid) {
-    let i = 0;
+    let n = 0;
     _quat.identity();
     for (const { components } of world.query(['BuildSite', 'TileAnchor', 'BuildSiteViz'])) {
-      if (i >= capacity) break;
+      if (n >= capacity) break;
       const site = components.BuildSite;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j);
       const deliveredFrac = Math.min(1, site.delivered / Math.max(1, site.required));
       const yScale = MIN_DELIVERED_FRAC + (1 - MIN_DELIVERED_FRAC) * deliveredFrac;
-      _scale.set(1, yScale, 1);
-      _position.set(w.x, y, w.z);
+
+      let sx = TILE_SIZE;
+      let sy = WALL_HEIGHT * yScale;
+      let sz = TILE_SIZE;
+      let py = y;
+      if (site.kind === 'door') {
+        sx = TILE_SIZE;
+        sy = DOOR_HEIGHT * yScale;
+        sz = DOOR_THICKNESS;
+      } else if (site.kind === 'torch' || site.kind === 'wallTorch') {
+        sx = TORCH_THICKNESS;
+        sy = TORCH_HEIGHT * yScale;
+        sz = TORCH_THICKNESS;
+      } else if (site.kind === 'roof') {
+        sx = TILE_SIZE;
+        sy = ROOF_THICKNESS;
+        sz = TILE_SIZE;
+        py = y + WALL_HEIGHT - ROOF_DROP - ROOF_THICKNESS;
+      }
+      _scale.set(sx, sy, sz);
+      _position.set(w.x, py, w.z);
       _matrix.compose(_position, _quat, _scale);
-      mesh.setMatrixAt(i, _matrix);
+      mesh.setMatrixAt(n, _matrix);
       // Warmer hue while a builder is actively hammering (progress > 0),
-      // cooler while the site sits waiting for materials or a free builder.
+      // cooler + kind-tinted while waiting for materials/builder.
       const t = Math.min(1, site.progress);
-      _color.copy(COLOR_WAITING).lerp(COLOR_BUILDING, t);
-      mesh.setColorAt(i, _color);
-      i++;
+      _color.copy(waitingColorFor(site.kind)).lerp(COLOR_BUILDING, t);
+      mesh.setColorAt(n, _color);
+      n++;
     }
-    if (i !== mesh.count) topologyDirty = true;
-    mesh.count = i;
+    mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    dirty = false;
-    topologyDirty = false;
   }
 
-  function markDirty() {
-    dirty = true;
-    topologyDirty = true;
-  }
+  // No-op kept for API parity with other instancers — the caller invokes
+  // `markDirty()` after world mutations, but since update() rebuilds every
+  // frame there's nothing to flag.
+  function markDirty() {}
 
   return { mesh, update, markDirty };
 }

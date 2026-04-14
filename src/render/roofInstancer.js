@@ -19,7 +19,9 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
-const ROOF_CLEARANCE = 0.02 * UNITS_PER_METER;
+// Sit the roof just below wall-top so the seam reads as a single cap instead
+// of a roof floating above the wall rim.
+const ROOF_DROP = 1;
 const WALL_COLOR = 0x8a5a2b;
 const BIOME_ROOF_COLOR = /** @type {Record<number, number>} */ ({
   [BIOME.GRASS]: 0x5a7a4a,
@@ -73,7 +75,7 @@ export function createRoofInstancer(scene, capacity = 4096) {
       if (k >= capacity) break;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j) + WALL_HEIGHT + ROOF_CLEARANCE;
+      const y = grid.getElevation(a.i, a.j) + WALL_HEIGHT - ROOF_DROP;
       _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(k, _matrix);

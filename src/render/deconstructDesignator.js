@@ -39,7 +39,7 @@ export class DeconstructDesignator {
    * @param {THREE.Scene} scene
    * @param {() => void} onStateChanged
    * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ kinds?: readonly { comp: string, kind: string }[], previewColor?: number }} [opts]  Roof-only mode uses `kinds: [{comp:'Roof',kind:'roof'}]` + its own preview color so the player can demolish roofs without also hitting the walls holding them up.
+   * @param {{ kinds?: readonly { comp: string, kind: string }[], previewColor?: number, tagIgnoreRoof?: boolean }} [opts]  Roof-only mode uses `kinds: [{comp:'Roof',kind:'roof'}]` + its own preview color so the player can demolish roofs without also hitting the walls holding them up. `tagIgnoreRoof` additionally flips the tile's ignoreRoof bit on demolish so the auto-roofer doesn't rebuild what the player just tore down; the reverse path (shift-drag to cancel) clears it again.
    */
   constructor(
     dom,
@@ -65,6 +65,7 @@ export class DeconstructDesignator {
     this.audio = audio;
     this.kinds = opts?.kinds ?? DECON_KINDS;
     this.previewColor = opts?.previewColor ?? DECONSTRUCT_PREVIEW_COLOR;
+    this.tagIgnoreRoof = opts?.tagIgnoreRoof === true;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
@@ -193,6 +194,17 @@ export class DeconstructDesignator {
             tag.progress = 0;
             any = true;
           }
+        }
+      }
+    }
+    if (this.tagIgnoreRoof) {
+      const target = removing ? 0 : 1;
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          if (!this.tileGrid.inBounds(i, j)) continue;
+          if (this.tileGrid.isIgnoreRoof(i, j) === !!target) continue;
+          this.tileGrid.setIgnoreRoof(i, j, target);
+          any = true;
         }
       }
     }

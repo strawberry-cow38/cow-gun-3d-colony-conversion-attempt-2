@@ -1,12 +1,12 @@
 /**
  * Torch render: a stick InstancedMesh (brown cylinder) plus a flame
- * InstancedMesh (orange emissive cone). The flame flickers per-torch by
- * scaling Y and nudging emissive intensity with a hashed time offset so
- * neighboring torches don't flicker in lockstep.
+ * InstancedMesh (orange emissive cone). The flame animates by cycling the
+ * shared material's color + emissive over time — no per-instance scale, so
+ * the geometry stays rock-steady.
  *
- * Torches are static-position but the flame is animated, so matrix buffers
- * rebuild every frame (count stays small — one torch is rarely hundreds).
- * Stick matrices rebuild on the same pass to keep one dirty path.
+ * Torches are static-position, but we still rebuild matrices each frame
+ * anyway to keep stick + flame + light-pool updates on a single dirty path;
+ * per-frame cost stays small since torch counts are low.
  *
  * A small pool of PointLights is assigned to the N closest torches to the
  * camera each frame — WebGL caps total dynamic lights per draw call, so we
@@ -42,10 +42,21 @@ const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _flameColor = new THREE.Color();
+const _flameEmissive = new THREE.Color();
+// Flame color cycle — two hues on a low-frequency sin lerp plus a second
+// higher-frequency wobble; produces a slow warm → bright-yellow drift.
+const FLAME_COLOR_A = new THREE.Color(0xff8c20);
+const FLAME_COLOR_B = new THREE.Color(0xffd070);
+const FLAME_EMISSIVE_A = new THREE.Color(0xff6a10);
+const FLAME_EMISSIVE_B = new THREE.Color(0xffa040);
 
-// Wall-mounted torches are tilted up and pushed outward from the wall so the
-// flame appears to stick out of the wall face rather than float above a tile.
-const WALL_TORCH_TILT = -0.35; // radians; negative pitch = flame points slightly up
+// Wall-mounted torches are tilted away from the wall and pushed up against its
+// face so the flame appears to lean out of the wall rather than float above a
+// tile. Yaw points away-from-wall; positive pitch (with YXZ Euler) leans the
+// flame tip in the +local-Z direction which, after the yaw rotation, lands on
+// the away-from-wall side.
+const WALL_TORCH_TILT = 0.45;
 const WALL_TORCH_MOUNT_HEIGHT = 1.8 * UNITS_PER_METER;
 const WALL_TORCH_OUTWARD_OFFSET = TILE_SIZE * 0.35;
 
@@ -106,7 +117,7 @@ export function createTorchInstancer(scene, capacity = 512) {
     pointLights.push(pl);
   }
   // Scratch buffer reused every frame — entry is [worldX, worldY, worldZ,
-  // flicker, distSqToCamera]. Avoids per-frame allocation in the hot path.
+  // distSqToCamera]. Avoids per-frame allocation in the hot path.
   const scratch = /** @type {number[][]} */ ([]);
 
   /**
@@ -122,18 +133,24 @@ export function createTorchInstancer(scene, capacity = 512) {
     const camX = camera?.position.x ?? 0;
     const camY = camera?.position.y ?? 0;
     const camZ = camera?.position.z ?? 0;
-    for (const { id, components } of world.query(['Torch', 'TileAnchor', 'TorchViz'])) {
+    // Global color cycle — all torches share the same hue at time t. Keeps
+    // the render cheap (no per-instance color buffer needed) and the visual
+    // "campfire sync" is fine for the scale we're at.
+    const cyc = 0.5 + 0.5 * Math.sin(tSec * 1.6);
+    const wobble = 0.5 + 0.5 * Math.sin(tSec * 3.7 + 0.9);
+    const mix = cyc * 0.7 + wobble * 0.3;
+    _flameColor.copy(FLAME_COLOR_A).lerp(FLAME_COLOR_B, mix);
+    _flameEmissive.copy(FLAME_EMISSIVE_A).lerp(FLAME_EMISSIVE_B, mix);
+    flameMat.color.copy(_flameColor);
+    flameMat.emissive.copy(_flameEmissive);
+    flameMat.emissiveIntensity = 1.6 + wobble * 0.4;
+    const lightIntensity = POINT_LIGHT_INTENSITY * (0.85 + wobble * 0.3);
+    for (const { components } of world.query(['Torch', 'TileAnchor', 'TorchViz'])) {
       if (n >= capacity) break;
       const a = components.TileAnchor;
       const torch = components.Torch;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j);
-
-      // Deterministic per-torch phase offset so adjacent torches flicker
-      // independently. Hash the entity id into [0, 2π).
-      const phase = (id * 0.6180339887) % 1;
-      const t = tSec * 6.0 + phase * Math.PI * 2;
-      const flicker = 0.85 + 0.18 * Math.sin(t) + 0.1 * Math.sin(t * 1.73 + 1.1);
 
       let baseX;
       let baseY;
@@ -163,9 +180,6 @@ export function createTorchInstancer(scene, capacity = 512) {
       _position.set(baseX, baseY, baseZ);
       _matrix.compose(_position, _quat, _scale);
       stick.setMatrixAt(n, _matrix);
-
-      _scale.set(flicker, flicker, flicker);
-      _matrix.compose(_position, _quat, _scale);
       flame.setMatrixAt(n, _matrix);
 
       const dx = baseX - camX;
@@ -174,14 +188,13 @@ export function createTorchInstancer(scene, capacity = 512) {
       const d2 = dx * dx + dy * dy + dz * dz;
       let slot = scratch[scratchN];
       if (!slot) {
-        slot = [0, 0, 0, 0, 0];
+        slot = [0, 0, 0, 0];
         scratch[scratchN] = slot;
       }
       slot[0] = baseX;
       slot[1] = lightY;
       slot[2] = baseZ;
-      slot[3] = flicker;
-      slot[4] = d2;
+      slot[3] = d2;
       scratchN++;
 
       n++;
@@ -196,13 +209,13 @@ export function createTorchInstancer(scene, capacity = 512) {
     // sort would be marginal at 12 slots out of a typical few dozen torches;
     // full sort is fine here and stays O(n log n) on a small n.
     scratch.length = scratchN;
-    scratch.sort((a, b) => a[4] - b[4]);
+    scratch.sort((a, b) => a[3] - b[3]);
     const assigned = Math.min(scratchN, pointLights.length);
     for (let i = 0; i < assigned; i++) {
-      const [lx, ly, lz, flicker] = scratch[i];
+      const [lx, ly, lz] = scratch[i];
       const pl = pointLights[i];
       pl.position.set(lx, ly, lz);
-      pl.intensity = POINT_LIGHT_INTENSITY * flicker;
+      pl.intensity = lightIntensity;
       pl.visible = true;
     }
     for (let i = assigned; i < pointLights.length; i++) {

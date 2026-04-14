@@ -507,14 +507,14 @@ const removeRoofDesignator = new DeconstructDesignator(
   tileGrid,
   world,
   jobBoard,
-  [roofInstancer, deconstructOverlay],
+  [roofInstancer, deconstructOverlay, ignoreRoofOverlay],
   scene,
   () => {
     deactivateOthers(removeRoofDesignator);
     updateHud();
   },
   audio,
-  { kinds: [{ comp: 'Roof', kind: 'roof' }], previewColor: 0xff8fd0 },
+  { kinds: [{ comp: 'Roof', kind: 'roof' }], previewColor: 0xff8fd0, tagIgnoreRoof: true },
 );
 designators.push(removeRoofDesignator);
 
