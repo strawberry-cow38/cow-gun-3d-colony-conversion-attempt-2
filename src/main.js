@@ -114,7 +114,7 @@ let onWorldCowEat = () => {};
 let onWorldCowStep = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldCowHammer = () => {};
-/** @type {(pos: {x:number,y:number,z:number}) => void} */
+/** @type {(pos: {x:number,y:number,z:number}, kind: string) => void} */
 let onWorldBuildComplete = () => {};
 /** @type {(pos: {x:number,y:number,z:number}) => void} */
 let onWorldTillComplete = () => {};
@@ -139,7 +139,7 @@ scheduler.add(
     onChopComplete: (pos) => onWorldChopComplete(pos),
     onCowEat: (pos) => onWorldCowEat(pos),
     onCowHammer: (pos) => onWorldCowHammer(pos),
-    onBuildComplete: (pos) => onWorldBuildComplete(pos),
+    onBuildComplete: (pos, kind) => onWorldBuildComplete(pos, kind),
     onTillComplete: (pos) => onWorldTillComplete(pos),
     onPlantComplete: (pos) => onWorldPlantComplete(pos),
     onHarvestComplete: (pos) => onWorldHarvestComplete(pos),
@@ -252,18 +252,20 @@ onWorldHarvestComplete = (pos) => {
   itemInstancer.markDirty();
   audio.playAt('chop', pos);
 };
-onWorldBuildComplete = (pos) => {
+onWorldBuildComplete = (pos, kind) => {
   wallInstancer.markDirty();
   roofInstancer.markDirty();
   floorInstancer.markDirty();
   buildSiteInstancer.markDirty();
   deconstructOverlay.markDirty();
-  pathCache.clear();
-  // Walls/doors can open or close a room, so ask the rooms system to redo
-  // its flood-fill on the next tick. Torches don't affect topology but
-  // onBuildComplete is reused for deconstruct too, and the false positives
-  // are cheap compared to tracking the kind here.
-  scheduler.dirty.mark('topology');
+  // Only walls/doors change walkability; torches/floors/roofs stay passable,
+  // so don't invalidate the path cache or fire a topology rebuild (room
+  // flood-fill + auto-roof + roof-collapse BFS) for them. Saves a stutter
+  // when the player drops a row of torches or floors.
+  if (kind === 'wall' || kind === 'door') {
+    pathCache.clear();
+    scheduler.dirty.mark('topology');
+  }
   audio.playAt('hammer', pos);
 };
 onRoomsRebuilt = () => {

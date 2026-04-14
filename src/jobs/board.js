@@ -29,10 +29,24 @@ export class JobBoard {
   constructor() {
     /** @type {Job[]} */
     this.jobs = [];
+    /** @type {Map<number, Job>} */
+    this.byId = new Map();
     // Bumped whenever the open-job pool changes in a way that might wake an
     // idle cow (post, release). Brains cache lastBoardVersion and skip the
     // board scan if it hasn't moved.
     this.version = 0;
+  }
+
+  /** @param {number} jobId */
+  get(jobId) {
+    return this.byId.get(jobId) ?? null;
+  }
+
+  /** Wipe all jobs (used by loadGame). */
+  clear() {
+    this.jobs.length = 0;
+    this.byId.clear();
+    this.version++;
   }
 
   /**
@@ -50,6 +64,7 @@ export class JobBoard {
       completed: false,
     };
     this.jobs.push(job);
+    this.byId.set(job.id, job);
     this.version++;
     return job;
   }
@@ -85,7 +100,7 @@ export class JobBoard {
    * @param {number} entityId
    */
   claim(jobId, entityId) {
-    const job = this.jobs.find((j) => j.id === jobId);
+    const job = this.byId.get(jobId);
     if (!job || job.claimedBy !== null || job.completed) return false;
     job.claimedBy = entityId;
     return true;
@@ -93,7 +108,7 @@ export class JobBoard {
 
   /** @param {number} jobId */
   release(jobId) {
-    const job = this.jobs.find((j) => j.id === jobId);
+    const job = this.byId.get(jobId);
     if (!job) return;
     job.claimedBy = null;
     this.version++;
@@ -101,7 +116,7 @@ export class JobBoard {
 
   /** @param {number} jobId */
   complete(jobId) {
-    const job = this.jobs.find((j) => j.id === jobId);
+    const job = this.byId.get(jobId);
     if (!job) return;
     job.completed = true;
     // Bump so cows whose job got cancelled out from under them (e.g. chop
@@ -111,7 +126,12 @@ export class JobBoard {
 
   /** Remove all completed jobs. Run periodically to keep the queue small. */
   reap() {
-    this.jobs = this.jobs.filter((j) => !j.completed);
+    const kept = [];
+    for (const j of this.jobs) {
+      if (j.completed) this.byId.delete(j.id);
+      else kept.push(j);
+    }
+    this.jobs = kept;
   }
 
   get openCount() {

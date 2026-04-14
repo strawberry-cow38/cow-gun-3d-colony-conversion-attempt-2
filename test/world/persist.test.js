@@ -122,12 +122,13 @@ describe('cow save/load roundtrip', () => {
 
     const w2 = makeWorld();
     hydrateCows(w2, roundtripped);
-    const cows = [...w2.query(['Cow', 'Brain'])];
-    const sarge = cows.find((c) => c.components.Brain.name === 'sarge');
-    const civvy = cows.find((c) => c.components.Brain.name === 'civvy');
-    if (!sarge || !civvy) throw new Error('both cows should hydrate');
-    expect(sarge.components.Cow.drafted).toBe(true);
-    expect(civvy.components.Cow.drafted).toBe(false);
+    /** @type {Record<string, boolean>} */
+    const draftedByName = {};
+    for (const { components } of w2.query(['Cow', 'Brain'])) {
+      draftedByName[components.Brain.name] = components.Cow.drafted;
+    }
+    expect(draftedByName.sarge).toBe(true);
+    expect(draftedByName.civvy).toBe(false);
   });
 });
 

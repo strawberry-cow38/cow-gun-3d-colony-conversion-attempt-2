@@ -399,7 +399,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Roof');
     despawnAllComp(world, 'Floor');
     despawnAllComp(world, 'Crop');
-    jobBoard.jobs.length = 0;
+    jobBoard.clear();
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
       // isn't bare.

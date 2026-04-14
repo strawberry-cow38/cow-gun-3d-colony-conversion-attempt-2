@@ -78,7 +78,7 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  *   onChopComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onCowEat: (pos: {x:number,y:number,z:number}) => void,
  *   onCowHammer: (pos: {x:number,y:number,z:number}) => void,
- *   onBuildComplete: (pos: {x:number,y:number,z:number}) => void,
+ *   onBuildComplete: (pos: {x:number,y:number,z:number}, kind: string) => void,
  *   onTillComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onPlantComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onHarvestComplete: (pos: {x:number,y:number,z:number}) => void,
@@ -441,7 +441,7 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
 
   // Tree went away, OR the board job was cancelled (player unmarked the tree
   // mid-chop) / completed externally → bail so we don't fell an unmarked tree.
-  const boardJob = board.jobs.find((j) => j.id === jobId);
+  const boardJob = board.get(jobId);
   if (!world.get(treeId, 'Tree') || !boardJob || boardJob.completed) {
     if (boardJob && !boardJob.completed) board.release(jobId);
     const tree = world.get(treeId, 'Tree');
@@ -529,7 +529,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
   // Site despawned (player cancelled the blueprint) OR the board job was
   // completed externally → bail cleanly.
   const site = world.get(siteId, 'BuildSite');
-  const boardJob = board.jobs.find((j) => j.id === jobId);
+  const boardJob = board.get(jobId);
   if (!site || !boardJob || boardJob.completed) {
     if (boardJob && !boardJob.completed) board.release(jobId);
     if (site) site.progress = 0;
@@ -605,7 +605,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
         site.progress = 1 - 1 / totalTicks;
         return;
       }
-      deps.onBuildComplete(pos);
+      deps.onBuildComplete(pos, site.kind);
       finishBuild(world, grid, siteId, jobId, board);
       job.kind = 'none';
       job.state = 'idle';
@@ -770,7 +770,7 @@ function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, 
     DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'} */ (kind)] ?? 'Wall'
   );
   const tag = world.get(entityId, compName);
-  const boardJob = board.jobs.find((j) => j.id === jobId);
+  const boardJob = board.get(jobId);
   // Entity gone (already deconstructed / cancelled) OR board job marked done →
   // bail cleanly, same as build/chop does.
   if (!tag || !boardJob || boardJob.completed) {
@@ -824,7 +824,7 @@ function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, 
     tag.progress = 1 - remaining / DECONSTRUCT_TICKS;
     if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
     if (remaining <= 0) {
-      deps.onBuildComplete(pos);
+      deps.onBuildComplete(pos, kind);
       finishDeconstruct(world, grid, entityId, kind, jobId, board);
       deps.onItemChange();
       job.kind = 'none';
@@ -884,7 +884,7 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
 function runTillJob(job, path, pos, grid, paths, board, deps) {
   const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
 
-  const boardJob = board.jobs.find((x) => x.id === jobId);
+  const boardJob = board.get(jobId);
   // Zone cleared, tile already tilled, or board job cancelled/completed → bail.
   if (!boardJob || boardJob.completed || grid.getFarmZone(i, j) === 0 || grid.isTilled(i, j)) {
     if (boardJob && !boardJob.completed) board.release(jobId);
@@ -954,7 +954,7 @@ function runTillJob(job, path, pos, grid, paths, board, deps) {
 function runPlantJob(world, job, path, pos, grid, paths, board, deps) {
   const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
 
-  const boardJob = board.jobs.find((x) => x.id === jobId);
+  const boardJob = board.get(jobId);
   const zoneId = grid.getFarmZone(i, j);
   const kind = cropKindFor(zoneId);
   const tileBusy = tileHasCrop(world, i, j);
@@ -1039,7 +1039,7 @@ function runHarvestJob(world, job, path, pos, grid, paths, board, deps) {
   const { i, j, jobId, cropId } =
     /** @type {{ i: number, j: number, jobId: number, cropId: number }} */ (job.payload);
 
-  const boardJob = board.jobs.find((x) => x.id === jobId);
+  const boardJob = board.get(jobId);
   const crop = world.get(cropId, 'Crop');
   const anchor = world.get(cropId, 'TileAnchor');
   if (!boardJob || boardJob.completed || !crop || !anchor || anchor.i !== i || anchor.j !== j) {

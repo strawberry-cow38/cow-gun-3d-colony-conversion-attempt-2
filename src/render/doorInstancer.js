@@ -75,6 +75,11 @@ export function createDoorInstancer(scene, capacity, audio) {
   const state = new Map();
   let lastNow = performance.now();
 
+  // Reused across frames: (x, z) pairs packed flat. Grown on demand; length
+  // read from cowCount rather than the buffer size.
+  let cowXZ = new Float32Array(128);
+  let cowCount = 0;
+
   /**
    * @param {import('../ecs/world.js').World} world
    * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -85,11 +90,19 @@ export function createDoorInstancer(scene, capacity, audio) {
     lastNow = now;
 
     // Snapshot cow world positions once — each door runs its own proximity
-    // check against this small array rather than re-querying per door.
-    /** @type {{ x: number, z: number }[]} */
-    const cowPositions = [];
+    // check against this flat buffer rather than re-querying per door. Buffer
+    // is reused across frames so we don't allocate at 60fps.
+    cowCount = 0;
     for (const { components } of world.query(['Cow', 'Position'])) {
-      cowPositions.push({ x: components.Position.x, z: components.Position.z });
+      const need = (cowCount + 1) * 2;
+      if (need > cowXZ.length) {
+        const grown = new Float32Array(cowXZ.length * 2);
+        grown.set(cowXZ);
+        cowXZ = grown;
+      }
+      cowXZ[cowCount * 2] = components.Position.x;
+      cowXZ[cowCount * 2 + 1] = components.Position.z;
+      cowCount++;
     }
 
     const kOpen = 1 - Math.exp(-dt / OPEN_TAU);
@@ -118,9 +131,9 @@ export function createDoorInstancer(scene, capacity, audio) {
 
       // Proximity check: open if any cow is within OPEN_RADIUS of tile center.
       let shouldOpen = false;
-      for (const p of cowPositions) {
-        const dx = p.x - w.x;
-        const dz = p.z - w.z;
+      for (let c = 0; c < cowCount; c++) {
+        const dx = cowXZ[c * 2] - w.x;
+        const dz = cowXZ[c * 2 + 1] - w.z;
         if (dx * dx + dz * dz <= openRadiusSq) {
           shouldOpen = true;
           break;

@@ -57,7 +57,9 @@ describe('World', () => {
     const ab1 = w.spawn({ A: {}, B: {} });
     const ab2 = w.spawn({ A: {}, B: {} });
 
-    const ids = [...w.query(['A', 'B'])].map((m) => m.id).sort();
+    const ids = [];
+    for (const { id } of w.query(['A', 'B'])) ids.push(id);
+    ids.sort();
     expect(ids).toEqual([ab1, ab2].sort());
   });
 
@@ -76,7 +78,9 @@ describe('World', () => {
     for (let i = 0; i < 5; i++) ids.push(w.spawn({ V: { v: i } }));
     w.despawn(ids[1]);
     w.despawn(ids[3]);
-    const survivors = [...w.query(['V'])].map((m) => m.components.V.v).sort();
+    const survivors = [];
+    for (const { components } of w.query(['V'])) survivors.push(components.V.v);
+    survivors.sort();
     expect(survivors).toEqual([0, 2, 4]);
     expect(w.entityCount).toBe(3);
   });
