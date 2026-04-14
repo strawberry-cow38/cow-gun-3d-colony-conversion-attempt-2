@@ -18,6 +18,12 @@
  *              decorative, non-blocking, and walkable. Stored as a bitmap so
  *              designators can reject double-placement without scanning
  *              entities. Serialized.
+ * - roof:      uint8; nonzero = finished roof on the tile. Roofs don't affect
+ *              pathing — they sit above the tile and block sunlight so the
+ *              tile under them gets 0% sun. Bitmap so placement checks don't
+ *              need entity lookups. Serialized.
+ * - ignoreRoof: uint8; nonzero = player designated "don't auto-roof this tile".
+ *              Auto-roof skips these. Serialized.
  * - light:     uint8; 0..255 mapping to 0..100% tile illumination. Derived
  *              from sun% and torches by the lighting system — NOT serialized.
  *              Cows move at half speed on tiles with light below 40%.
@@ -45,6 +51,8 @@ export class TileGrid {
     this.wall = new Uint8Array(W * H);
     this.door = new Uint8Array(W * H);
     this.torch = new Uint8Array(W * H);
+    this.roof = new Uint8Array(W * H);
+    this.ignoreRoof = new Uint8Array(W * H);
     this.light = new Uint8Array(W * H);
   }
 
@@ -102,6 +110,26 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setTorch(i, j, v) {
     this.torch[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isRoof(i, j) {
+    return this.roof[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setRoof(i, j, v) {
+    this.roof[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  isIgnoreRoof(i, j) {
+    return this.ignoreRoof[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setIgnoreRoof(i, j, v) {
+    this.ignoreRoof[this.idx(i, j)] = v ? 1 : 0;
   }
 
   /** @param {number} i @param {number} j */

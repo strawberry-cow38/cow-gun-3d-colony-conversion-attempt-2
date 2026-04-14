@@ -12,6 +12,15 @@
 
 export const BUILD_TICKS = 120; // 4 seconds at 30Hz — a bit slower than chop to
 //                                 sell the heft of erecting a wall.
+export const ROOF_BUILD_TICKS = 30; // 1 second — roofs are light and resource-
+//                                     free so they snap up fast.
+
+/**
+ * @param {string} kind
+ */
+export function buildTicksForKind(kind) {
+  return kind === 'roof' ? ROOF_BUILD_TICKS : BUILD_TICKS;
+}
 
 const NBRS = [
   [1, 0],

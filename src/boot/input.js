@@ -18,6 +18,7 @@ import {
   hydrateCows,
   hydrateDoors,
   hydrateItems,
+  hydrateRoofs,
   hydrateTileGrid,
   hydrateTorches,
   hydrateTrees,
@@ -56,6 +57,7 @@ const PAN_KEYS = new Set([
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Mesh} tileMesh
  * @property {number} [pausedSpeed]  last non-zero speed, restored when space unpauses
+ * @property {boolean} [roofsVisible] defaults true; V toggles
  *
  * @typedef {Object} InputCtx
  * @property {import('../ecs/world.js').World} world
@@ -72,6 +74,8 @@ const PAN_KEYS = new Set([
  * @property {{ markDirty: () => void } | null} [wallInstancer]
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
  * @property {{ markDirty: () => void }} roomOverlay
+ * @property {{ markDirty: () => void }} ignoreRoofOverlay
+ * @property {{ markDirty: () => void }} roofInstancer
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH
@@ -98,6 +102,13 @@ async function handleKey(ctx, e) {
   if (e.code === 'KeyP') {
     state.debugEnabled = !state.debugEnabled;
     ctx.audio.play(state.debugEnabled ? 'toggle_on' : 'toggle_off');
+    ctx.applyDebugVisibility();
+    ctx.updateHud();
+    return;
+  }
+  if (e.code === 'KeyV') {
+    state.roofsVisible = state.roofsVisible === false;
+    ctx.audio.play(state.roofsVisible ? 'toggle_on' : 'toggle_off');
     ctx.applyDebugVisibility();
     ctx.updateHud();
     return;
@@ -328,6 +339,8 @@ async function loadGame(ctx) {
     tileGrid.wall.set(loaded.wall);
     tileGrid.door.set(loaded.door);
     tileGrid.torch.set(loaded.torch);
+    tileGrid.roof.set(loaded.roof);
+    tileGrid.ignoreRoof.set(loaded.ignoreRoof);
     tileGrid.occupancy.fill(0);
     pathCache.clear();
     despawnAllComp(world, 'Cow');
@@ -337,6 +350,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Wall');
     despawnAllComp(world, 'Door');
     despawnAllComp(world, 'Torch');
+    despawnAllComp(world, 'Roof');
     jobBoard.jobs.length = 0;
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
@@ -350,8 +364,11 @@ async function loadGame(ctx) {
     hydrateWalls(world, tileGrid, jobBoard, migrated);
     hydrateDoors(world, tileGrid, jobBoard, migrated);
     hydrateTorches(world, tileGrid, jobBoard, migrated);
+    hydrateRoofs(world, tileGrid, jobBoard, migrated);
     ctx.rooms.rebuild();
     ctx.roomOverlay.markDirty();
+    ctx.ignoreRoofOverlay.markDirty();
+    ctx.roofInstancer.markDirty();
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();

@@ -8,8 +8,9 @@
  * and a `Map<id, Room>` keyed by id. Rebuilt via the `rooms` dirty system
  * when the `topology` tag is marked (on wall/door placement or deconstruction).
  *
- * `Room.hasRoof` is always false until roofs ship — downstream systems (e.g.
- * lighting) can read it now to wire their own branch without waiting.
+ * Auto-roof queueing (in src/systems/autoRoof.js) iterates interior tiles per
+ * room to post roof BuildSites. Per-tile roof state lives on `tileGrid.roof`
+ * directly — lighting + rendering consume it without going through rooms.
  */
 
 /**
@@ -17,14 +18,12 @@
  * @property {number} id
  * @property {number[]} tiles   tile indices (grid.idx(i,j))
  * @property {number} area      tiles.length, cached
- * @property {boolean} hasRoof  always false until roof system ships
  *
  * @typedef {Object} RoomRegistry
  * @property {Uint16Array} roomId           tile-index → room id (0 = none)
  * @property {Map<number, Room>} rooms      id → Room
  * @property {() => void} rebuild
  * @property {(i: number, j: number) => Room | null} getRoomAt
- * @property {(tileIdx: number) => boolean} tileHasRoof
  */
 
 /**
@@ -108,7 +107,7 @@ export function createRooms(grid) {
           tiles[t] = scratch[t];
           roomId[scratch[t]] = id;
         }
-        rooms.set(id, { id, tiles, area: tileCount, hasRoof: false });
+        rooms.set(id, { id, tiles, area: tileCount });
       }
     }
   }
@@ -120,14 +119,7 @@ export function createRooms(grid) {
     return id > 0 ? (rooms.get(id) ?? null) : null;
   }
 
-  /** @param {number} tileIdx */
-  function tileHasRoof(tileIdx) {
-    const id = roomId[tileIdx];
-    if (id === 0) return false;
-    return rooms.get(id)?.hasRoof ?? false;
-  }
-
-  return { roomId, rooms, rebuild, getRoomAt, tileHasRoof };
+  return { roomId, rooms, rebuild, getRoomAt };
 }
 
 /**

@@ -192,6 +192,34 @@ describe('migration runner', () => {
     expect(out.torches[0]).toMatchObject({ i: 0, j: 0, decon: false, progress: 0 });
   });
 
+  it('upgrades a v11 save by adding roof/ignoreRoof bitmaps + empty roofs array', () => {
+    const v11 = {
+      version: 11,
+      tileGrid: {
+        W: 2,
+        H: 1,
+        elevation: [0, 0],
+        biome: [0, 0],
+        stockpile: [0, 0],
+        wall: [0, 0],
+        door: [0, 0],
+        torch: [0, 0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+    };
+    const out = runMigrations(v11);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.tileGrid.roof).toEqual([0, 0]);
+    expect(out.tileGrid.ignoreRoof).toEqual([0, 0]);
+    expect(out.roofs).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

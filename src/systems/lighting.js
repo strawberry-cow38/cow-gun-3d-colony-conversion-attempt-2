@@ -2,11 +2,13 @@
  * Tile lighting grid. Per-tile light % drives cow pathing speed (below 40% =
  * half speed). Light = max(sun%, torch%):
  *
- * - Sun: 100% 6am-6pm, fade 6-9pm, 0% 9pm-5am, rise 5am-6am.
+ * - Sun: 100% 6am-6pm, fade 6-9pm, 0% 9pm-5am, rise 5am-6am. Tiles with a
+ *   roof bit set get 0 sun (roof blocks sunlight).
  * - Torch: 50% flat within a 5-tile radius circle (including center).
  *
- * Since the torch contribution caps at 50%, sun ≥ 50% makes torches moot —
- * we skip the torch stamp when sun already exceeds the torch floor.
+ * Since the torch contribution caps at 50%, sun ≥ 50% makes torches moot on
+ * roofless tiles — but roofed tiles still need torches during the day, so
+ * the torch stamp runs unconditionally when any roof exists.
  *
  * Stored as uint8 (0-255). Recomputed on a `rare` tier (every 8 ticks) — the
  * sun curve is continuous and torch placements are infrequent, so sub-second
@@ -21,12 +23,11 @@ export const DARKNESS_SLOWDOWN_THRESHOLD = 0.4;
  * @param {{
  *   grid: import('../world/tileGrid.js').TileGrid,
  *   timeOfDay: { getSunLightPercent: () => number },
- *   rooms?: import('./rooms.js').RoomRegistry,
  * }} opts
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
 export function makeLightingSystem(opts) {
-  const { grid, timeOfDay, rooms } = opts;
+  const { grid, timeOfDay } = opts;
   // TORCH_RADIUS_TILES counts the center tile in its span, so the euclidean
   // radius from the center is TORCH_RADIUS_TILES - 1.
   const radius = TORCH_RADIUS_TILES - 1;
@@ -37,21 +38,22 @@ export function makeLightingSystem(opts) {
     run() {
       const sun = Math.max(0, Math.min(1, timeOfDay.getSunLightPercent()));
       const base = Math.round(sun * 255);
-      const { W, H, torch, light } = grid;
-      // Roofed rooms get 0 sun contribution — torches still light them the
-      // same way (stamped below). With no roofs implemented yet, `tileHasRoof`
-      // always returns false and this branch is effectively a flat fill.
-      if (rooms) {
-        for (let k = 0; k < light.length; k++) {
-          light[k] = rooms.tileHasRoof(k) ? 0 : base;
+      const { W, H, torch, light, roof } = grid;
+      let anyRoof = false;
+      for (let k = 0; k < roof.length; k++) {
+        if (roof[k] !== 0) {
+          anyRoof = true;
+          break;
         }
-      } else {
-        light.fill(base);
       }
-      // With rooms wired, roofed tiles sit at base 0 so torches still matter
-      // during full sun. Keep stamping; the inner `torchVal > light[k]` test
-      // makes it a no-op on tiles the sun already lights.
-      if (sun >= TORCH_LIGHT_PCT && !rooms) return;
+      if (!anyRoof) {
+        light.fill(base);
+      } else {
+        for (let k = 0; k < light.length; k++) {
+          light[k] = roof[k] !== 0 ? 0 : base;
+        }
+      }
+      if (sun >= TORCH_LIGHT_PCT && !anyRoof) return;
       const torchVal = Math.round(TORCH_LIGHT_PCT * 255);
       for (let j = 0; j < H; j++) {
         for (let i = 0; i < W; i++) {

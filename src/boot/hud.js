@@ -42,6 +42,8 @@ const BIOME_NAMES = /** @type {Record<number, string>} */ ({
  * @property {{ setVisible(v: boolean): void }} itemLabels
  * @property {{ setVisible(v: boolean): void }} stockpileOverlay
  * @property {{ setVisible(v: boolean): void }} roomOverlay
+ * @property {{ setVisible(v: boolean): void }} ignoreRoofOverlay
+ * @property {{ setVisible(v: boolean): void }} roofInstancer
  * @property {{ setVisible(v: boolean): void }} pickTileOverlay
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
  * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
@@ -69,7 +71,11 @@ export function createHud(ctx) {
     ctx.itemLabels.setVisible(state.debugEnabled);
     ctx.stockpileOverlay.setVisible(state.debugEnabled);
     ctx.roomOverlay.setVisible(state.debugEnabled);
+    ctx.ignoreRoofOverlay.setVisible(state.debugEnabled);
     ctx.pickTileOverlay.setVisible(state.debugEnabled);
+    // Roofs have their own visibility toggle (V key) that's independent of
+    // the debug menu — players need to peek into rooms mid-play.
+    ctx.roofInstancer.setVisible(state.roofsVisible !== false);
   }
 
   function itemCountsStr() {
@@ -151,6 +157,7 @@ export function createHud(ctx) {
       pickStr = `pick: i=${state.lastPick.i} j=${state.lastPick.j}  elev=${elev.toFixed(1)}  biome=${biomeName}  walkable=${walk}  light=${lightPct}%`;
     }
     const sunPct = Math.round(ctx.timeOfDay.getSunLightPercent() * 100);
+    const roofsHidden = state.roofsVisible === false;
     const lines = [
       'phase 4: trees + chop + stacks + eat',
       `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
@@ -159,7 +166,7 @@ export function createHud(ctx) {
       `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
       `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
       `time: ${ctx.timeOfDay.getHHMM()}  weather: ${ctx.weather.getCurrent()}  sun-light: ${sunPct}%`,
-      `rooms: ${ctx.rooms.rooms.size}`,
+      `rooms: ${ctx.rooms.rooms.size}  roofs: ${roofsHidden ? 'hidden' : 'shown'} (V)`,
       pickStr,
       ...cowLines,
       '',
@@ -190,7 +197,8 @@ export function createHud(ctx) {
       `drafted: ${draftedCount}`,
       'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
       'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-      'build tab (bottom-left) = chop / stockpile / wall / door / torch  (Esc to exit a mode)',
+      'build tab (bottom-left) = chop / stockpile / wall / door / torch / roof / no-roof  (Esc to exit)',
+      'V = toggle roof visibility (peek into rooms)',
       'F = toggle follow (tracks selected cow; Q/E cycle, WASD releases),  H = first-person',
       'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
       'P = toggle debug menu  (also disables the debug-only keys below)',

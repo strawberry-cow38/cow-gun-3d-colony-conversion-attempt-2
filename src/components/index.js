@@ -33,14 +33,15 @@
  *              dropped on the tile by haulers; when `delivered >= required` a
  *              `build` job opens on the board and a cow comes to erect it.
  *              `progress` 0..1 drives the in-progress visual.
- * Wall / Door / Torch
+ * Wall / Door / Torch / Roof
  *              { deconstructJobId, progress }
  *              Tag-ish components for finished structures. The tile's wall/
- *              door/torch bit in TileGrid is the source of truth for pathing;
- *              these entities own the instance slot for rendering + save/load.
- *              `deconstructJobId` > 0 = player marked it for demolition (a
- *              board job exists); `progress` 0..1 drives visual feedback
- *              while a cow is demolishing.
+ *              door/torch/roof bit in TileGrid is the source of truth for
+ *              pathing (Roof doesn't affect pathing — it sits *above* tiles
+ *              and blocks sunlight). These entities own the instance slot for
+ *              rendering + save/load. `deconstructJobId` > 0 = player marked
+ *              it for demolition (a board job exists); `progress` 0..1 drives
+ *              visual feedback while a cow is demolishing.
  */
 
 /**
@@ -95,4 +96,6 @@ export function registerComponents(world) {
   world.defineComponent('DoorViz', () => ({}));
   world.defineComponent('Torch', () => ({ deconstructJobId: 0, progress: 0 }));
   world.defineComponent('TorchViz', () => ({}));
+  world.defineComponent('Roof', () => ({ deconstructJobId: 0, progress: 0 }));
+  world.defineComponent('RoofViz', () => ({}));
 }

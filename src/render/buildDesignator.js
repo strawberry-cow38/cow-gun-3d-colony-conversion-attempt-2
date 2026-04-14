@@ -24,8 +24,15 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
 
 /**
+ * Maximum Chebyshev distance in tiles from a roof blueprint to any wall. Per
+ * spec the wall itself counts as tile 1, so the roof may sit up to 6 tiles
+ * out from a wall ("7 tiles away from a wall (this INCLUDES the wall)").
+ */
+export const ROOF_MAX_WALL_DISTANCE = 6;
+
+/**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'roof'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -34,6 +41,9 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
  *   tracks the cursor instead.
  * @property {number} [previewRadiusTiles] - if set, draw a circle at this
  *   tile-radius around the single-place hover preview (e.g. torch light reach).
+ * @property {number} [required] - material units required (default 1). 0 =
+ *   free build, no haul phase (roofs).
+ * @property {string} [requiredKind] - item kind (default 'wood').
  */
 
 /** @type {BuildDesignatorConfig} */
@@ -61,6 +71,16 @@ export const TORCH_DESIGNATOR_CONFIG = {
   cancelVerb: 'cancel torch',
   singlePlace: true,
   previewRadiusTiles: TORCH_RADIUS_TILES,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const ROOF_DESIGNATOR_CONFIG = {
+  kind: 'roof',
+  previewColorAdd: 0xc0a080,
+  addVerb: 'roof',
+  cancelVerb: 'cancel roof',
+  required: 0,
+  requiredKind: 'wood',
 };
 
 export class BuildDesignator {
@@ -258,20 +278,30 @@ export class BuildDesignator {
 
   /** @param {number} i @param {number} j */
   #designateTile(i, j) {
-    if (this.tileGrid.isBlocked(i, j)) return false;
-    if (this.tileGrid.isDoor(i, j)) return false;
-    if (this.tileGrid.isTorch(i, j)) return false;
+    const isRoof = this.config.kind === 'roof';
+    if (isRoof) {
+      // Walls don't block roofs — only trees/rocks do. Hence occupancy-only.
+      if (this.tileGrid.occupancy[this.tileGrid.idx(i, j)] !== 0) return false;
+      if (this.tileGrid.isRoof(i, j)) return false;
+      if (this.tileGrid.isIgnoreRoof(i, j)) return false;
+      if (!roofIsSupported(this.tileGrid, i, j)) return false;
+    } else {
+      if (this.tileGrid.isBlocked(i, j)) return false;
+      if (this.tileGrid.isDoor(i, j)) return false;
+      if (this.tileGrid.isTorch(i, j)) return false;
+    }
     // Torches are decorative and non-blocking; letting them sit on stockpile
     // tiles means players can light up a storage area without having to
-    // redraw the stockpile around them.
-    if (this.config.kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
+    // redraw the stockpile around them. Roofs don't touch the ground plane
+    // so stockpiles underneath them are fine too.
+    if (!isRoof && this.config.kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
     if (this.#findSiteAt(i, j) !== null) return false;
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({
       BuildSite: {
         kind: this.config.kind,
-        requiredKind: 'wood',
-        required: 1,
+        requiredKind: this.config.requiredKind ?? 'wood',
+        required: this.config.required ?? 1,
         delivered: 0,
         buildJobId: 0,
         progress: 0,
@@ -419,6 +449,56 @@ export class BuildDesignator {
 /** @param {number} hex */
 function colorToCss(hex) {
   return `#${hex.toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * True if (i,j) satisfies the roof support + reach rule:
+ *   - orthogonally adjacent to an existing wall or roof, AND
+ *   - within ROOF_MAX_WALL_DISTANCE Chebyshev of at least one wall.
+ * The adjacency check uses existing walls/roofs only (not blueprints) — the
+ * auto-roof system grows roofs outward along a frontier of built tiles.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j
+ */
+export function roofIsSupported(grid, i, j) {
+  const orthoNbrs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  let touching = false;
+  for (const [di, dj] of orthoNbrs) {
+    const ni = i + di;
+    const nj = j + dj;
+    if (!grid.inBounds(ni, nj)) continue;
+    if (grid.isWall(ni, nj) || grid.isRoof(ni, nj)) {
+      touching = true;
+      break;
+    }
+  }
+  if (!touching) return false;
+  return wallWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE);
+}
+
+/**
+ * True if any wall tile sits within a Chebyshev distance of `r` from (i,j).
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j @param {number} r
+ */
+export function wallWithinChebyshev(grid, i, j, r) {
+  const i0 = Math.max(0, i - r);
+  const i1 = Math.min(grid.W - 1, i + r);
+  const j0 = Math.max(0, j - r);
+  const j1 = Math.min(grid.H - 1, j + r);
+  for (let jj = j0; jj <= j1; jj++) {
+    for (let ii = i0; ii <= i1; ii++) {
+      if (grid.isWall(ii, jj)) return true;
+    }
+  }
+  return false;
 }
 
 /**

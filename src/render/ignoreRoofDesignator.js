@@ -1,14 +1,13 @@
 /**
- * Deconstruct designation mode.
+ * Ignore-roof designation mode.
  *
- * Activated from the build tab; LMB-drag a rectangle to mark every finished
- * Wall / Door / Torch / Roof inside the rect for demolition (posts a
- * 'deconstruct' job and sets the entity's deconstructJobId). Shift+drag
- * cancels existing marks inside the rect.
+ * Activated from the build tab. LMB-drag a rectangle to mark tiles so the
+ * auto-roof system won't queue a roof blueprint on them. Shift+drag clears
+ * the ignore bit. Escape exits.
  *
- * Mirrors ChopDesignator's drag + preview rectangle pattern — the differences
- * are (a) what we query for (Wall/Door/Torch/Roof instead of Tree) and (b)
- * the board kind we post ('deconstruct').
+ * Mirrors StockpileDesignator's pattern — drag rect, live preview, toggles a
+ * per-tile bitmap on TileGrid (`ignoreRoof`). The overlay is a separate
+ * InstancedMesh flipped dirty on any change.
  */
 
 import * as THREE from 'three';
@@ -16,49 +15,26 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/c
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
-export const DECONSTRUCT_PREVIEW_COLOR = 0xff4a4a;
+const PREVIEW_COLOR_ADD = 0xd060ff;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
-/** Component name → lowercase job-payload kind. Matches DECON_COMP_BY_KIND in cow.js. */
-const DECON_KINDS = /** @type {const} */ ([
-  { comp: 'Wall', kind: 'wall' },
-  { comp: 'Door', kind: 'door' },
-  { comp: 'Torch', kind: 'torch' },
-  { comp: 'Roof', kind: 'roof' },
-]);
-
-export class DeconstructDesignator {
+export class IgnoreRoofDesignator {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
    * @param {() => THREE.Mesh} getTileMesh
    * @param {import('../world/tileGrid.js').TileGrid} tileGrid
-   * @param {import('../ecs/world.js').World} world
-   * @param {import('../jobs/board.js').JobBoard} board
-   * @param {{ markDirty: () => void }[]} instancers  dirty flags for the viz of every kind we can mark
+   * @param {{ markDirty: () => void }} overlay
    * @param {THREE.Scene} scene
    * @param {() => void} onStateChanged
    * @param {{ play: (kind: string) => void }} [audio]
    */
-  constructor(
-    dom,
-    camera,
-    getTileMesh,
-    tileGrid,
-    world,
-    board,
-    instancers,
-    scene,
-    onStateChanged,
-    audio,
-  ) {
+  constructor(dom, camera, getTileMesh, tileGrid, overlay, scene, onStateChanged, audio) {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
     this.tileGrid = tileGrid;
-    this.world = world;
-    this.board = board;
-    this.instancers = instancers;
+    this.overlay = overlay;
     this.onStateChanged = onStateChanged;
     this.audio = audio;
     this.active = false;
@@ -164,37 +140,19 @@ export class DeconstructDesignator {
     const j0 = Math.min(a.j, b.j);
     const j1 = Math.max(a.j, b.j);
     let any = false;
-    for (const { comp, kind } of DECON_KINDS) {
-      for (const { id, components } of this.world.query([comp, 'TileAnchor'])) {
-        const anchor = components.TileAnchor;
-        if (anchor.i < i0 || anchor.i > i1) continue;
-        if (anchor.j < j0 || anchor.j > j1) continue;
-        const tag = components[comp];
-        if (removing) {
-          if (tag.deconstructJobId > 0) {
-            this.board.complete(tag.deconstructJobId);
-            tag.deconstructJobId = 0;
-            tag.progress = 0;
-            any = true;
-          }
-        } else {
-          if (tag.deconstructJobId === 0) {
-            const job = this.board.post('deconstruct', {
-              entityId: id,
-              kind,
-              i: anchor.i,
-              j: anchor.j,
-            });
-            tag.deconstructJobId = job.id;
-            tag.progress = 0;
-            any = true;
-          }
-        }
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        if (!this.tileGrid.inBounds(i, j)) continue;
+        const cur = this.tileGrid.isIgnoreRoof(i, j);
+        const target = !removing;
+        if (cur === target) continue;
+        this.tileGrid.setIgnoreRoof(i, j, target ? 1 : 0);
+        any = true;
       }
     }
     if (any) {
       this.audio?.play('command');
-      for (const inst of this.instancers) inst.markDirty();
+      this.overlay.markDirty();
       this.onStateChanged();
     }
   }
@@ -234,7 +192,7 @@ export class DeconstructDesignator {
     p[14] = z0;
     this.preview.geo.attributes.position.needsUpdate = true;
     const mat = /** @type {THREE.LineBasicMaterial} */ (this.preview.line.material);
-    mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : DECONSTRUCT_PREVIEW_COLOR);
+    mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : PREVIEW_COLOR_ADD);
     this.preview.line.visible = true;
   }
 
@@ -265,10 +223,7 @@ function buildPreview(scene) {
   const geo = new THREE.BufferGeometry();
   const positions = new Float32Array(5 * 3);
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const line = new THREE.Line(
-    geo,
-    new THREE.LineBasicMaterial({ color: DECONSTRUCT_PREVIEW_COLOR }),
-  );
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: PREVIEW_COLOR_ADD }));
   line.frustumCulled = false;
   line.visible = false;
   scene.add(line);

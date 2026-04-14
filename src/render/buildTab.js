@@ -29,6 +29,8 @@
  * @property {ToggleableDesignator} wallDesignator
  * @property {ToggleableDesignator} doorDesignator
  * @property {ToggleableDesignator} torchDesignator
+ * @property {ToggleableDesignator} roofDesignator
+ * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  */
 
@@ -75,6 +77,22 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a torch',
       activeColor: '#ffb84a',
       designator: opts.torchDesignator,
+    },
+    {
+      id: 'roof',
+      label: 'Roof',
+      icon: '🏠',
+      hotkeyHint: 'drag to designate roofs (free, fast, auto-built in rooms)',
+      activeColor: '#c0a080',
+      designator: opts.roofDesignator,
+    },
+    {
+      id: 'no-roof',
+      label: 'No Roof',
+      icon: '🚫',
+      hotkeyHint: 'drag to mark tiles the auto-roofer should skip',
+      activeColor: '#d060ff',
+      designator: opts.ignoreRoofDesignator,
     },
     {
       id: 'deconstruct',

@@ -18,6 +18,7 @@ import { makeHaulPostingSystem } from './jobs/haul.js';
 import {
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
+  ROOF_DESIGNATOR_CONFIG,
   TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
 } from './render/buildDesignator.js';
@@ -34,11 +35,14 @@ import { DeconstructDesignator } from './render/deconstructDesignator.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
+import { IgnoreRoofDesignator } from './render/ignoreRoofDesignator.js';
+import { createIgnoreRoofOverlay } from './render/ignoreRoofOverlay.js';
 import { createItemInstancer } from './render/itemInstancer.js';
 import { createItemLabels } from './render/itemLabels.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { createPickTileOverlay } from './render/pickTileOverlay.js';
 import { TilePicker } from './render/picker.js';
+import { createRoofInstancer } from './render/roofInstancer.js';
 import { createRoomOverlay } from './render/roomOverlay.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
@@ -54,6 +58,7 @@ import { createWallInstancer } from './render/wallInstancer.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
+import { runAutoRoof } from './systems/autoRoof.js';
 import {
   makeCowBrainSystem,
   makeCowFollowPathSystem,
@@ -144,7 +149,7 @@ const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({ sun, hemi, sky });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
-const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay, rooms });
+const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
 scheduler.add(lightingSystem);
 // Seed the tile light grid so tick 0 already sees valid values — the cow
 // follow-path system reads it to apply the darkness slowdown.
@@ -167,11 +172,13 @@ const treeInstancer = createTreeInstancer(scene, 2048);
 const wallInstancer = createWallInstancer(scene, 2048);
 const doorInstancer = createDoorInstancer(scene, 512, audio);
 const torchInstancer = createTorchInstancer(scene, 512);
+const roofInstancer = createRoofInstancer(scene, gridW * gridH);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
 const roomOverlay = createRoomOverlay(scene, gridW * gridH);
+const ignoreRoofOverlay = createIgnoreRoofOverlay(scene, gridW * gridH);
 const pickTileOverlay = createPickTileOverlay(scene);
 
 onWorldChopComplete = (pos) => {
@@ -191,6 +198,7 @@ onWorldCowHammer = (pos) => {
 };
 onWorldBuildComplete = (pos) => {
   wallInstancer.markDirty();
+  roofInstancer.markDirty();
   buildSiteInstancer.markDirty();
   pathCache.clear();
   // Walls/doors can open or close a room, so ask the rooms system to redo
@@ -202,6 +210,10 @@ onWorldBuildComplete = (pos) => {
 };
 onRoomsRebuilt = () => {
   roomOverlay.markDirty();
+  // Auto-queue roofs for newly enclosed rooms. Runs in the same tick as the
+  // flood-fill so the next rare haul-poster tick sees the fresh BuildSites.
+  runAutoRoof(world, tileGrid, jobBoard, rooms);
+  buildSiteInstancer.markDirty();
 };
 onWorldItemChange = () => {
   itemInstancer.markDirty();
@@ -414,6 +426,39 @@ const torchDesignator = new BuildDesignator(
 );
 designators.push(torchDesignator);
 
+const roofDesignator = new BuildDesignator(
+  ROOF_DESIGNATOR_CONFIG,
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    deactivateOthers(roofDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(roofDesignator);
+
+const ignoreRoofDesignator = new IgnoreRoofDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  ignoreRoofOverlay,
+  scene,
+  () => {
+    deactivateOthers(ignoreRoofDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(ignoreRoofDesignator);
+
 const deconstructDesignator = new DeconstructDesignator(
   canvas,
   camera,
@@ -421,7 +466,7 @@ const deconstructDesignator = new DeconstructDesignator(
   tileGrid,
   world,
   jobBoard,
-  [wallInstancer],
+  [wallInstancer, roofInstancer],
   scene,
   () => {
     deactivateOthers(deconstructDesignator);
@@ -442,6 +487,8 @@ const buildTab = createBuildTab({
   wallDesignator,
   doorDesignator,
   torchDesignator,
+  roofDesignator,
+  ignoreRoofDesignator,
   deconstructDesignator,
 });
 
@@ -529,11 +576,13 @@ const loop = new SimLoop({
     wallInstancer.update(world, tileGrid);
     doorInstancer.update(world, tileGrid);
     torchInstancer.update(world, tileGrid, tSec, camera);
+    roofInstancer.update(world, tileGrid);
     buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);
     roomOverlay.update(tileGrid, rooms);
+    ignoreRoofOverlay.update(tileGrid);
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
     cowPortraitBar.update();
@@ -569,6 +618,8 @@ hudApi = createHud({
   itemLabels,
   stockpileOverlay,
   roomOverlay,
+  ignoreRoofOverlay,
+  roofInstancer,
   pickTileOverlay,
   rooms,
   timeOfDay,
@@ -589,6 +640,8 @@ installKeyboard({
   stockpileOverlay,
   rooms,
   roomOverlay,
+  ignoreRoofOverlay,
+  roofInstancer,
   buildSiteInstancer,
   wallInstancer,
   treeCount,

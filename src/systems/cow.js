@@ -13,7 +13,7 @@
  * with an Eat job that walks to the nearest food stack and consumes one unit.
  */
 
-import { BUILD_TICKS, findBuildStandTile } from '../jobs/build.js';
+import { buildTicksForKind, findBuildStandTile } from '../jobs/build.js';
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { DECONSTRUCT_TICKS, findDeconstructStandTile } from '../jobs/deconstruct.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
@@ -443,7 +443,8 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
 
 /**
  * State machine for the build job. Mirrors runChopJob: walk adjacent to the
- * build site, hammer for BUILD_TICKS, then convert the BuildSite into a Wall.
+ * build site, hammer for buildTicksForKind(kind), then convert the BuildSite
+ * into the finished structure.
  *
  * Once the timer expires, we hold at the last tick (progress ≈ 99%) until
  * any non-builder cows have left the destination tile — otherwise the wall
@@ -503,10 +504,12 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
     return;
   }
 
+  const totalTicks = buildTicksForKind(site.kind);
+
   if (job.state === 'walking') {
     if (path.index >= path.steps.length) {
       job.state = 'building';
-      job.payload.ticksRemaining = BUILD_TICKS;
+      job.payload.ticksRemaining = totalTicks;
       path.steps = [];
       path.index = 0;
     }
@@ -514,22 +517,28 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
   }
 
   if (job.state === 'building') {
-    const remaining = (job.payload.ticksRemaining ?? BUILD_TICKS) - 1;
+    const remaining = (job.payload.ticksRemaining ?? totalTicks) - 1;
     job.payload.ticksRemaining = remaining;
-    site.progress = 1 - remaining / BUILD_TICKS;
+    site.progress = 1 - remaining / totalTicks;
     // Hammer audio lands every ~18 ticks so a 4-second build gives ~6 strikes
-    // — rhythmic without drowning out other cows' work.
+    // — rhythmic without drowning out other cows' work. Roofs build in 30
+    // ticks total so one strike at mid-build reads fine.
     if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
     if (remaining <= 0) {
       // Hold at 99% if any cow is currently standing on the build tile —
       // closing the wall on top of them would seal them in. The builder
       // themselves stand at an adjacent tile, so they don't trigger this.
+      // Roofs don't block pathing so they skip this stall.
       const anchor = world.get(siteId, 'TileAnchor');
-      if (anchor && cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId)) {
+      if (
+        site.kind !== 'roof' &&
+        anchor &&
+        cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId)
+      ) {
         // One tick of pad keeps progress visually pegged at 99% and the audio
         // tap firing at the same cadence; we re-check next tick.
         job.payload.ticksRemaining = 1;
-        site.progress = 1 - 1 / BUILD_TICKS;
+        site.progress = 1 - 1 / totalTicks;
         return;
       }
       deps.onBuildComplete(pos);
@@ -598,6 +607,14 @@ function finishBuild(world, grid, siteId, jobId, board) {
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });
+  } else if (site.kind === 'roof') {
+    grid.setRoof(anchor.i, anchor.j, 1);
+    world.spawn({
+      Roof: {},
+      RoofViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
   } else {
     grid.setWall(anchor.i, anchor.j, 1);
     world.spawn({
@@ -616,6 +633,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   wall: 'Wall',
   door: 'Door',
   torch: 'Torch',
+  roof: 'Roof',
 });
 
 /**
@@ -636,8 +654,8 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
 function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
-  const compName = /** @type {'Wall'|'Door'|'Torch'} */ (
-    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'} */ (kind)] ?? 'Wall'
+  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'} */ (
+    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'} */ (kind)] ?? 'Wall'
   );
   const tag = world.get(entityId, compName);
   const boardJob = board.jobs.find((j) => j.id === jobId);
@@ -726,10 +744,12 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   if (kind === 'wall') grid.setWall(anchor.i, anchor.j, 0);
   else if (kind === 'door') grid.setDoor(anchor.i, anchor.j, 0);
   else if (kind === 'torch') grid.setTorch(anchor.i, anchor.j, 0);
-  // Hardcoded to wood/1 because every current build kind uses those; when
-  // buildings diverge, the original `required`/`requiredKind` will need to
-  // live on the finished-structure entity (mirroring how BuildSite tracks them).
-  const returned = Math.round(1 * 0.5);
+  else if (kind === 'roof') grid.setRoof(anchor.i, anchor.j, 0);
+  // Wall/door/torch cost 1 wood → 50% refund = 1. Roofs are free so they
+  // refund nothing. When buildings diverge further, the original
+  // `required`/`requiredKind` will need to live on the finished-structure
+  // entity (mirroring how BuildSite tracks them).
+  const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
   for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   world.despawn(entityId);
   board.complete(jobId);
