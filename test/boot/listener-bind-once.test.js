@@ -17,6 +17,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '..', '..');
 const main = fs.readFileSync(path.join(repoRoot, 'src/main.js'), 'utf8');
 const input = fs.readFileSync(path.join(repoRoot, 'src/boot/input.js'), 'utf8');
+const hotkeys = fs.readFileSync(path.join(repoRoot, 'src/boot/hotkeys.js'), 'utf8');
 
 /**
  * Every class below owns `window` or `document` listeners that never
@@ -57,13 +58,13 @@ describe('save/load path does not register listeners', () => {
   });
 
   it('loadGame does not touch addEventListener', () => {
-    const body = sliceFunction(input, 'async function loadGame');
+    const body = sliceFunction(hotkeys, 'async function loadGame');
     if (!body) throw new Error('function body not found');
     expect(body).not.toMatch(/\baddEventListener\b/);
   });
 
   it('saveGame does not touch addEventListener', () => {
-    const body = sliceFunction(input, 'async function saveGame');
+    const body = sliceFunction(hotkeys, 'async function saveGame');
     if (!body) throw new Error('function body not found');
     expect(body).not.toMatch(/\baddEventListener\b/);
   });
