@@ -32,6 +32,7 @@
  * @property {ToggleableDesignator} roofDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
+ * @property {ToggleableDesignator} removeRoofDesignator
  * @property {ToggleableDesignator} cancelDesignator
  */
 
@@ -102,6 +103,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
       activeColor: '#ff4a4a',
       designator: opts.deconstructDesignator,
+    },
+    {
+      id: 'remove-roof',
+      label: 'Un-roof',
+      icon: '🏚️',
+      hotkeyHint: 'drag to remove roofs only (leaves the walls under them standing)',
+      activeColor: '#ff8fd0',
+      designator: opts.removeRoofDesignator,
     },
     {
       id: 'cancel',

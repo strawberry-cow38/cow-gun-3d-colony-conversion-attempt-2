@@ -20,7 +20,7 @@ export const DECONSTRUCT_PREVIEW_COLOR = 0xff4a4a;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
 /** Component name → lowercase job-payload kind. Matches DECON_COMP_BY_KIND in cow.js. */
-const DECON_KINDS = /** @type {const} */ ([
+export const DECON_KINDS = /** @type {const} */ ([
   { comp: 'Wall', kind: 'wall' },
   { comp: 'Door', kind: 'door' },
   { comp: 'Torch', kind: 'torch' },
@@ -39,6 +39,7 @@ export class DeconstructDesignator {
    * @param {THREE.Scene} scene
    * @param {() => void} onStateChanged
    * @param {{ play: (kind: string) => void }} [audio]
+   * @param {{ kinds?: readonly { comp: string, kind: string }[], previewColor?: number }} [opts]  Roof-only mode uses `kinds: [{comp:'Roof',kind:'roof'}]` + its own preview color so the player can demolish roofs without also hitting the walls holding them up.
    */
   constructor(
     dom,
@@ -51,6 +52,7 @@ export class DeconstructDesignator {
     scene,
     onStateChanged,
     audio,
+    opts,
   ) {
     this.dom = dom;
     this.camera = camera;
@@ -61,6 +63,8 @@ export class DeconstructDesignator {
     this.instancers = instancers;
     this.onStateChanged = onStateChanged;
     this.audio = audio;
+    this.kinds = opts?.kinds ?? DECON_KINDS;
+    this.previewColor = opts?.previewColor ?? DECONSTRUCT_PREVIEW_COLOR;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
@@ -164,7 +168,7 @@ export class DeconstructDesignator {
     const j0 = Math.min(a.j, b.j);
     const j1 = Math.max(a.j, b.j);
     let any = false;
-    for (const { comp, kind } of DECON_KINDS) {
+    for (const { comp, kind } of this.kinds) {
       for (const { id, components } of this.world.query([comp, 'TileAnchor'])) {
         const anchor = components.TileAnchor;
         if (anchor.i < i0 || anchor.i > i1) continue;
@@ -234,7 +238,7 @@ export class DeconstructDesignator {
     p[14] = z0;
     this.preview.geo.attributes.position.needsUpdate = true;
     const mat = /** @type {THREE.LineBasicMaterial} */ (this.preview.line.material);
-    mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : DECONSTRUCT_PREVIEW_COLOR);
+    mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : this.previewColor);
     this.preview.line.visible = true;
   }
 
