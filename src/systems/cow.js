@@ -299,8 +299,6 @@ export function makeCowBrainSystem(deps) {
           brain.lastBoardVersion = board.version;
         }
 
-        const kindBefore = job.kind;
-
         if (job.kind === 'chop') {
           runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'build') {
@@ -359,9 +357,12 @@ export function makeCowBrainSystem(deps) {
           }
         }
 
-        // State machine completed → mark the brain dirty so next tick picks
-        // fresh work instead of waiting for an external bump.
-        if (kindBefore !== 'none' && job.kind === 'none') {
+        // Any cow ending its tick in 'none' re-decides next tick. Covers both
+        // completions (kindBefore was e.g. 'chop') and the otherwise-silent
+        // case where the cow entered the tick already idle but the staggered
+        // decide gate closed — without this the cow could wait up to
+        // BRAIN_STAGGER_BUCKETS ticks for `boardChanged && myTurn` to align.
+        if (job.kind === 'none') {
           brain.jobDirty = true;
         }
       }
