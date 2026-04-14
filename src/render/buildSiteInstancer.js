@@ -17,7 +17,7 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 // Match roofInstancer.ROOF_DROP so blueprints sit at the same plane the
 // finished roof will occupy.
-const ROOF_DROP = 1;
+const ROOF_DROP = 0.5;
 const DOOR_HEIGHT = WALL_HEIGHT * 0.7;
 const DOOR_THICKNESS = TILE_SIZE * 0.35;
 const TORCH_HEIGHT = 1.6 * UNITS_PER_METER;

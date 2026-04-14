@@ -19,9 +19,9 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
-// Sit the roof just below wall-top so the seam reads as a single cap instead
-// of a roof floating above the wall rim.
-const ROOF_DROP = 1;
+// Sit the roof half a unit below wall-top — the sweet spot that reads as a
+// single cap rather than a floating slab or a sunken floor.
+const ROOF_DROP = 0.5;
 const WALL_COLOR = 0x8a5a2b;
 const BIOME_ROOF_COLOR = /** @type {Record<number, number>} */ ({
   [BIOME.GRASS]: 0x5a7a4a,
