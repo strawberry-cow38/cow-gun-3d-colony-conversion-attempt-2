@@ -19,9 +19,9 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
-// Sit the roof half a unit below wall-top — the sweet spot that reads as a
-// single cap rather than a floating slab or a sunken floor.
-const ROOF_DROP = 0.5;
+// Roofs are a thick slab resting on top of the walls — the base face of the
+// slab meets the wall-top (no drop) and the slab extends upward by this much.
+const ROOF_THICKNESS = 4;
 const WALL_COLOR = 0x8a5a2b;
 const BIOME_ROOF_COLOR = /** @type {Record<number, number>} */ ({
   [BIOME.GRASS]: 0x5a7a4a,
@@ -33,8 +33,7 @@ const BIOME_ROOF_COLOR = /** @type {Record<number, number>} */ ({
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
-const _euler = new THREE.Euler(-Math.PI / 2, 0, 0, 'YXZ');
-const _scale = new THREE.Vector3(TILE_SIZE, TILE_SIZE, 1);
+const _scale = new THREE.Vector3(TILE_SIZE, ROOF_THICKNESS, TILE_SIZE);
 const _color = new THREE.Color();
 
 /**
@@ -42,13 +41,13 @@ const _color = new THREE.Color();
  * @param {number} capacity
  */
 export function createRoofInstancer(scene, capacity = 4096) {
-  const geo = new THREE.PlaneGeometry(1, 1);
+  // Unit box with its base on Y=0 so per-instance positioning uses the
+  // wall-top as the foot of the slab — no need to compensate for half-thickness.
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  geo.translate(0, 0.5, 0);
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     flatShading: true,
-    // Roofs are viewed from below when the player is inside a room — render
-    // both faces so the underside isn't a transparent hole.
-    side: THREE.DoubleSide,
   });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity);
   mesh.count = 0;
@@ -60,7 +59,7 @@ export function createRoofInstancer(scene, capacity = 4096) {
   mesh.setColorAt(0, priming);
   scene.add(mesh);
 
-  _quat.setFromEuler(_euler);
+  _quat.identity();
   let dirty = true;
 
   /**
@@ -75,7 +74,7 @@ export function createRoofInstancer(scene, capacity = 4096) {
       if (k >= capacity) break;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j) + WALL_HEIGHT - ROOF_DROP;
+      const y = grid.getElevation(a.i, a.j) + WALL_HEIGHT;
       _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(k, _matrix);

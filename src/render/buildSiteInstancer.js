@@ -15,14 +15,13 @@ import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
-// Match roofInstancer.ROOF_DROP so blueprints sit at the same plane the
-// finished roof will occupy.
-const ROOF_DROP = 0.5;
 const DOOR_HEIGHT = WALL_HEIGHT * 0.7;
 const DOOR_THICKNESS = TILE_SIZE * 0.35;
 const TORCH_HEIGHT = 1.6 * UNITS_PER_METER;
 const TORCH_THICKNESS = TILE_SIZE * 0.25;
-const ROOF_THICKNESS = 2;
+// Match roofInstancer.ROOF_THICKNESS so the blueprint slab and the finished
+// slab occupy the same volume.
+const ROOF_THICKNESS = 4;
 const MIN_DELIVERED_FRAC = 0.15;
 
 const COLOR_WAITING_WALL = new THREE.Color(0x9ad0ff);
@@ -100,7 +99,7 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
         sx = TILE_SIZE;
         sy = ROOF_THICKNESS;
         sz = TILE_SIZE;
-        py = y + WALL_HEIGHT - ROOF_DROP - ROOF_THICKNESS;
+        py = y + WALL_HEIGHT;
       }
       _scale.set(sx, sy, sz);
       _position.set(w.x, py, w.z);

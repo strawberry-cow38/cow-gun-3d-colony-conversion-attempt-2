@@ -2,12 +2,17 @@
  * Deconstruct designation mode.
  *
  * Activated from the build tab; LMB-drag a rectangle to mark every finished
- * Wall / Door / Torch / Roof inside the rect for demolition (posts a
- * 'deconstruct' job and sets the entity's deconstructJobId). Shift+drag
- * cancels existing marks inside the rect.
+ * structure inside the rect for demolition (posts a 'deconstruct' job and sets
+ * the entity's deconstructJobId). Shift+drag cancels existing marks inside
+ * the rect.
+ *
+ * The default `kinds` set covers Wall/Door/Torch — roofs are deliberately
+ * excluded so a demolish sweep through a room doesn't also rip the roof off.
+ * Roof demolition is the "un-roof" designator (a second instance that passes
+ * roof-only `kinds` + `tagIgnoreRoof: true`).
  *
  * Mirrors ChopDesignator's drag + preview rectangle pattern — the differences
- * are (a) what we query for (Wall/Door/Torch/Roof instead of Tree) and (b)
+ * are (a) what we query for (Wall/Door/Torch/[Roof] instead of Tree) and (b)
  * the board kind we post ('deconstruct').
  */
 
@@ -19,12 +24,17 @@ const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 export const DECONSTRUCT_PREVIEW_COLOR = 0xff4a4a;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
-/** Component name → lowercase job-payload kind. Matches DECON_COMP_BY_KIND in cow.js. */
+/**
+ * Component name → lowercase job-payload kind. Matches DECON_COMP_BY_KIND in
+ * cow.js. Roofs are intentionally absent from the default set — players
+ * demolishing a wall run often want to keep the roof intact, so roof demolition
+ * is scoped to a dedicated "un-roof" designator that the build tab wires up
+ * with its own `kinds: [{ comp: 'Roof', kind: 'roof' }]` override.
+ */
 export const DECON_KINDS = /** @type {const} */ ([
   { comp: 'Wall', kind: 'wall' },
   { comp: 'Door', kind: 'door' },
   { comp: 'Torch', kind: 'torch' },
-  { comp: 'Roof', kind: 'roof' },
 ]);
 
 export class DeconstructDesignator {

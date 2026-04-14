@@ -490,7 +490,7 @@ const deconstructDesignator = new DeconstructDesignator(
   tileGrid,
   world,
   jobBoard,
-  [wallInstancer, roofInstancer, deconstructOverlay],
+  [wallInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(deconstructDesignator);
