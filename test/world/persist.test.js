@@ -75,12 +75,20 @@ describe('cow save/load roundtrip', () => {
 
     const w2 = makeWorld();
     hydrateCows(w2, migrated);
-    const cows = [...w2.query(['Cow', 'Position', 'Hunger', 'Brain'])];
+    const cows = [];
+    for (const { components } of w2.query(['Cow', 'Position', 'Hunger', 'Brain'])) {
+      cows.push({
+        name: components.Brain.name,
+        x: components.Position.x,
+        z: components.Position.z,
+        hunger: components.Hunger.value,
+      });
+    }
     expect(cows).toHaveLength(1);
-    expect(cows[0].components.Brain.name).toBe('bessie');
-    expect(cows[0].components.Position.x).toBeCloseTo(1.5);
-    expect(cows[0].components.Position.z).toBeCloseTo(3.5);
-    expect(cows[0].components.Hunger.value).toBeCloseTo(0.42);
+    expect(cows[0].name).toBe('bessie');
+    expect(cows[0].x).toBeCloseTo(1.5);
+    expect(cows[0].z).toBeCloseTo(3.5);
+    expect(cows[0].hunger).toBeCloseTo(0.42);
   });
 
   it('hydrating a v1-style state (no cows) is a no-op', () => {
@@ -158,14 +166,16 @@ describe('tree save/load roundtrip', () => {
     const board = new JobBoard();
     hydrateTrees(w2, tg2, board, migrated);
 
-    const trees = [...w2.query(['Tree', 'TileAnchor'])];
+    const trees = [];
+    let markedJobId = 0;
+    for (const { components } of w2.query(['Tree', 'TileAnchor'])) {
+      trees.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
+      if (components.TileAnchor.i === 3) markedJobId = components.Tree.markedJobId;
+    }
     expect(trees).toHaveLength(2);
     expect(tg2.isBlocked(1, 2)).toBe(true);
     expect(tg2.isBlocked(3, 0)).toBe(true);
-
-    const marked = trees.find((t) => t.components.TileAnchor.i === 3);
-    if (!marked) throw new Error('marked tree not found');
-    expect(marked.components.Tree.markedJobId).toBeGreaterThan(0);
+    expect(markedJobId).toBeGreaterThan(0);
     expect(board.openCount).toBe(1);
   });
 });
@@ -231,12 +241,21 @@ describe('item save/load roundtrip', () => {
     const w2 = makeWorld();
     hydrateItems(w2, tg2, migrated);
 
-    const items = [...w2.query(['Item', 'TileAnchor'])];
+    const items = [];
+    for (const { components } of w2.query(['Item', 'TileAnchor'])) {
+      items.push({
+        kind: components.Item.kind,
+        count: components.Item.count,
+        capacity: components.Item.capacity,
+        i: components.TileAnchor.i,
+        j: components.TileAnchor.j,
+      });
+    }
     expect(items).toHaveLength(1);
-    expect(items[0].components.Item.kind).toBe('stone');
-    expect(items[0].components.Item.count).toBe(7);
-    expect(items[0].components.Item.capacity).toBe(30);
-    expect(items[0].components.TileAnchor.i).toBe(2);
-    expect(items[0].components.TileAnchor.j).toBe(1);
+    expect(items[0].kind).toBe('stone');
+    expect(items[0].count).toBe(7);
+    expect(items[0].capacity).toBe(30);
+    expect(items[0].i).toBe(2);
+    expect(items[0].j).toBe(1);
   });
 });

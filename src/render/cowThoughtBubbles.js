@@ -17,6 +17,12 @@ const HEAD_OFFSET = 3.2 * UNITS_PER_METER; // above the name tag
 const BUBBLE_HEIGHT_WORLD = 0.55 * UNITS_PER_METER;
 const FADE_START = 20 * UNITS_PER_METER;
 const FADE_END = 90 * UNITS_PER_METER;
+// Soft ceiling on the per-phrase canvas/texture cache. Current `thoughtFor`
+// returns from a fixed ~15-phrase enum so we never get near this, but if a
+// future phrase ever interpolates (e.g. "hauling to stockpile 3") the cache
+// would otherwise grow unbounded and leak GPU textures. Evicting unreferenced
+// entries when we cross the cap keeps GPU memory bounded.
+const CACHE_CAP = 64;
 
 const _camPos = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
@@ -30,11 +36,12 @@ export function createCowThoughtBubbles(scene) {
    * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, text: string }>}
    */
   const bubbles = new Map();
-  // Cache canvas+texture+aspect keyed by text. Thought strings come from a
-  // small fixed vocab (thoughtFor), so this grows to a bounded ~dozen
-  // entries and never needs eviction. Textures are never disposed — sharing
-  // them across cows means a single GPU upload per unique phrase.
-  /** @type {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number }>} */
+  // Cache canvas+texture+aspect keyed by text with a refcount per entry.
+  // Insertion order = LRU recency (touched entries get deleted+reinserted on
+  // hit). When the cache crosses CACHE_CAP we dispose textures for the
+  // oldest entries whose refcount has dropped to 0. Actively-referenced
+  // phrases stay pinned so we never dispose a texture a live sprite is using.
+  /** @type {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number, refs: number }>} */
   const textureCache = new Map();
   let visible = true;
 
@@ -54,7 +61,7 @@ export function createCowThoughtBubbles(scene) {
       const text = thoughtFor(components.Job);
       let bubble = bubbles.get(id);
       if (!bubble || bubble.text !== text) {
-        if (bubble) disposeBubble(scene, bubble);
+        if (bubble) disposeBubble(scene, bubble, textureCache);
         bubble = makeBubble(scene, text, textureCache);
         bubbles.set(id, bubble);
       }
@@ -85,7 +92,7 @@ export function createCowThoughtBubbles(scene) {
 
     for (const [id, bubble] of bubbles) {
       if (!alive.has(id)) {
-        disposeBubble(scene, bubble);
+        disposeBubble(scene, bubble, textureCache);
         bubbles.delete(id);
       }
     }
@@ -104,20 +111,27 @@ export function createCowThoughtBubbles(scene) {
 /**
  * @param {THREE.Scene} scene
  * @param {string} text
- * @param {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number }>} cache
+ * @param {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number, refs: number }>} cache
  */
 function makeBubble(scene, text, cache) {
   let painted = cache.get(text);
-  if (!painted) {
+  if (painted) {
+    // Touch for LRU recency: delete + reinsert moves the entry to the Map's
+    // tail, so the eviction scan (which walks insertion order) sees it last.
+    cache.delete(text);
+    cache.set(text, painted);
+  } else {
     const { canvas, aspect } = renderTextToCanvas(text);
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.anisotropy = 4;
     texture.needsUpdate = true;
-    painted = { canvas, texture, aspect };
+    painted = { canvas, texture, aspect, refs: 0 };
     cache.set(text, painted);
+    evictIfFull(cache);
   }
+  painted.refs++;
 
   const material = new THREE.SpriteMaterial({
     map: painted.texture,
@@ -134,13 +148,33 @@ function makeBubble(scene, text, cache) {
 
 /**
  * @param {THREE.Scene} scene
- * @param {{ sprite: THREE.Sprite, material: THREE.SpriteMaterial }} bubble
+ * @param {{ sprite: THREE.Sprite, material: THREE.SpriteMaterial, text: string }} bubble
+ * @param {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number, refs: number }>} cache
  */
-function disposeBubble(scene, bubble) {
+function disposeBubble(scene, bubble, cache) {
   scene.remove(bubble.sprite);
-  // Texture stays alive in the shared cache so another cow thinking the
-  // same phrase can reuse it — don't dispose it here.
   bubble.material.dispose();
+  const entry = cache.get(bubble.text);
+  if (entry && entry.refs > 0) entry.refs--;
+}
+
+/**
+ * Dispose + evict the oldest unreferenced cache entries until size ≤ cap.
+ * Pinned (refs > 0) entries are skipped so a live sprite's texture never
+ * gets yanked out from under it — the cache may briefly overshoot CACHE_CAP
+ * until their refs fall to 0.
+ *
+ * @param {Map<string, { canvas: HTMLCanvasElement, texture: THREE.CanvasTexture, aspect: number, refs: number }>} cache
+ */
+function evictIfFull(cache) {
+  if (cache.size <= CACHE_CAP) return;
+  for (const [key, entry] of cache) {
+    if (entry.refs === 0) {
+      entry.texture.dispose();
+      cache.delete(key);
+      if (cache.size <= CACHE_CAP) return;
+    }
+  }
 }
 
 /**

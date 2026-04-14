@@ -14,6 +14,13 @@
 const SLOT_BITS = 16;
 const SLOT_MASK = (1 << SLOT_BITS) - 1;
 
+// Vite replaces `import.meta.env.DEV` with a literal boolean at build time,
+// so the DEV guard tree-shakes out of production bundles. Captured in a
+// module-level const so tight loops don't hit the env lookup per iteration.
+// `import.meta.env` may be undefined outside of vite/vitest runs — fall back
+// to false in that case.
+const DEV = !!(typeof import.meta !== 'undefined' && import.meta.env?.DEV);
+
 /** @typedef {number} EntityId  packed (slot|gen) */
 
 /**
@@ -130,6 +137,14 @@ export class World {
    * Nested `world.query(...)` calls each spawn their own generator with a
    * distinct wrapper/record, so they don't corrupt each other.
    *
+   * DEV-mode enforcement: in dev/test builds we yield a revocable Proxy
+   * instead of the raw wrapper, and revoke the previous one before each new
+   * yield. Inline-destructure callers read fields while the proxy is live
+   * (fine); callers who spread/Array.from the generator end up holding
+   * revoked proxies that throw `TypeError: Cannot perform 'get' on a proxy
+   * that has been revoked` on any later access — flagging the contract
+   * violation loudly. Prod builds yield the wrapper directly.
+   *
    * @param {string[]} names
    */
   *query(names) {
@@ -141,6 +156,8 @@ export class World {
     /** @type {Record<string, any>} */
     const components = {};
     const wrapper = { id: 0, components };
+    /** @type {{ revoke: () => void } | null} */
+    let prevRevocable = null;
     for (const archetype of this.archetypes.values()) {
       if (!archetype.has(sorted)) continue;
       const cols = sorted.map((n) => /** @type {any[]} */ (archetype.columns.get(n)));
@@ -150,9 +167,17 @@ export class World {
         if (!slot) continue;
         for (let i = 0; i < sorted.length; i++) components[sorted[i]] = cols[i][row];
         wrapper.id = slotIndex | (slot.gen << SLOT_BITS);
-        yield wrapper;
+        if (DEV) {
+          if (prevRevocable) prevRevocable.revoke();
+          const { proxy, revoke } = Proxy.revocable(wrapper, {});
+          prevRevocable = { revoke };
+          yield proxy;
+        } else {
+          yield wrapper;
+        }
       }
     }
+    if (prevRevocable) prevRevocable.revoke();
   }
 
   /** Total live entity count. */

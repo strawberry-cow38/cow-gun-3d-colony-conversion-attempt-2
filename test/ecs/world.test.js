@@ -94,4 +94,17 @@ describe('World', () => {
     w.despawn(e);
     expect(w.entityCount).toBe(0);
   });
+
+  it('DEV-mode: spreading a query throws on any later access (wrapper contract)', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({ v: 0 }));
+    w.spawn({ A: { v: 1 } });
+    w.spawn({ A: { v: 2 } });
+    const collected = [...w.query(['A'])];
+    // Each collected wrapper has been revoked by the next iteration (or by
+    // generator cleanup for the final one), so any property read throws.
+    for (const item of collected) {
+      expect(() => item.id).toThrow(/revoked/);
+    }
+  });
 });
