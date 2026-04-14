@@ -15,6 +15,12 @@
  */
 
 import * as THREE from 'three';
+import {
+  ROOF_MAX_WALL_DISTANCE,
+  hasOrthoStructure,
+  roofIsSupported,
+  structureWithinChebyshev,
+} from '../systems/autoRoof.js';
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 
@@ -289,10 +295,8 @@ export class BuildDesignator {
     const isDoor = kind === 'door';
     const isWallTorch = kind === 'wallTorch';
     if (isRoof) {
-      // Roofs can be designated anywhere — the haul poster gates the actual
-      // build job on support + reach, so unsupported blueprints just wait
-      // until a nearby wall makes them valid. We only reject true duplicates.
       if (this.tileGrid.isRoof(i, j)) return false;
+      if (!hasRoofSupport(this.tileGrid, this.world, i, j)) return false;
     } else {
       // Doors can be placed on built walls — queued as "deconstruct wall,
       // then build door on the cleared tile" below. Everything else keeps
@@ -303,7 +307,7 @@ export class BuildDesignator {
     }
     // Wall torches need an orthogonal wall to mount on — they hang off its
     // face and would be visually orphaned floating in an open tile.
-    if (isWallTorch && !hasOrthoWall(this.tileGrid, i, j)) return false;
+    if (isWallTorch && !hasOrthoStructure(this.tileGrid, i, j)) return false;
     // Torches are decorative and non-blocking; letting them sit on stockpile
     // tiles means players can light up a storage area without having to
     // redraw the stockpile around them. Roofs don't touch the ground plane
@@ -500,26 +504,23 @@ export class BuildDesignator {
   }
 }
 
-const ORTHO_WALL_DIRS = /** @type {const} */ ([
-  { di: 1, dj: 0 },
-  { di: -1, dj: 0 },
-  { di: 0, dj: 1 },
-  { di: 0, dj: -1 },
-]);
-
 /**
- * True if (i,j) has an orthogonal neighbor that's a wall or door — wall
- * torches mount on the face of a wall/door.
+ * True if (i,j) is a valid roof placement: within reach of a wall/door AND
+ * orthogonally adjacent to a built wall/door/roof OR to an existing roof
+ * blueprint. The blueprint case lets drag-rects grow inward — the row-major
+ * apply loop places tile N+1 after tile N's blueprint already exists.
  *
  * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../ecs/world.js').World} world
  * @param {number} i @param {number} j
  */
-export function hasOrthoWall(grid, i, j) {
-  for (const { di, dj } of ORTHO_WALL_DIRS) {
-    const ni = i + di;
-    const nj = j + dj;
-    if (!grid.inBounds(ni, nj)) continue;
-    if (grid.isWall(ni, nj) || grid.isDoor(ni, nj)) return true;
+function hasRoofSupport(grid, world, i, j) {
+  if (roofIsSupported(grid, i, j)) return true;
+  if (!structureWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE)) return false;
+  for (const { components } of world.query(['BuildSite', 'TileAnchor'])) {
+    if (components.BuildSite.kind !== 'roof') continue;
+    const a = components.TileAnchor;
+    if (Math.abs(a.i - i) + Math.abs(a.j - j) === 1) return true;
   }
   return false;
 }

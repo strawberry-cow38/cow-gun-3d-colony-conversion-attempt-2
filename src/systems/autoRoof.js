@@ -115,6 +115,72 @@ export function roofIsSupported(grid, i, j) {
 }
 
 /**
+ * True if (i,j) has an orthogonal neighbor that's a wall or door — the
+ * structural anchor that wall torches mount to and the seed condition for
+ * the roof-support BFS.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j
+ */
+export function hasOrthoStructure(grid, i, j) {
+  for (const [di, dj] of ORTHO) {
+    const ni = i + di;
+    const nj = j + dj;
+    if (!grid.inBounds(ni, nj)) continue;
+    if (grid.isWall(ni, nj) || grid.isDoor(ni, nj)) return true;
+  }
+  return false;
+}
+
+/**
+ * Pure-grid BFS returning the set of roof tile indices that are structurally
+ * connected to a wall or door — either sitting on one, orthogonally adjacent
+ * to one, or reachable via an ortho chain of other roof tiles that do.
+ *
+ * Consumers:
+ *   - roofCollapse: any roof NOT in this set has lost its support and collapses.
+ *   - roofInstancer: roofs in this set inherit wall color; isolated patches
+ *     fall back to biome color.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @returns {Set<number>}  tile indices (grid.idx)
+ */
+export function findSupportedRoofTiles(grid) {
+  const { W, H, roof } = grid;
+  /** @type {Set<number>} */
+  const supported = new Set();
+  /** @type {number[]} */
+  const frontier = [];
+  const size = W * H;
+  for (let k = 0; k < size; k++) {
+    if (roof[k] === 0) continue;
+    const i = k % W;
+    const j = (k - i) / W;
+    // Seed: roof tile is on a wall/door OR any ortho neighbor is.
+    if (grid.isWall(i, j) || grid.isDoor(i, j) || hasOrthoStructure(grid, i, j)) {
+      supported.add(k);
+      frontier.push(k);
+    }
+  }
+  while (frontier.length > 0) {
+    const k = /** @type {number} */ (frontier.pop());
+    const i = k % W;
+    const j = (k - i) / W;
+    for (const [di, dj] of ORTHO) {
+      const ni = i + di;
+      const nj = j + dj;
+      if (!grid.inBounds(ni, nj)) continue;
+      if (!grid.isRoof(ni, nj)) continue;
+      const nidx = grid.idx(ni, nj);
+      if (supported.has(nidx)) continue;
+      supported.add(nidx);
+      frontier.push(nidx);
+    }
+  }
+  return supported;
+}
+
+/**
  * True if any wall or door tile sits within Chebyshev distance `r` of (i,j).
  * Doors count alongside walls — they're part of the enclosing structure so
  * roofs can sit on them and roofs adjacent to isolated doors still find reach.

@@ -45,6 +45,7 @@ import { createItemLabels } from './render/itemLabels.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { createPickTileOverlay } from './render/pickTileOverlay.js';
 import { TilePicker } from './render/picker.js';
+import { createRoofCollapseParticles } from './render/roofCollapseParticles.js';
 import { createRoofInstancer } from './render/roofInstancer.js';
 import { createRoomOverlay } from './render/roomOverlay.js';
 import { RtsCamera } from './render/rtsCamera.js';
@@ -70,6 +71,7 @@ import {
 } from './systems/cow.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
+import { runRoofCollapse } from './systems/roofCollapse.js';
 import { createRooms, makeRoomsSystem } from './systems/rooms.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { TILE_SIZE } from './world/coords.js';
@@ -176,6 +178,7 @@ const wallInstancer = createWallInstancer(scene, 2048);
 const doorInstancer = createDoorInstancer(scene, 512, audio);
 const torchInstancer = createTorchInstancer(scene, 512);
 const roofInstancer = createRoofInstancer(scene, gridW * gridH);
+const roofCollapseParticles = createRoofCollapseParticles(scene);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
@@ -215,6 +218,18 @@ onWorldBuildComplete = (pos) => {
 };
 onRoomsRebuilt = () => {
   roomOverlay.markDirty();
+  // Collapse any roofs that lost their support chain (a wall got demolished
+  // out from under them). Fires BEFORE auto-roof so the auto-roofer doesn't
+  // immediately re-queue blueprints for tiles that are about to be torn down.
+  const collapsed = runRoofCollapse(world, tileGrid);
+  for (const pos of collapsed) {
+    roofCollapseParticles.burst(pos.x, pos.y, pos.z);
+    audio.playAt('chop', pos);
+  }
+  if (collapsed.length > 0) {
+    roofInstancer.markDirty();
+    pathCache.clear();
+  }
   // Auto-queue roofs for newly enclosed rooms. Runs in the same tick as the
   // flood-fill so the next rare haul-poster tick sees the fresh BuildSites.
   runAutoRoof(world, tileGrid, jobBoard, rooms);
@@ -642,6 +657,7 @@ const loop = new SimLoop({
     doorInstancer.update(world, tileGrid);
     torchInstancer.update(world, tileGrid, tSec, camera);
     roofInstancer.update(world, tileGrid);
+    roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);

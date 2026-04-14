@@ -3,11 +3,10 @@
  * roof tile is a TILE_SIZE square quad, the same footprint as a door's top
  * frame, so roofs slot neatly atop wall runs.
  *
- * "Material copy": each roof tile takes WALL_COLOR if it's on/adjacent to a
- * wall OR transitively connected via roof neighbors to one that is — BFS from
- * wall-touching roofs propagates the wall color through the whole roof patch
- * so rooms appear roofed in a single material instead of only the outer ring
- * inheriting wall color and the interior falling back to grass.
+ * "Material copy": each roof tile takes WALL_COLOR if it's structurally
+ * connected to a wall/door via findSupportedRoofTiles — so the whole roof
+ * patch inherits wall color instead of only the outer ring, interior falling
+ * back to biome color.
  *
  * Dirty flag toggles on wall/door/roof build + deconstruct via the shared
  * onWorldBuildComplete path. Debug-toggle `setVisible(false)` hides roofs so
@@ -15,6 +14,7 @@
  */
 
 import * as THREE from 'three';
+import { findSupportedRoofTiles } from '../systems/autoRoof.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 
@@ -68,7 +68,7 @@ export function createRoofInstancer(scene, capacity = 4096) {
    */
   function update(world, grid) {
     if (!dirty) return;
-    const wallColorMap = buildWallColorMap(world, grid);
+    const wallColorMap = findSupportedRoofTiles(grid);
     let k = 0;
     for (const { components } of world.query(['Roof', 'TileAnchor', 'RoofViz'])) {
       if (k >= capacity) break;
@@ -102,64 +102,4 @@ export function createRoofInstancer(scene, capacity = 4096) {
   }
 
   return { mesh, update, markDirty, setVisible };
-}
-
-const ORTHO = /** @type {const} */ ([
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-]);
-
-/**
- * Build the set of roof-tile indices that should render with WALL_COLOR.
- * Seed = roofs on or orthogonally adjacent to a wall; BFS expands along roof
- * neighbors so the whole connected roof patch inherits the wall color.
- *
- * @param {import('../ecs/world.js').World} world
- * @param {import('../world/tileGrid.js').TileGrid} grid
- */
-function buildWallColorMap(world, grid) {
-  /** @type {Set<number>} */
-  const seeded = new Set();
-  /** @type {number[]} */
-  const frontier = [];
-  for (const { components } of world.query(['Roof', 'TileAnchor'])) {
-    const { i, j } = components.TileAnchor;
-    const idx = grid.idx(i, j);
-    if (!touchesWall(grid, i, j)) continue;
-    seeded.add(idx);
-    frontier.push(idx);
-  }
-  while (frontier.length > 0) {
-    const k = /** @type {number} */ (frontier.pop());
-    const i = k % grid.W;
-    const j = (k - i) / grid.W;
-    for (const [di, dj] of ORTHO) {
-      const ni = i + di;
-      const nj = j + dj;
-      if (!grid.inBounds(ni, nj)) continue;
-      if (!grid.isRoof(ni, nj)) continue;
-      const nidx = grid.idx(ni, nj);
-      if (seeded.has(nidx)) continue;
-      seeded.add(nidx);
-      frontier.push(nidx);
-    }
-  }
-  return seeded;
-}
-
-/**
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {number} i @param {number} j
- */
-function touchesWall(grid, i, j) {
-  if (grid.isWall(i, j)) return true;
-  for (const [di, dj] of ORTHO) {
-    const ni = i + di;
-    const nj = j + dj;
-    if (!grid.inBounds(ni, nj)) continue;
-    if (grid.isWall(ni, nj)) return true;
-  }
-  return false;
 }

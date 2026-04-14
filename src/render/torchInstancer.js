@@ -59,6 +59,9 @@ const FLAME_EMISSIVE_B = new THREE.Color(0xffa040);
 const WALL_TORCH_TILT = 0.45;
 const WALL_TORCH_MOUNT_HEIGHT = 1.8 * UNITS_PER_METER;
 const WALL_TORCH_OUTWARD_OFFSET = TILE_SIZE * 0.35;
+// Wall-mounted torches are deliberately much smaller than ground torches —
+// they're a sconce, not a pole. 0.2 matches the "20%" call.
+const WALL_TORCH_SCALE = 0.2;
 
 /**
  * @param {THREE.Scene} scene
@@ -176,7 +179,8 @@ export function createTorchInstancer(scene, capacity = 512) {
         lightY = y + FLAME_CENTER_Y;
       }
 
-      _scale.set(1, 1, 1);
+      const s = torch.wallMounted ? WALL_TORCH_SCALE : 1;
+      _scale.set(s, s, s);
       _position.set(baseX, baseY, baseZ);
       _matrix.compose(_position, _quat, _scale);
       stick.setMatrixAt(n, _matrix);
