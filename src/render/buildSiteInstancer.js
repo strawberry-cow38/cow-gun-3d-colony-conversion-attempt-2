@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { getStuff } from '../world/stuff.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = WALL_HEIGHT * 0.7;
@@ -24,21 +25,22 @@ const TORCH_THICKNESS = TILE_SIZE * 0.25;
 const ROOF_THICKNESS = 4;
 const MIN_DELIVERED_FRAC = 0.15;
 
-const COLOR_WAITING_WALL = new THREE.Color(0x9ad0ff);
-const COLOR_WAITING_DOOR = new THREE.Color(0xffb070);
 const COLOR_WAITING_TORCH = new THREE.Color(0xffd070);
-const COLOR_WAITING_ROOF = new THREE.Color(0xc0a080);
 const COLOR_BUILDING = new THREE.Color(0xffd080);
+const _tint = new THREE.Color();
 
 /**
+ * Per-kind "waiting" tint. Stuff-driven kinds (wall/door/roof) pull their tint
+ * from the stuff registry so a stone blueprint reads stone even before it's
+ * built. Torches still use a fixed warm glow.
+ *
  * @param {string} kind
+ * @param {string | undefined} stuff
  * @returns {THREE.Color}
  */
-function waitingColorFor(kind) {
-  if (kind === 'door') return COLOR_WAITING_DOOR;
+function waitingColorFor(kind, stuff) {
   if (kind === 'torch' || kind === 'wallTorch') return COLOR_WAITING_TORCH;
-  if (kind === 'roof') return COLOR_WAITING_ROOF;
-  return COLOR_WAITING_WALL;
+  return _tint.setHex(getStuff(stuff).blueprintTint);
 }
 
 const _matrix = new THREE.Matrix4();
@@ -108,7 +110,7 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
       // Warmer hue while a builder is actively hammering (progress > 0),
       // cooler + kind-tinted while waiting for materials/builder.
       const t = Math.min(1, site.progress);
-      _color.copy(waitingColorFor(site.kind)).lerp(COLOR_BUILDING, t);
+      _color.copy(waitingColorFor(site.kind, site.stuff)).lerp(COLOR_BUILDING, t);
       mesh.setColorAt(n, _color);
       n++;
     }

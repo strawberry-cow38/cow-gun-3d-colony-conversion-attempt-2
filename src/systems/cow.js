@@ -591,10 +591,11 @@ function finishBuild(world, grid, siteId, jobId, board) {
   }
   const pos = world.get(siteId, 'Position');
   const position = pos ? { ...pos } : { x: 0, y: 0, z: 0 };
+  const stuff = site.stuff ?? 'wood';
   if (site.kind === 'door') {
     grid.setDoor(anchor.i, anchor.j, 1);
     world.spawn({
-      Door: {},
+      Door: { stuff },
       DoorViz: {},
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
@@ -623,7 +624,7 @@ function finishBuild(world, grid, siteId, jobId, board) {
   } else if (site.kind === 'roof') {
     grid.setRoof(anchor.i, anchor.j, 1);
     world.spawn({
-      Roof: {},
+      Roof: { stuff },
       RoofViz: {},
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
@@ -631,7 +632,7 @@ function finishBuild(world, grid, siteId, jobId, board) {
   } else {
     grid.setWall(anchor.i, anchor.j, 1);
     world.spawn({
-      Wall: {},
+      Wall: { stuff },
       WallViz: {},
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,

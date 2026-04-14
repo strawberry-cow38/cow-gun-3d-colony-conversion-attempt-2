@@ -23,6 +23,7 @@ import {
 } from '../systems/autoRoof.js';
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -42,7 +43,11 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
  *   tile-radius around the single-place hover preview (e.g. torch light reach).
  * @property {number} [required] - material units required (default 1). 0 =
  *   free build, no haul phase (roofs).
- * @property {string} [requiredKind] - item kind (default 'wood').
+ * @property {string} [requiredKind] - item kind (default 'wood'). Ignored when
+ *   `stuffed` is true — the stuff registry drives the item kind instead.
+ * @property {boolean} [stuffed] - if true, this kind honors the stuff system:
+ *   the designator tracks a `currentStuff` material (wood, stone, …) and
+ *   stamps it onto spawned BuildSites. Torches stay wood-only (stuffed:false).
  */
 
 /** @type {BuildDesignatorConfig} */
@@ -51,6 +56,7 @@ export const WALL_DESIGNATOR_CONFIG = {
   previewColorAdd: 0xe9d477,
   addVerb: 'build',
   cancelVerb: 'cancel',
+  stuffed: true,
 };
 
 /** @type {BuildDesignatorConfig} */
@@ -60,6 +66,7 @@ export const DOOR_DESIGNATOR_CONFIG = {
   addVerb: 'door',
   cancelVerb: 'cancel door',
   singlePlace: true,
+  stuffed: true,
 };
 
 /** @type {BuildDesignatorConfig} */
@@ -89,7 +96,7 @@ export const ROOF_DESIGNATOR_CONFIG = {
   addVerb: 'roof',
   cancelVerb: 'cancel roof',
   required: 0,
-  requiredKind: 'wood',
+  stuffed: true,
 };
 
 export class BuildDesignator {
@@ -133,6 +140,8 @@ export class BuildDesignator {
     this.audio = audio;
     this.deconstructOverlay = deconstructOverlay;
     this.active = false;
+    /** @type {string} */
+    this.currentStuff = DEFAULT_STUFF;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
     this.removing = false;
@@ -180,6 +189,20 @@ export class BuildDesignator {
     this.active = false;
     this.#cancelDrag();
     this.audio?.play('toggle_off');
+    this.onStateChanged();
+  }
+
+  /**
+   * Pick the material that future BuildSite spawns from this designator will
+   * request. No-op for designators with `stuffed !== true` (torches), since
+   * those don't consult the stuff registry.
+   * @param {string} id
+   */
+  setStuff(id) {
+    if (!this.config.stuffed) return;
+    if (!STUFF[id]) return;
+    if (this.currentStuff === id) return;
+    this.currentStuff = id;
     this.onStateChanged();
   }
 
@@ -343,11 +366,14 @@ export class BuildDesignator {
     if (isDoor && this.tileGrid.isWall(i, j)) {
       this.#queueWallDeconstructAt(i, j);
     }
+    const stuff = this.config.stuffed ? this.currentStuff : null;
+    const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({
       BuildSite: {
         kind,
-        requiredKind: this.config.requiredKind ?? 'wood',
+        stuff: stuff ?? 'wood',
+        requiredKind,
         required: this.config.required ?? 1,
         delivered: 0,
         buildJobId: 0,

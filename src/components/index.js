@@ -83,6 +83,7 @@ export function registerComponents(world) {
   }));
   world.defineComponent('BuildSite', () => ({
     kind: 'wall',
+    stuff: 'wood',
     requiredKind: 'wood',
     required: 1,
     delivered: 0,
@@ -90,9 +91,9 @@ export function registerComponents(world) {
     progress: 0,
   }));
   world.defineComponent('BuildSiteViz', () => ({}));
-  world.defineComponent('Wall', () => ({ deconstructJobId: 0, progress: 0 }));
+  world.defineComponent('Wall', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
   world.defineComponent('WallViz', () => ({}));
-  world.defineComponent('Door', () => ({ deconstructJobId: 0, progress: 0 }));
+  world.defineComponent('Door', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
   world.defineComponent('DoorViz', () => ({}));
   world.defineComponent('Torch', () => ({
     deconstructJobId: 0,
@@ -101,6 +102,6 @@ export function registerComponents(world) {
     yaw: 0,
   }));
   world.defineComponent('TorchViz', () => ({}));
-  world.defineComponent('Roof', () => ({ deconstructJobId: 0, progress: 0 }));
+  world.defineComponent('Roof', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
   world.defineComponent('RoofViz', () => ({}));
 }

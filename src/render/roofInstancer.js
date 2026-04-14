@@ -16,13 +16,13 @@
 import * as THREE from 'three';
 import { findSupportedRoofTiles } from '../systems/autoRoof.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { getStuff } from '../world/stuff.js';
 import { BIOME } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 // Roofs are a thick slab resting on top of the walls — the base face of the
 // slab meets the wall-top (no drop) and the slab extends upward by this much.
 const ROOF_THICKNESS = 4;
-const WALL_COLOR = 0x8a5a2b;
 const BIOME_ROOF_COLOR = /** @type {Record<number, number>} */ ({
   [BIOME.GRASS]: 0x5a7a4a,
   [BIOME.DIRT]: 0x7a5a3a,
@@ -68,7 +68,7 @@ export function createRoofInstancer(scene, capacity = 4096) {
    */
   function update(world, grid) {
     if (!dirty) return;
-    const wallColorMap = findSupportedRoofTiles(grid);
+    const supported = findSupportedRoofTiles(grid);
     let k = 0;
     for (const { components } of world.query(['Roof', 'TileAnchor', 'RoofViz'])) {
       if (k >= capacity) break;
@@ -79,9 +79,10 @@ export function createRoofInstancer(scene, capacity = 4096) {
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(k, _matrix);
       const idx = grid.idx(a.i, a.j);
-      const hex = wallColorMap.has(idx)
-        ? WALL_COLOR
-        : (BIOME_ROOF_COLOR[grid.getBiome(a.i, a.j)] ?? WALL_COLOR);
+      const stuffColor = getStuff(components.Roof.stuff).roofColor;
+      const hex = supported.has(idx)
+        ? stuffColor
+        : (BIOME_ROOF_COLOR[grid.getBiome(a.i, a.j)] ?? stuffColor);
       _color.setHex(hex);
       mesh.setColorAt(k, _color);
       k++;

@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { getStuff } from '../world/stuff.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const HALF = TILE_SIZE * 0.5;
@@ -20,13 +21,14 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _color = new THREE.Color();
 
 /**
  * @param {THREE.Scene} scene
  * @param {number} capacity per-face cap (so a wall-forest can still fit)
  */
 export function createWallInstancer(scene, capacity = 2048) {
-  const material = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, flatShading: true });
+  const material = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
 
   // PlaneGeometry defaults to the XY plane facing +Z. Bake each face's
   // rotation into the geometry so per-instance matrices stay pure translations.
@@ -42,11 +44,14 @@ export function createWallInstancer(scene, capacity = 2048) {
   const pz = new THREE.InstancedMesh(pzGeo, material, capacity);
   const nz = new THREE.InstancedMesh(nzGeo, material, capacity);
   const faces = [top, px, nx, pz, nz];
+  const priming = new THREE.Color(1, 1, 1);
   for (const m of faces) {
     m.count = 0;
     m.frustumCulled = false;
     m.castShadow = true;
     m.receiveShadow = true;
+    // Prime instance-color buffer so THREE allocates it before first render.
+    m.setColorAt(0, priming);
     scene.add(m);
   }
 
@@ -61,13 +66,14 @@ export function createWallInstancer(scene, capacity = 2048) {
     _quat.identity();
     _scale.set(1, 1, 1);
 
-    /** @type {{ i: number, j: number, y: number, cx: number, cz: number }[]} */
+    /** @type {{ i: number, j: number, y: number, cx: number, cz: number, color: number }[]} */
     const walls = [];
     const wallSet = new Set();
     for (const { components } of world.query(['Wall', 'TileAnchor', 'WallViz'])) {
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      walls.push({ i: a.i, j: a.j, y: grid.getElevation(a.i, a.j), cx: w.x, cz: w.z });
+      const color = getStuff(components.Wall.stuff).wallColor;
+      walls.push({ i: a.i, j: a.j, y: grid.getElevation(a.i, a.j), cx: w.x, cz: w.z, color });
       wallSet.add(a.j * grid.W + a.i);
     }
 
@@ -77,34 +83,45 @@ export function createWallInstancer(scene, capacity = 2048) {
     let cpz = 0;
     let cnz = 0;
     for (const wall of walls) {
-      const { i, j, y, cx, cz } = wall;
+      const { i, j, y, cx, cz, color } = wall;
       const yMid = y + WALL_HEIGHT * 0.5;
       const yTop = y + WALL_HEIGHT;
+      _color.setHex(color);
 
       if (ct < capacity) {
         _position.set(cx, yTop, cz);
         _matrix.compose(_position, _quat, _scale);
-        top.setMatrixAt(ct++, _matrix);
+        top.setMatrixAt(ct, _matrix);
+        top.setColorAt(ct, _color);
+        ct++;
       }
       if (!wallSet.has(j * grid.W + (i + 1)) && cpx < capacity) {
         _position.set(cx + HALF, yMid, cz);
         _matrix.compose(_position, _quat, _scale);
-        px.setMatrixAt(cpx++, _matrix);
+        px.setMatrixAt(cpx, _matrix);
+        px.setColorAt(cpx, _color);
+        cpx++;
       }
       if (!wallSet.has(j * grid.W + (i - 1)) && cnx < capacity) {
         _position.set(cx - HALF, yMid, cz);
         _matrix.compose(_position, _quat, _scale);
-        nx.setMatrixAt(cnx++, _matrix);
+        nx.setMatrixAt(cnx, _matrix);
+        nx.setColorAt(cnx, _color);
+        cnx++;
       }
       if (!wallSet.has((j + 1) * grid.W + i) && cpz < capacity) {
         _position.set(cx, yMid, cz + HALF);
         _matrix.compose(_position, _quat, _scale);
-        pz.setMatrixAt(cpz++, _matrix);
+        pz.setMatrixAt(cpz, _matrix);
+        pz.setColorAt(cpz, _color);
+        cpz++;
       }
       if (!wallSet.has((j - 1) * grid.W + i) && cnz < capacity) {
         _position.set(cx, yMid, cz - HALF);
         _matrix.compose(_position, _quat, _scale);
-        nz.setMatrixAt(cnz++, _matrix);
+        nz.setMatrixAt(cnz, _matrix);
+        nz.setColorAt(cnz, _color);
+        cnz++;
       }
     }
 
@@ -113,7 +130,10 @@ export function createWallInstancer(scene, capacity = 2048) {
     nx.count = cnx;
     pz.count = cpz;
     nz.count = cnz;
-    for (const m of faces) m.instanceMatrix.needsUpdate = true;
+    for (const m of faces) {
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
     dirty = false;
   }
 

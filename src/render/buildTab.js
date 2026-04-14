@@ -8,10 +8,19 @@
  * Button state is re-read every render frame via the designator's public
  * `.active` flag — no plumbing through the designator's onStateChanged, which
  * keeps the tab decoupled from the 4-way mutual-exclusion wiring in main.js.
+ *
+ * Material ("stuff") picker: wall/door/roof buttons get a right-click popup
+ * that lists materials from the stuff registry. Click a material to swap
+ * what future placements of this kind will be made of. A swatch strip at the
+ * bottom of the button reflects the currently-selected material.
  */
+
+import { STUFF, STUFF_ORDER } from '../world/stuff.js';
 
 /**
  * @typedef {{ active: boolean, activate: () => void, deactivate: () => void }} ToggleableDesignator
+ *
+ * @typedef {ToggleableDesignator & { currentStuff: string, setStuff: (id: string) => void }} StuffedDesignator
  *
  * @typedef {Object} BuildTabEntry
  * @property {string} id - stable key for cache/highlight ("chop", "wall", …)
@@ -20,6 +29,8 @@
  * @property {string} hotkeyHint - shown in the tooltip so old muscle-memory still helps
  * @property {string} activeColor - CSS color applied when the designator is active
  * @property {ToggleableDesignator} designator
+ * @property {boolean} [stuffed] - if true, right-click opens the material picker and
+ *   the button shows a swatch reflecting the designator's currentStuff
  */
 
 /**
@@ -61,17 +72,19 @@ export function createBuildTab(opts) {
       id: 'wall',
       label: 'Wall',
       icon: '🧱',
-      hotkeyHint: 'build wooden walls',
+      hotkeyHint: 'build walls (right-click for material)',
       activeColor: '#e9d477',
       designator: opts.wallDesignator,
+      stuffed: true,
     },
     {
       id: 'door',
       label: 'Door',
       icon: '🚪',
-      hotkeyHint: 'click a tile to place a door',
+      hotkeyHint: 'click a tile to place a door (right-click for material)',
       activeColor: '#ffb070',
       designator: opts.doorDesignator,
+      stuffed: true,
     },
     {
       id: 'torch',
@@ -93,9 +106,11 @@ export function createBuildTab(opts) {
       id: 'roof',
       label: 'Roof',
       icon: '🏠',
-      hotkeyHint: 'drag to designate roofs (free, fast, auto-built in rooms)',
+      hotkeyHint:
+        'drag to designate roofs (free; right-click for material — walls must match to support)',
       activeColor: '#c0a080',
       designator: opts.roofDesignator,
+      stuffed: true,
     },
     {
       id: 'no-roof',
@@ -164,7 +179,12 @@ export function createBuildTab(opts) {
   const buttons = entries.map((entry) => {
     const btn = makeButton(entry);
     root.appendChild(btn.el);
-    return { ...entry, ...btn, lastActive: /** @type {boolean | null} */ (null) };
+    return {
+      ...entry,
+      ...btn,
+      lastActive: /** @type {boolean | null} */ (null),
+      lastStuff: /** @type {string | null} */ (null),
+    };
   });
 
   document.body.appendChild(root);
@@ -175,6 +195,14 @@ export function createBuildTab(opts) {
       if (active !== b.lastActive) {
         applyActiveStyle(b.el, active, b.activeColor);
         b.lastActive = active;
+      }
+      if (b.stuffed && b.swatch) {
+        const designator = /** @type {StuffedDesignator} */ (b.designator);
+        const stuff = designator.currentStuff;
+        if (stuff !== b.lastStuff) {
+          applySwatchColor(b.swatch, stuff);
+          b.lastStuff = stuff;
+        }
       }
     }
   }
@@ -220,6 +248,22 @@ function makeButton(entry) {
 
   el.append(icon, label);
 
+  /** @type {HTMLElement | null} */
+  let swatch = null;
+  if (entry.stuffed) {
+    swatch = document.createElement('div');
+    Object.assign(swatch.style, {
+      width: '26px',
+      height: '4px',
+      marginTop: '1px',
+      borderRadius: '2px',
+      background: '#ffffff',
+      border: '1px solid rgba(0, 0, 0, 0.35)',
+      boxSizing: 'border-box',
+    });
+    el.appendChild(swatch);
+  }
+
   el.addEventListener('click', (e) => {
     e.stopPropagation();
     // Blur so the <button> doesn't keep focus and swallow subsequent keydowns.
@@ -227,12 +271,129 @@ function makeButton(entry) {
     if (entry.designator.active) entry.designator.deactivate();
     else entry.designator.activate();
   });
+  if (entry.stuffed) {
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.blur();
+      openStuffPicker(el, /** @type {StuffedDesignator} */ (entry.designator));
+    });
+  }
   // The designators listen on the canvas for mousedown; a button click on
   // body wouldn't hit them anyway, but belt-and-suspenders stop propagation
   // prevents any body-level mousedown listener from reacting.
   el.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  return { el };
+  return { el, swatch };
+}
+
+/**
+ * @param {HTMLElement | null} swatch
+ * @param {string} stuffId
+ */
+function applySwatchColor(swatch, stuffId) {
+  if (!swatch) return;
+  const def = STUFF[stuffId] ?? STUFF[STUFF_ORDER[0]];
+  swatch.style.background = `#${def.wallColor.toString(16).padStart(6, '0')}`;
+}
+
+/** @type {HTMLElement | null} */
+let openPicker = null;
+
+/**
+ * @param {HTMLElement} anchor
+ * @param {StuffedDesignator} designator
+ */
+function openStuffPicker(anchor, designator) {
+  closeStuffPicker();
+  const menu = document.createElement('div');
+  Object.assign(menu.style, {
+    position: 'fixed',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    padding: '4px',
+    background: 'rgba(14, 18, 24, 0.95)',
+    border: '1px solid rgba(255, 255, 255, 0.22)',
+    borderRadius: '4px',
+    zIndex: '60',
+    font: "600 11px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    color: '#e6e6e6',
+    userSelect: 'none',
+    minWidth: '120px',
+  });
+  for (const id of STUFF_ORDER) {
+    const def = STUFF[id];
+    const item = document.createElement('button');
+    item.type = 'button';
+    Object.assign(item.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '4px 6px',
+      background:
+        designator.currentStuff === id ? 'rgba(80, 100, 120, 0.55)' : 'rgba(30, 36, 44, 0.6)',
+      color: '#e6e6e6',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: '3px',
+      font: 'inherit',
+      textAlign: 'left',
+      cursor: 'pointer',
+    });
+    const swatch = document.createElement('span');
+    Object.assign(swatch.style, {
+      display: 'inline-block',
+      width: '14px',
+      height: '14px',
+      borderRadius: '2px',
+      background: `#${def.wallColor.toString(16).padStart(6, '0')}`,
+      border: '1px solid rgba(0, 0, 0, 0.35)',
+    });
+    const name = document.createElement('span');
+    name.textContent = def.name;
+    item.append(swatch, name);
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      designator.setStuff(id);
+      closeStuffPicker();
+    });
+    item.addEventListener('mousedown', (e) => e.stopPropagation());
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  // Position above the anchor button (the tab sits at the bottom of the
+  // screen, so the menu grows up and to the right).
+  const rect = anchor.getBoundingClientRect();
+  const menuHeight = menu.getBoundingClientRect().height;
+  menu.style.left = `${rect.left}px`;
+  menu.style.top = `${rect.top - menuHeight - 4}px`;
+  openPicker = menu;
+  // Defer the dismiss-on-outside handler so the contextmenu click that
+  // opened the menu doesn't immediately close it.
+  setTimeout(() => {
+    addEventListener('mousedown', dismissOnOutside, true);
+    addEventListener('keydown', dismissOnEscape, true);
+  }, 0);
+}
+
+function closeStuffPicker() {
+  if (!openPicker) return;
+  openPicker.remove();
+  openPicker = null;
+  removeEventListener('mousedown', dismissOnOutside, true);
+  removeEventListener('keydown', dismissOnEscape, true);
+}
+
+/** @param {MouseEvent} e */
+function dismissOnOutside(e) {
+  if (!openPicker) return;
+  if (openPicker.contains(/** @type {Node} */ (e.target))) return;
+  closeStuffPicker();
+}
+
+/** @param {KeyboardEvent} e */
+function dismissOnEscape(e) {
+  if (e.code === 'Escape') closeStuffPicker();
 }
 
 /**

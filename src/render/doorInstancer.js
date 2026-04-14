@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { getStuff } from '../world/stuff.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = 2.4 * UNITS_PER_METER;
@@ -35,6 +36,7 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _color = new THREE.Color();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 /**
@@ -43,8 +45,9 @@ const Y_AXIS = new THREE.Vector3(0, 1, 0);
  * @param {{ playAt: (kind: string, pos: { x: number, y: number, z: number }) => void } | null} audio
  */
 export function createDoorInstancer(scene, capacity, audio) {
-  const slabMat = new THREE.MeshStandardMaterial({ color: 0xb87333, flatShading: true });
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2b, flatShading: true });
+  const slabMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
+  const priming = new THREE.Color(1, 1, 1);
 
   // Slab geometry: hinge at +X edge at origin, bottom at y=0. Default axis
   // runs along -X (door spans from hinge at x=0 to x=-TILE_SIZE).
@@ -55,6 +58,7 @@ export function createDoorInstancer(scene, capacity, audio) {
   slab.frustumCulled = false;
   slab.castShadow = true;
   slab.receiveShadow = true;
+  slab.setColorAt(0, priming);
   scene.add(slab);
 
   const frameGeo = new THREE.BoxGeometry(TILE_SIZE, TOP_FRAME_HEIGHT, TILE_SIZE);
@@ -64,6 +68,7 @@ export function createDoorInstancer(scene, capacity, audio) {
   frame.frustumCulled = false;
   frame.castShadow = true;
   frame.receiveShadow = true;
+  frame.setColorAt(0, priming);
   scene.add(frame);
 
   /** @type {Map<number, { open: number, emittedSfx: boolean }>} */
@@ -100,6 +105,7 @@ export function createDoorInstancer(scene, capacity, audio) {
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j);
+      const stuffDef = getStuff(components.Door.stuff);
 
       // Axis selection: if adjacent walls sit east/west, run the slab along
       // X (baseAngle=0). If they sit north/south, run it along Z (baseAngle=
@@ -158,7 +164,10 @@ export function createDoorInstancer(scene, capacity, audio) {
       const hingeZ = -sb * (TILE_SIZE * 0.5);
       _position.set(w.x + hingeX, y, w.z + hingeZ);
       _matrix.compose(_position, _quat, _scale);
-      slab.setMatrixAt(n++, _matrix);
+      slab.setMatrixAt(n, _matrix);
+      _color.setHex(stuffDef.doorSlabColor);
+      slab.setColorAt(n, _color);
+      n++;
 
       // Top frame: only emit when the door actually slots into a wall run —
       // a lonely door wouldn't have a wall above it in the first place.
@@ -166,7 +175,10 @@ export function createDoorInstancer(scene, capacity, audio) {
         _quat.setFromAxisAngle(Y_AXIS, 0);
         _position.set(w.x, y, w.z);
         _matrix.compose(_position, _quat, _scale);
-        frame.setMatrixAt(nFrame++, _matrix);
+        frame.setMatrixAt(nFrame, _matrix);
+        _color.setHex(stuffDef.doorFrameColor);
+        frame.setColorAt(nFrame, _color);
+        nFrame++;
       }
     }
 
@@ -181,6 +193,8 @@ export function createDoorInstancer(scene, capacity, audio) {
     frame.count = nFrame;
     slab.instanceMatrix.needsUpdate = true;
     frame.instanceMatrix.needsUpdate = true;
+    if (slab.instanceColor) slab.instanceColor.needsUpdate = true;
+    if (frame.instanceColor) frame.instanceColor.needsUpdate = true;
   }
 
   return { update };

@@ -192,6 +192,40 @@ describe('migration runner', () => {
     expect(out.torches[0]).toMatchObject({ i: 0, j: 0, decon: false, progress: 0 });
   });
 
+  it('upgrades a v12 save by defaulting stuff=wood on walls/doors/roofs/buildSites', () => {
+    const v12 = {
+      version: 12,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+        roof: [0],
+        ignoreRoof: [0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [
+        { i: 0, j: 0, kind: 'wall', requiredKind: 'wood', required: 1, delivered: 0, progress: 0 },
+      ],
+      walls: [{ i: 0, j: 0, decon: false, progress: 0 }],
+      doors: [{ i: 0, j: 0, decon: false, progress: 0 }],
+      torches: [{ i: 0, j: 0, decon: false, progress: 0 }],
+      roofs: [{ i: 0, j: 0, decon: false, progress: 0 }],
+    };
+    const out = runMigrations(v12);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.buildSites[0].stuff).toBe('wood');
+    expect(out.walls[0].stuff).toBe('wood');
+    expect(out.doors[0].stuff).toBe('wood');
+    expect(out.roofs[0].stuff).toBe('wood');
+  });
+
   it('upgrades a v11 save by adding roof/ignoreRoof bitmaps + empty roofs array', () => {
     const v11 = {
       version: 11,
