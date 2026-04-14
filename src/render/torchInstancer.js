@@ -16,7 +16,8 @@
  */
 
 import * as THREE from 'three';
-import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
+import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
 const STICK_HEIGHT = 1.6 * UNITS_PER_METER;
 const STICK_RADIUS = 0.06 * UNITS_PER_METER;
@@ -25,11 +26,12 @@ const FLAME_RADIUS = 0.18 * UNITS_PER_METER;
 // Flame tip sits roughly at stick top + half flame height.
 const FLAME_CENTER_Y = STICK_HEIGHT + FLAME_HEIGHT * 0.85;
 const POINT_LIGHT_POOL = 12;
-const POINT_LIGHT_DISTANCE = 10 * UNITS_PER_METER;
-// Three r155+ uses physical units with decay=2, so this is a much larger
-// number than looks reasonable — tune until the torch visibly spills onto
-// nearby ground tiles at night without overpowering the daylit scene.
-const POINT_LIGHT_INTENSITY = 40;
+// Match the tile-lighting reach: TORCH_RADIUS_TILES counts the center tile,
+// so the euclidean reach from the torch is (TORCH_RADIUS_TILES - 1) tiles.
+const POINT_LIGHT_DISTANCE = (TORCH_RADIUS_TILES - 1) * TILE_SIZE;
+// Three r155+ uses physical units with decay=2; tuned so a torch clearly
+// lights the ground out to POINT_LIGHT_DISTANCE without overpowering day.
+const POINT_LIGHT_INTENSITY = 120;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();

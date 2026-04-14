@@ -32,11 +32,27 @@
         white-space: pre;
         pointer-events: none;
       }
+      #clock {
+        position: fixed;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 6px 14px;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid #ffd07066;
+        color: #ffe8b8;
+        font-family: monospace;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        pointer-events: none;
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
     <div id="hud">phase 0: scaffold</div>
+    <div id="clock">00:00</div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

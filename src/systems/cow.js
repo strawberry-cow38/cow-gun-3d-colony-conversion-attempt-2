@@ -23,7 +23,7 @@ import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
-const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
+export const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
 const EAT_TICKS = 18;

@@ -15,6 +15,7 @@
  */
 
 import * as THREE from 'three';
+import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 
 const _ndc = new THREE.Vector2();
@@ -31,6 +32,8 @@ const PREVIEW_COLOR_REMOVE_CSS = '#ff6a4a';
  * @property {boolean} [singlePlace] - if true, mousedown places exactly one
  *   tile (doors + torches). No drag, no size label; a one-tile hover preview
  *   tracks the cursor instead.
+ * @property {number} [previewRadiusTiles] - if set, draw a circle at this
+ *   tile-radius around the single-place hover preview (e.g. torch light reach).
  */
 
 /** @type {BuildDesignatorConfig} */
@@ -57,6 +60,7 @@ export const TORCH_DESIGNATOR_CONFIG = {
   addVerb: 'torch',
   cancelVerb: 'cancel torch',
   singlePlace: true,
+  previewRadiusTiles: TORCH_RADIUS_TILES,
 };
 
 export class BuildDesignator {
@@ -107,6 +111,9 @@ export class BuildDesignator {
 
     this.preview = buildPreview(scene, config.previewColorAdd);
     this.sizeLabel = buildSizeLabel(colorToCss(config.previewColorAdd));
+    this.radiusRing = config.previewRadiusTiles
+      ? buildRadiusRing(scene, config.previewColorAdd, (config.previewRadiusTiles - 1) * TILE_SIZE)
+      : null;
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -349,10 +356,21 @@ export class BuildDesignator {
     const mat = /** @type {THREE.LineBasicMaterial} */ (this.preview.line.material);
     mat.color.setHex(this.removing ? PREVIEW_COLOR_REMOVE : this.config.previewColorAdd);
     this.preview.line.visible = true;
+    if (this.radiusRing) {
+      const cx = (x0 + x1) * 0.5;
+      const cz = (z0 + z1) * 0.5;
+      this.radiusRing.line.position.set(cx, y, cz);
+      /** @type {THREE.LineBasicMaterial} */
+      (this.radiusRing.line.material).color.setHex(
+        this.removing ? PREVIEW_COLOR_REMOVE : this.config.previewColorAdd,
+      );
+      this.radiusRing.line.visible = true;
+    }
   }
 
   #hidePreview() {
     this.preview.line.visible = false;
+    if (this.radiusRing) this.radiusRing.line.visible = false;
   }
 
   /** @param {MouseEvent} e */
@@ -416,6 +434,29 @@ function buildPreview(scene, color) {
   line.visible = false;
   scene.add(line);
   return { geo, positions, line };
+}
+
+/**
+ * @param {THREE.Scene} scene
+ * @param {number} color
+ * @param {number} radius
+ */
+function buildRadiusRing(scene, color, radius) {
+  const segments = 48;
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array((segments + 1) * 3);
+  for (let s = 0; s <= segments; s++) {
+    const a = (s / segments) * Math.PI * 2;
+    positions[s * 3] = Math.cos(a) * radius;
+    positions[s * 3 + 1] = 0;
+    positions[s * 3 + 2] = Math.sin(a) * radius;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
+  line.frustumCulled = false;
+  line.visible = false;
+  scene.add(line);
+  return { geo, line };
 }
 
 /** @param {string} borderCss */

@@ -6,10 +6,15 @@
  */
 
 import { defaultWalkable } from '../sim/pathfinding.js';
+import { COW_SPEED_UNITS_PER_SEC } from '../systems/cow.js';
+import { DARKNESS_SLOWDOWN_THRESHOLD } from '../systems/lighting.js';
+import { UNITS_PER_METER, worldToTileClamp } from '../world/coords.js';
 import { ITEM_KINDS } from '../world/items.js';
 import { BIOME } from '../world/tileGrid.js';
 import { countDrafted } from './drafting.js';
 import { countComp } from './utils.js';
+
+const DARK_LIGHT_BYTE = Math.round(DARKNESS_SLOWDOWN_THRESHOLD * 255);
 
 const BIOME_NAMES = /** @type {Record<number, string>} */ ({
   [BIOME.GRASS]: 'grass',
@@ -100,11 +105,19 @@ export function createHud(ctx) {
       const job = world.get(state.primaryCow, 'Job');
       const path = world.get(state.primaryCow, 'Path');
       const pos = world.get(state.primaryCow, 'Position');
+      const vel = world.get(state.primaryCow, 'Velocity');
       if (brain) {
         const header =
           selCount === 1
             ? `selected: ${brain.name}`
             : `selected: ${selCount} cows (primary: ${brain.name})`;
+        const speedUps = vel ? Math.hypot(vel.x, vel.z) : 0;
+        const baseMps = COW_SPEED_UNITS_PER_SEC / UNITS_PER_METER;
+        const curMps = speedUps / UNITS_PER_METER;
+        const tile = worldToTileClamp(pos.x, pos.z, tileGrid.W, tileGrid.H);
+        const dim =
+          tileGrid.inBounds(tile.i, tile.j) && tileGrid.getLight(tile.i, tile.j) < DARK_LIGHT_BYTE;
+        const walkLine = `  walk: ${curMps.toFixed(2)}m/s (base ${baseMps.toFixed(2)}m/s)${dim ? ' [dim tile: 50%]' : ''}`;
         cowLines = [
           '',
           header,
@@ -112,6 +125,7 @@ export function createHud(ctx) {
           `  hunger: ${(hunger.value * 100).toFixed(0)}%`,
           `  job: ${job.kind} / ${job.state}`,
           `  path: ${path.index}/${path.steps.length} steps`,
+          walkLine,
         ];
       } else {
         cowLines = ['', 'selected cow despawned'];

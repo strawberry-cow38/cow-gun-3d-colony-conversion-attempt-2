@@ -450,6 +450,7 @@ const cowPortraitBar = createCowPortraitBar({
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
+const clockEl = /** @type {HTMLElement} */ (document.getElementById('clock'));
 let renderFrameCount = 0;
 let renderFpsSampleStart = performance.now();
 let measuredFps = 0;
@@ -513,6 +514,7 @@ const loop = new SimLoop({
     cowPortraitBar.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
+    clockEl.textContent = timeOfDay.getHHMM();
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
