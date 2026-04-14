@@ -58,6 +58,7 @@ import {
 } from './systems/cow.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
+import { TILE_SIZE } from './world/coords.js';
 import { TileGrid } from './world/tileGrid.js';
 import { createTimeOfDay } from './world/timeOfDay.js';
 import { createWeather } from './world/weather.js';
@@ -133,6 +134,15 @@ const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({ sun, hemi, sky });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
 const rts = new RtsCamera(camera, canvas);
+// Keep the orbit focus pinned to the playable grid — beyond these the camera
+// just stares at empty void, and follow/dbl-click-focus could otherwise push
+// it past the edge on small maps.
+const halfGridX = (gridW * TILE_SIZE) / 2;
+const halfGridZ = (gridH * TILE_SIZE) / 2;
+rts.minX = -halfGridX;
+rts.maxX = halfGridX;
+rts.minZ = -halfGridZ;
+rts.maxZ = halfGridZ;
 const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
 const cowThoughtBubbles = createCowThoughtBubbles(scene);

@@ -34,6 +34,13 @@ export class RtsCamera {
     this.maxPitch = Math.PI * 0.49;
     this.minDistance = TILE_SIZE * 0.5;
     this.maxDistance = TILE_SIZE * 200;
+    // Pan bounds on the ground plane. Defaults to unbounded so tests /
+    // callers that don't care aren't broken; main.js sets real bounds from
+    // the grid extents once it has them.
+    this.minX = Number.NEGATIVE_INFINITY;
+    this.maxX = Number.POSITIVE_INFINITY;
+    this.minZ = Number.NEGATIVE_INFINITY;
+    this.maxZ = Number.POSITIVE_INFINITY;
 
     /** @type {Set<string>} */
     this.keys = new Set();
@@ -81,7 +88,21 @@ export class RtsCamera {
     this.#syncCamera();
   }
 
+  /**
+   * Clamp the focus point to the configured bounds — covers both WASD pan
+   * and external focus mutations (follow mode, portrait-bar dbl-click). Runs
+   * before every syncCamera so the camera position always lands inside the
+   * playable map rather than drifting off into the void.
+   */
+  #clampFocus() {
+    if (this.focus.x < this.minX) this.focus.x = this.minX;
+    else if (this.focus.x > this.maxX) this.focus.x = this.maxX;
+    if (this.focus.z < this.minZ) this.focus.z = this.minZ;
+    else if (this.focus.z > this.maxZ) this.focus.z = this.maxZ;
+  }
+
   #syncCamera() {
+    this.#clampFocus();
     const cosP = Math.cos(this.pitch);
     const offX = this.distance * cosP * Math.sin(this.yaw);
     const offY = this.distance * Math.sin(this.pitch);
