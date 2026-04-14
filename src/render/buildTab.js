@@ -15,12 +15,16 @@
  * bottom of the button reflects the currently-selected material.
  */
 
+import { CROP_KINDS, CROP_VISUALS } from '../world/crops.js';
 import { STUFF, STUFF_ORDER } from '../world/stuff.js';
+import { colorToCss } from './dragSizeLabel.js';
 
 /**
  * @typedef {{ active: boolean, activate: () => void, deactivate: () => void }} ToggleableDesignator
  *
  * @typedef {ToggleableDesignator & { currentStuff: string, setStuff: (id: string) => void }} StuffedDesignator
+ *
+ * @typedef {ToggleableDesignator & { currentCrop: string, setCrop: (kind: string) => void }} CroppableDesignator
  *
  * @typedef {Object} BuildTabEntry
  * @property {string} id - stable key for cache/highlight ("chop", "wall", …)
@@ -31,6 +35,8 @@ import { STUFF, STUFF_ORDER } from '../world/stuff.js';
  * @property {ToggleableDesignator} designator
  * @property {boolean} [stuffed] - if true, right-click opens the material picker and
  *   the button shows a swatch reflecting the designator's currentStuff
+ * @property {boolean} [croppable] - if true, right-click opens the crop-kind picker
+ *   and the button shows a swatch reflecting the designator's currentCrop
  */
 
 /**
@@ -75,9 +81,10 @@ export function createBuildTab(opts) {
       id: 'farm',
       label: 'Farm',
       icon: '🌾',
-      hotkeyHint: 'designate growing zones — cows till + plant corn',
+      hotkeyHint: 'designate growing zones (right-click for crop kind)',
       activeColor: '#6fe2a0',
       designator: opts.farmZoneDesignator,
+      croppable: true,
     },
     {
       id: 'wall',
@@ -213,6 +220,7 @@ export function createBuildTab(opts) {
       ...btn,
       lastActive: /** @type {boolean | null} */ (null),
       lastStuff: /** @type {string | null} */ (null),
+      lastCrop: /** @type {string | null} */ (null),
     };
   });
 
@@ -231,6 +239,14 @@ export function createBuildTab(opts) {
         if (stuff !== b.lastStuff) {
           applySwatchColor(b.swatch, stuff);
           b.lastStuff = stuff;
+        }
+      }
+      if (b.croppable && b.swatch) {
+        const designator = /** @type {CroppableDesignator} */ (b.designator);
+        const crop = designator.currentCrop;
+        if (crop !== b.lastCrop) {
+          applyCropSwatchColor(b.swatch, crop);
+          b.lastCrop = crop;
         }
       }
     }
@@ -279,7 +295,7 @@ function makeButton(entry) {
 
   /** @type {HTMLElement | null} */
   let swatch = null;
-  if (entry.stuffed) {
+  if (entry.stuffed || entry.croppable) {
     swatch = document.createElement('div');
     Object.assign(swatch.style, {
       width: '26px',
@@ -308,6 +324,14 @@ function makeButton(entry) {
       openStuffPicker(el, /** @type {StuffedDesignator} */ (entry.designator));
     });
   }
+  if (entry.croppable) {
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.blur();
+      openCropPicker(el, /** @type {CroppableDesignator} */ (entry.designator));
+    });
+  }
   // The designators listen on the canvas for mousedown; a button click on
   // body wouldn't hit them anyway, but belt-and-suspenders stop propagation
   // prevents any body-level mousedown listener from reacting.
@@ -323,18 +347,38 @@ function makeButton(entry) {
 function applySwatchColor(swatch, stuffId) {
   if (!swatch) return;
   const def = STUFF[stuffId] ?? STUFF[STUFF_ORDER[0]];
-  swatch.style.background = `#${def.wallColor.toString(16).padStart(6, '0')}`;
+  swatch.style.background = colorToCss(def.wallColor);
+}
+
+/**
+ * @param {HTMLElement | null} swatch
+ * @param {string} cropKind
+ */
+function applyCropSwatchColor(swatch, cropKind) {
+  if (!swatch) return;
+  swatch.style.background = colorToCss(CROP_VISUALS[cropKind].ripeColor);
 }
 
 /** @type {HTMLElement | null} */
 let openPicker = null;
 
 /**
- * @param {HTMLElement} anchor
- * @param {StuffedDesignator} designator
+ * @typedef {Object} PickerEntry
+ * @property {string} id
+ * @property {string} label
+ * @property {number} swatchColor
+ * @property {string} [icon]
+ *
+ * @typedef {Object} PickerOpts
+ * @property {HTMLElement} anchor
+ * @property {PickerEntry[]} entries
+ * @property {string} selectedId
+ * @property {(id: string) => void} onSelect
  */
-function openStuffPicker(anchor, designator) {
-  closeStuffPicker();
+
+/** @param {PickerOpts} opts */
+function openPopupPicker({ anchor, entries, selectedId, onSelect }) {
+  closePicker();
   const menu = document.createElement('div');
   Object.assign(menu.style, {
     position: 'fixed',
@@ -351,8 +395,7 @@ function openStuffPicker(anchor, designator) {
     userSelect: 'none',
     minWidth: '120px',
   });
-  for (const id of STUFF_ORDER) {
-    const def = STUFF[id];
+  for (const entry of entries) {
     const item = document.createElement('button');
     item.type = 'button';
     Object.assign(item.style, {
@@ -360,8 +403,7 @@ function openStuffPicker(anchor, designator) {
       alignItems: 'center',
       gap: '6px',
       padding: '4px 6px',
-      background:
-        designator.currentStuff === id ? 'rgba(80, 100, 120, 0.55)' : 'rgba(30, 36, 44, 0.6)',
+      background: selectedId === entry.id ? 'rgba(80, 100, 120, 0.55)' : 'rgba(30, 36, 44, 0.6)',
       color: '#e6e6e6',
       border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '3px',
@@ -375,16 +417,20 @@ function openStuffPicker(anchor, designator) {
       width: '14px',
       height: '14px',
       borderRadius: '2px',
-      background: `#${def.wallColor.toString(16).padStart(6, '0')}`,
+      background: colorToCss(entry.swatchColor),
       border: '1px solid rgba(0, 0, 0, 0.35)',
+      textAlign: 'center',
+      lineHeight: '14px',
+      fontSize: '12px',
     });
+    if (entry.icon) swatch.textContent = entry.icon;
     const name = document.createElement('span');
-    name.textContent = def.name;
+    name.textContent = entry.label;
     item.append(swatch, name);
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      designator.setStuff(id);
-      closeStuffPicker();
+      onSelect(entry.id);
+      closePicker();
     });
     item.addEventListener('mousedown', (e) => e.stopPropagation());
     menu.appendChild(item);
@@ -405,7 +451,42 @@ function openStuffPicker(anchor, designator) {
   }, 0);
 }
 
-function closeStuffPicker() {
+/**
+ * @param {HTMLElement} anchor
+ * @param {StuffedDesignator} designator
+ */
+function openStuffPicker(anchor, designator) {
+  openPopupPicker({
+    anchor,
+    entries: STUFF_ORDER.map((id) => ({
+      id,
+      label: STUFF[id].name,
+      swatchColor: STUFF[id].wallColor,
+    })),
+    selectedId: designator.currentStuff,
+    onSelect: (id) => designator.setStuff(id),
+  });
+}
+
+/**
+ * @param {HTMLElement} anchor
+ * @param {CroppableDesignator} designator
+ */
+function openCropPicker(anchor, designator) {
+  openPopupPicker({
+    anchor,
+    entries: CROP_KINDS.map((kind) => ({
+      id: kind,
+      label: CROP_VISUALS[kind].label,
+      swatchColor: CROP_VISUALS[kind].ripeColor,
+      icon: CROP_VISUALS[kind].icon,
+    })),
+    selectedId: designator.currentCrop,
+    onSelect: (kind) => designator.setCrop(kind),
+  });
+}
+
+function closePicker() {
   if (!openPicker) return;
   openPicker.remove();
   openPicker = null;
@@ -417,12 +498,12 @@ function closeStuffPicker() {
 function dismissOnOutside(e) {
   if (!openPicker) return;
   if (openPicker.contains(/** @type {Node} */ (e.target))) return;
-  closeStuffPicker();
+  closePicker();
 }
 
 /** @param {KeyboardEvent} e */
 function dismissOnEscape(e) {
-  if (e.code === 'Escape') closeStuffPicker();
+  if (e.code === 'Escape') closePicker();
 }
 
 /**

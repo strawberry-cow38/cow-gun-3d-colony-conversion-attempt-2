@@ -40,8 +40,6 @@
  *              Serialized.
  */
 
-export const CROP_CORN = 1;
-
 export const BIOME = Object.freeze({
   GRASS: 0,
   DIRT: 1,

@@ -9,9 +9,22 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { CROP_VISUALS, KIND_FOR_CROP_ID } from '../world/crops.js';
 
 const TILE_GROUND_CLEARANCE = 0.04 * UNITS_PER_METER;
 const TILE_PAD = 0.04 * TILE_SIZE;
+
+// Pre-bake zoneId → ripe color so the W×H sweep skips the kind-lookup +
+// setHex per tile. Only the zoneIds with a registered crop kind land here;
+// unknown ids get the fallback.
+const ZONE_COLORS = new Map();
+for (const idKey of Object.keys(KIND_FOR_CROP_ID)) {
+  const kind = KIND_FOR_CROP_ID[Number(idKey)];
+  const v = CROP_VISUALS[kind];
+  if (!v) continue;
+  ZONE_COLORS.set(Number(idKey), new THREE.Color(v.ripeColor));
+}
+const FALLBACK_COLOR = new THREE.Color(0x44dd88);
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
@@ -48,18 +61,21 @@ export function createFarmZoneOverlay(scene, capacity = 4096) {
     let k = 0;
     for (let j = 0; j < grid.H; j++) {
       for (let i = 0; i < grid.W; i++) {
-        if (grid.getFarmZone(i, j) === 0) continue;
+        const zoneId = grid.getFarmZone(i, j);
+        if (zoneId === 0) continue;
         if (k >= capacity) break;
         const w = tileToWorld(i, j, grid.W, grid.H);
         const y = grid.getElevation(i, j) + TILE_GROUND_CLEARANCE;
         _position.set(w.x, y, w.z);
         _matrix.compose(_position, _quat, _scale);
         mesh.setMatrixAt(k, _matrix);
+        mesh.setColorAt(k, ZONE_COLORS.get(zoneId) ?? FALLBACK_COLOR);
         k++;
       }
     }
     mesh.count = k;
     mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     dirty = false;
   }
 

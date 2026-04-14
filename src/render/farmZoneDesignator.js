@@ -12,7 +12,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
-import { CROP_CORN } from '../world/tileGrid.js';
+import { CROP_ID_FOR_KIND, CROP_KINDS } from '../world/crops.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
@@ -48,6 +48,8 @@ export class FarmZoneDesignator {
     /** @type {{ i: number, j: number } | null} */
     this.curTile = null;
 
+    /** @type {string} */
+    this.currentCrop = CROP_KINDS[0];
     this.preview = buildPreview(scene);
     this.sizeLabel = createDragSizeLabel({
       addVerb: 'farm',
@@ -89,6 +91,13 @@ export class FarmZoneDesignator {
     this.active = false;
     this.#cancelDrag();
     this.audio?.play('toggle_off');
+    this.onStateChanged();
+  }
+
+  /** @param {string} kind */
+  setCrop(kind) {
+    if (!CROP_ID_FOR_KIND[kind]) return;
+    this.currentCrop = kind;
     this.onStateChanged();
   }
 
@@ -160,7 +169,7 @@ export class FarmZoneDesignator {
         // fine so no extra check for that.
         if (!removing && this.tileGrid.isBlocked(i, j)) continue;
         const cur = this.tileGrid.getFarmZone(i, j);
-        const target = removing ? 0 : CROP_CORN;
+        const target = removing ? 0 : CROP_ID_FOR_KIND[this.currentCrop];
         if (cur === target) continue;
         this.tileGrid.setFarmZone(i, j, target);
         any = true;

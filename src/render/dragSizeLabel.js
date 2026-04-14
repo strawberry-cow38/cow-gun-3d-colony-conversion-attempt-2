@@ -10,7 +10,7 @@ import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
 const METERS_PER_TILE = TILE_SIZE / UNITS_PER_METER;
 
 /** @param {number} hex */
-function colorToCss(hex) {
+export function colorToCss(hex) {
   return `#${hex.toString(16).padStart(6, '0')}`;
 }
 
