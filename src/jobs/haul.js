@@ -296,6 +296,10 @@ export function makeHaulPostingSystem(board, grid) {
       for (const { id: siteId, components } of world.query(['BuildSite', 'TileAnchor'])) {
         const site = components.BuildSite;
         const a = components.TileAnchor;
+        // Door-over-wall: don't haul resources onto the tile until the wall's
+        // gone. Otherwise the item would land on a blocked tile the haulers
+        // can't pathfind back to.
+        if (site.kind === 'door' && grid.isWall(a.i, a.j)) continue;
         const idx = grid.idx(a.i, a.j);
         const pending = siteInFlight.get(idx) ?? 0;
         let need = site.required - site.delivered - pending;
@@ -330,6 +334,9 @@ export function makeHaulPostingSystem(board, grid) {
         // wall/roof makes them valid, or the player cancels them.
         if (site.delivered >= site.required && site.buildJobId === 0) {
           if (site.kind === 'roof' && !roofIsSupported(grid, a.i, a.j)) continue;
+          // Doors placed over walls wait for the wall deconstruct to finish.
+          // Once the wall's gone (setWall(0)) the next poster tick posts this.
+          if (site.kind === 'door' && grid.isWall(a.i, a.j)) continue;
           const job = board.post('build', { siteId, i: a.i, j: a.j });
           site.buildJobId = job.id;
         }

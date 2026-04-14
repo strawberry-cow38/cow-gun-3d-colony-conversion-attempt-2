@@ -89,6 +89,7 @@ export class BuildDesignator {
    * @param {THREE.Scene} scene
    * @param {() => void} onStateChanged
    * @param {{ play: (kind: string) => void }} [audio]
+   * @param {{ markDirty: () => void }} [deconstructOverlay]  door-on-wall path queues a wall deconstruct and needs to tip the overlay dirty so the red tile marker appears
    */
   constructor(
     config,
@@ -102,6 +103,7 @@ export class BuildDesignator {
     scene,
     onStateChanged,
     audio,
+    deconstructOverlay,
   ) {
     this.config = config;
     this.dom = dom;
@@ -113,6 +115,7 @@ export class BuildDesignator {
     this.buildSites = buildSiteInstancer;
     this.onStateChanged = onStateChanged;
     this.audio = audio;
+    this.deconstructOverlay = deconstructOverlay;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
@@ -271,14 +274,19 @@ export class BuildDesignator {
 
   /** @param {number} i @param {number} j */
   #designateTile(i, j) {
-    const isRoof = this.config.kind === 'roof';
+    const kind = this.config.kind;
+    const isRoof = kind === 'roof';
+    const isDoor = kind === 'door';
     if (isRoof) {
       // Roofs can be designated anywhere — the haul poster gates the actual
       // build job on support + reach, so unsupported blueprints just wait
       // until a nearby wall makes them valid. We only reject true duplicates.
       if (this.tileGrid.isRoof(i, j)) return false;
     } else {
-      if (this.tileGrid.isBlocked(i, j)) return false;
+      // Doors can be placed on built walls — queued as "deconstruct wall,
+      // then build door on the cleared tile" below. Everything else keeps
+      // the hard blocked check.
+      if (this.tileGrid.isBlocked(i, j) && !(isDoor && this.tileGrid.isWall(i, j))) return false;
       if (this.tileGrid.isDoor(i, j)) return false;
       if (this.tileGrid.isTorch(i, j)) return false;
     }
@@ -286,18 +294,39 @@ export class BuildDesignator {
     // tiles means players can light up a storage area without having to
     // redraw the stockpile around them. Roofs don't touch the ground plane
     // so stockpiles underneath them are fine too.
-    if (!isRoof && this.config.kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
+    if (!isRoof && kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
     // Roofs sit above the ground plane so they don't conflict with wall/door/
     // torch blueprints — only with other roofs. Ground-plane blueprints
     // conflict with each other but not with roofs.
     const samePlane = isRoof
       ? /** @param {string} k */ (k) => k === 'roof'
       : /** @param {string} k */ (k) => k !== 'roof';
-    if (this.#findSiteAt(i, j, samePlane) !== null) return false;
+    const existingSiteId = this.#findSiteAt(i, j, samePlane);
+    if (existingSiteId !== null) {
+      // Door over wall blueprint: upgrade the plan in-place — cancel the
+      // wall blueprint (refunds delivered resources) and drop through to
+      // spawn the door blueprint.
+      if (isDoor) {
+        const existingSite = this.world.get(existingSiteId, 'BuildSite');
+        if (existingSite && existingSite.kind === 'wall') {
+          releaseBuildSite(this.world, this.board, this.tileGrid, existingSite, i, j);
+          this.world.despawn(existingSiteId);
+        } else {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+    // Door over built wall: queue the wall's deconstruct. The haul poster
+    // holds the door's build job until grid.isWall flips back to 0.
+    if (isDoor && this.tileGrid.isWall(i, j)) {
+      this.#queueWallDeconstructAt(i, j);
+    }
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({
       BuildSite: {
-        kind: this.config.kind,
+        kind,
         requiredKind: this.config.requiredKind ?? 'wood',
         required: this.config.required ?? 1,
         delivered: 0,
@@ -309,6 +338,26 @@ export class BuildDesignator {
       Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
     });
     return true;
+  }
+
+  /** @param {number} i @param {number} j */
+  #queueWallDeconstructAt(i, j) {
+    for (const { id, components } of this.world.query(['Wall', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if (a.i !== i || a.j !== j) continue;
+      const wall = components.Wall;
+      if (wall.deconstructJobId > 0) return;
+      const job = this.board.post('deconstruct', {
+        entityId: id,
+        kind: 'wall',
+        i,
+        j,
+      });
+      wall.deconstructJobId = job.id;
+      wall.progress = 0;
+      this.deconstructOverlay?.markDirty();
+      return;
+    }
   }
 
   /** @param {number} i @param {number} j */

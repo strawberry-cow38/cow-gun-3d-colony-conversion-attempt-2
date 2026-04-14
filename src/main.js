@@ -409,6 +409,7 @@ const doorDesignator = new BuildDesignator(
     updateHud();
   },
   audio,
+  deconstructOverlay,
 );
 designators.push(doorDesignator);
 
