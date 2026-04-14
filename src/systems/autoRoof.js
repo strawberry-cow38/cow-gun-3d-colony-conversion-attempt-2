@@ -35,7 +35,22 @@ export function runAutoRoof(world, grid, _board, rooms) {
   }
 
   for (const room of rooms.rooms.values()) {
+    // Roofable tiles = interior ∪ the walls/doors that enclose them, so the
+    // room's perimeter is covered too. Walls and doors can carry a roof bit —
+    // the roof sits above, doesn't conflict with the occupant.
+    const roofable = new Set(room.tiles);
     for (const tileIdx of room.tiles) {
+      const i = tileIdx % grid.W;
+      const j = (tileIdx - i) / grid.W;
+      for (const [di, dj] of ORTHO) {
+        const ni = i + di;
+        const nj = j + dj;
+        if (!grid.inBounds(ni, nj)) continue;
+        const nidx = grid.idx(ni, nj);
+        if (grid.wall[nidx] !== 0 || grid.door[nidx] !== 0) roofable.add(nidx);
+      }
+    }
+    for (const tileIdx of roofable) {
       if (grid.roof[tileIdx] !== 0) continue;
       if (grid.ignoreRoof[tileIdx] !== 0) continue;
       if (pending.has(tileIdx)) continue;
@@ -60,6 +75,13 @@ export function runAutoRoof(world, grid, _board, rooms) {
     }
   }
 }
+
+const ORTHO = /** @type {const} */ ([
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+]);
 
 /**
  * True if (i,j) satisfies the roof support + reach rule:

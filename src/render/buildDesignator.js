@@ -287,7 +287,13 @@ export class BuildDesignator {
     // redraw the stockpile around them. Roofs don't touch the ground plane
     // so stockpiles underneath them are fine too.
     if (!isRoof && this.config.kind !== 'torch' && this.tileGrid.isStockpile(i, j)) return false;
-    if (this.#findSiteAt(i, j) !== null) return false;
+    // Roofs sit above the ground plane so they don't conflict with wall/door/
+    // torch blueprints — only with other roofs. Ground-plane blueprints
+    // conflict with each other but not with roofs.
+    const samePlane = isRoof
+      ? /** @param {string} k */ (k) => k === 'roof'
+      : /** @param {string} k */ (k) => k !== 'roof';
+    if (this.#findSiteAt(i, j, samePlane) !== null) return false;
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
     this.world.spawn({
       BuildSite: {
@@ -307,12 +313,13 @@ export class BuildDesignator {
 
   /** @param {number} i @param {number} j */
   #cancelTile(i, j) {
-    const id = this.#findSiteAt(i, j);
-    if (id === null) return false;
-    const site = this.world.get(id, 'BuildSite');
     // Only cancel blueprints of our own kind so wall/door modes don't step on
     // each other's pending work on shared tiles.
-    if (!site || site.kind !== this.config.kind) return false;
+    const kind = this.config.kind;
+    const id = this.#findSiteAt(i, j, (k) => k === kind);
+    if (id === null) return false;
+    const site = this.world.get(id, 'BuildSite');
+    if (!site) return false;
     if (site.buildJobId > 0) this.board.complete(site.buildJobId);
     // Drop any delivered units back as a loose stack so they aren't lost.
     if (site.delivered > 0) {
@@ -333,10 +340,15 @@ export class BuildDesignator {
     return true;
   }
 
-  /** @param {number} i @param {number} j */
-  #findSiteAt(i, j) {
+  /**
+   * @param {number} i @param {number} j
+   * @param {(kind: string) => boolean} [matchKind]
+   */
+  #findSiteAt(i, j, matchKind) {
     for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
-      if (components.TileAnchor.i === i && components.TileAnchor.j === j) return id;
+      if (components.TileAnchor.i !== i || components.TileAnchor.j !== j) continue;
+      if (matchKind && !matchKind(components.BuildSite.kind)) continue;
+      return id;
     }
     return null;
   }
