@@ -55,6 +55,7 @@ const PAN_KEYS = new Set([
  * @property {Set<number>} selectedCows
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Mesh} tileMesh
+ * @property {number} [pausedSpeed]  last non-zero speed, restored when space unpauses
  *
  * @typedef {Object} InputCtx
  * @property {import('../ecs/world.js').World} world
@@ -207,6 +208,21 @@ async function handleKey(ctx, e) {
   if (SPEED_KEYS[e.code] !== undefined) {
     ctx.loop.setSpeed(SPEED_KEYS[e.code]);
     ctx.audio.play('cycle');
+    ctx.updateHud();
+    return;
+  }
+  // Space toggles pause. Render keeps running so UI (build tab, portraits,
+  // designators) stays interactive while the sim is frozen.
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (ctx.loop.speed > 0) {
+      state.pausedSpeed = ctx.loop.speed;
+      ctx.loop.setSpeed(0);
+      ctx.audio.play('toggle_off');
+    } else {
+      ctx.loop.setSpeed(state.pausedSpeed ?? 1);
+      ctx.audio.play('toggle_on');
+    }
     ctx.updateHud();
     return;
   }

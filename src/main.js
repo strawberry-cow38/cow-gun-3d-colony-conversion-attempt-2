@@ -514,7 +514,7 @@ const loop = new SimLoop({
     cowPortraitBar.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
-    clockEl.textContent = timeOfDay.getHHMM();
+    clockEl.textContent = loop.speed === 0 ? `${timeOfDay.getHHMM()} ⏸` : timeOfDay.getHHMM();
     renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
