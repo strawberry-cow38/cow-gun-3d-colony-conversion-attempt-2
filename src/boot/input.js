@@ -329,9 +329,9 @@ async function loadGame(ctx) {
     }
     hydrateItems(world, tileGrid, migrated);
     hydrateBuildSites(world, tileGrid, migrated);
-    hydrateWalls(world, tileGrid, migrated);
-    hydrateDoors(world, tileGrid, migrated);
-    hydrateTorches(world, tileGrid, migrated);
+    hydrateWalls(world, tileGrid, jobBoard, migrated);
+    hydrateDoors(world, tileGrid, jobBoard, migrated);
+    hydrateTorches(world, tileGrid, jobBoard, migrated);
     treeInstancer.markDirty();
     itemInstancer.markDirty();
     stockpileOverlay.markDirty();

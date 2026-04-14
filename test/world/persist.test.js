@@ -191,7 +191,7 @@ describe('torch save/load roundtrip', () => {
     const migrated = loadState(JSON.parse(JSON.stringify(state)));
     const tg2 = hydrateTileGrid(migrated);
     const w2 = makeWorld();
-    hydrateTorches(w2, tg2, migrated);
+    hydrateTorches(w2, tg2, new JobBoard(), migrated);
 
     const torches = [...w2.query(['Torch', 'TileAnchor'])];
     expect(torches).toHaveLength(2);

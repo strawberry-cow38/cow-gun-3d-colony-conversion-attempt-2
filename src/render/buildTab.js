@@ -29,6 +29,7 @@
  * @property {ToggleableDesignator} wallDesignator
  * @property {ToggleableDesignator} doorDesignator
  * @property {ToggleableDesignator} torchDesignator
+ * @property {ToggleableDesignator} deconstructDesignator
  */
 
 /** @param {BuildTabOpts} opts */
@@ -74,6 +75,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a torch',
       activeColor: '#ffb84a',
       designator: opts.torchDesignator,
+    },
+    {
+      id: 'deconstruct',
+      label: 'Demolish',
+      icon: '🔨',
+      hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
+      activeColor: '#ff4a4a',
+      designator: opts.deconstructDesignator,
     },
   ];
 

@@ -15,11 +15,13 @@
 
 import { BUILD_TICKS, findBuildStandTile } from '../jobs/build.js';
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
+import { DECONSTRUCT_TICKS, findDeconstructStandTile } from '../jobs/deconstruct.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
+import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
 const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
@@ -42,6 +44,8 @@ const COW_SENSE_RADIUS_SQ = 32 * 32; // notice neighbors within ~0.75 tile
 const COW_PERSONAL_SPACE_SQ = 20 * 20; // head-on crowding → slow down
 const AVOID_STRENGTH = 0.45; // lateral nudge weight before re-normalizing
 const SLOW_FACTOR = 0.7; // "excuse me, fellow cow" speed when blocked
+// Light grid is uint8 (0-255); cache the byte form of the shared threshold.
+const DARK_LIGHT_BYTE = Math.round(DARKNESS_SLOWDOWN_THRESHOLD * 255);
 
 // Spatial bucketing for the avoidance scan. Cell is the sense radius so every
 // cow that could possibly affect another lives in self + 8 surrounding cells.
@@ -122,7 +126,8 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'chop' ||
             job.kind === 'haul' ||
             job.kind === 'eat' ||
-            job.kind === 'build'
+            job.kind === 'build' ||
+            job.kind === 'deconstruct'
           ) {
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
@@ -253,6 +258,22 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (
+                candidate &&
+                candidate.kind === 'deconstruct' &&
+                board.claim(candidate.id, id)
+              ) {
+                job.kind = 'deconstruct';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  entityId: candidate.payload.entityId,
+                  kind: candidate.payload.kind,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               }
             }
 
@@ -275,6 +296,8 @@ export function makeCowBrainSystem(deps) {
           runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'build') {
           runBuildJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
+        } else if (job.kind === 'deconstruct') {
+          runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'haul') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -585,6 +608,130 @@ function finishBuild(world, grid, siteId, jobId, board) {
     });
   }
   world.despawn(siteId);
+  board.complete(jobId);
+}
+
+/** Component name for each deconstructable kind. Lower-case kind → component tag. */
+const DECON_COMP_BY_KIND = /** @type {const} */ ({
+  wall: 'Wall',
+  door: 'Door',
+  torch: 'Torch',
+});
+
+/**
+ * State machine for the deconstruct job. Mirrors runBuildJob's walk → hammer
+ * loop, but on completion the entity + tile bit get cleared and half the
+ * building's original material cost drops back as a loose stack.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+  const { entityId, kind, jobId } =
+    /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
+  const compName = /** @type {'Wall'|'Door'|'Torch'} */ (
+    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'} */ (kind)] ?? 'Wall'
+  );
+  const tag = world.get(entityId, compName);
+  const boardJob = board.jobs.find((j) => j.id === jobId);
+  // Entity gone (already deconstructed / cancelled) OR board job marked done →
+  // bail cleanly, same as build/chop does.
+  if (!tag || !boardJob || boardJob.completed) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    if (tag) tag.progress = 0;
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const adj = findDeconstructStandTile(grid, walkable, kind, job.payload.i, job.payload.j);
+    if (!adj) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const route = paths.find(start, adj);
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'demolishing';
+      job.payload.ticksRemaining = DECONSTRUCT_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'demolishing') {
+    const remaining = (job.payload.ticksRemaining ?? DECONSTRUCT_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    tag.progress = 1 - remaining / DECONSTRUCT_TICKS;
+    if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
+    if (remaining <= 0) {
+      deps.onBuildComplete(pos);
+      finishDeconstruct(world, grid, entityId, kind, jobId, board);
+      deps.onItemChange();
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * Clear the grid bit for this kind, despawn the structure entity, and drop
+ * half the building's material cost (rounded, min 0) as a loose stack on the
+ * tile. Every kind currently costs 1 wood (see BuildDesignator#designateTile),
+ * so a 50% return yields 1 wood back via Math.round(0.5) = 1.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} entityId
+ * @param {string} kind
+ * @param {number} jobId
+ * @param {import('../jobs/board.js').JobBoard} board
+ */
+function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
+  const anchor = world.get(entityId, 'TileAnchor');
+  if (!anchor) {
+    board.complete(jobId);
+    return;
+  }
+  if (kind === 'wall') grid.setWall(anchor.i, anchor.j, 0);
+  else if (kind === 'door') grid.setDoor(anchor.i, anchor.j, 0);
+  else if (kind === 'torch') grid.setTorch(anchor.i, anchor.j, 0);
+  // Hardcoded to wood/1 because every current build kind uses those; when
+  // buildings diverge, the original `required`/`requiredKind` will need to
+  // live on the finished-structure entity (mirroring how BuildSite tracks them).
+  const returned = Math.round(1 * 0.5);
+  for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+  world.despawn(entityId);
   board.complete(jobId);
 }
 
@@ -1060,14 +1207,18 @@ export function makeCowFollowPathSystem(deps) {
           nz /= mag;
         }
 
-        const speed = crowded ? COW_SPEED_UNITS_PER_SEC * SLOW_FACTOR : COW_SPEED_UNITS_PER_SEC;
-        vel.x = nx * speed;
-        vel.z = nz * speed;
-        vel.y = 0;
+        let speed = crowded ? COW_SPEED_UNITS_PER_SEC * SLOW_FACTOR : COW_SPEED_UNITS_PER_SEC;
         // Snap y to the elevation of the tile we currently stand on so cows
         // don't float when crossing terrain.
         const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-        if (grid.inBounds(cur.i, cur.j)) pos.y = grid.getElevation(cur.i, cur.j);
+        if (grid.inBounds(cur.i, cur.j)) {
+          pos.y = grid.getElevation(cur.i, cur.j);
+          // Half speed on dim tiles (<40% light) — cows stumble in the dark.
+          if (grid.getLight(cur.i, cur.j) < DARK_LIGHT_BYTE) speed *= 0.5;
+        }
+        vel.x = nx * speed;
+        vel.z = nz * speed;
+        vel.y = 0;
       }
     },
   };

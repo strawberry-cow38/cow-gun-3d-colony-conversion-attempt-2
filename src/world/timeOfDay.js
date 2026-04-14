@@ -241,6 +241,15 @@ export function createTimeOfDay(opts) {
     apply();
   }
 
+  // 6am-6pm full sun, 6pm-9pm fade, 9pm-5am dark, 5am-6am rise. t=0.25 is 6am,
+  // t=0.75 is 6pm, t=0.875 is 9pm, t≈0.208 is 5am.
+  function getSunLightPercent() {
+    if (t >= 0.25 && t <= 0.75) return 1;
+    if (t > 0.75 && t < 0.875) return 1 - (t - 0.75) / 0.125;
+    if (t > 5 / 24 && t < 0.25) return (t - 5 / 24) / (0.25 - 5 / 24);
+    return 0;
+  }
+
   function getHHMM() {
     const totalMinutes = Math.floor(t * HOURS_PER_DAY * 60);
     const h = Math.floor(totalMinutes / 60);
@@ -254,6 +263,7 @@ export function createTimeOfDay(opts) {
     offsetHours,
     setOvercast,
     getHHMM,
+    getSunLightPercent,
     getT: () => t,
   };
 }

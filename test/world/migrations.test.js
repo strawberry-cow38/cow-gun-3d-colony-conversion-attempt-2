@@ -164,6 +164,34 @@ describe('migration runner', () => {
     expect(out.torches).toEqual([]);
   });
 
+  it('upgrades a v10 save by adding decon/progress defaults to walls/doors/torches', () => {
+    const v10 = {
+      version: 10,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [{ i: 0, j: 0 }],
+      doors: [{ i: 0, j: 0 }],
+      torches: [{ i: 0, j: 0 }],
+    };
+    const out = runMigrations(v10);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.walls[0]).toMatchObject({ i: 0, j: 0, decon: false, progress: 0 });
+    expect(out.doors[0]).toMatchObject({ i: 0, j: 0, decon: false, progress: 0 });
+    expect(out.torches[0]).toMatchObject({ i: 0, j: 0, decon: false, progress: 0 });
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

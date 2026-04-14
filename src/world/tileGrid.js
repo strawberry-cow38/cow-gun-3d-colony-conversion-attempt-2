@@ -18,6 +18,9 @@
  *              decorative, non-blocking, and walkable. Stored as a bitmap so
  *              designators can reject double-placement without scanning
  *              entities. Serialized.
+ * - light:     uint8; 0..255 mapping to 0..100% tile illumination. Derived
+ *              from sun% and torches by the lighting system — NOT serialized.
+ *              Cows move at half speed on tiles with light below 40%.
  */
 
 export const BIOME = Object.freeze({
@@ -42,6 +45,7 @@ export class TileGrid {
     this.wall = new Uint8Array(W * H);
     this.door = new Uint8Array(W * H);
     this.torch = new Uint8Array(W * H);
+    this.light = new Uint8Array(W * H);
   }
 
   /** @param {number} i @param {number} j */
@@ -98,6 +102,16 @@ export class TileGrid {
   /** @param {number} i @param {number} j @param {number} v */
   setTorch(i, j, v) {
     this.torch[this.idx(i, j)] = v ? 1 : 0;
+  }
+
+  /** @param {number} i @param {number} j */
+  getLight(i, j) {
+    return this.light[this.idx(i, j)];
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setLight(i, j, v) {
+    this.light[this.idx(i, j)] = v;
   }
 
   /**

@@ -33,15 +33,14 @@
  *              dropped on the tile by haulers; when `delivered >= required` a
  *              `build` job opens on the board and a cow comes to erect it.
  *              `progress` 0..1 drives the in-progress visual.
- * Wall         {} — tag for finished wall entities. The tile's wall bit in
- *              TileGrid is the source of truth for walkability; this entity
- *              just owns the instance slot for rendering + save/load.
- * Door         {} — tag for finished door entities. Doors are WALKABLE (no
- *              wall bit), so pathing routes cows through them freely. The
- *              tile's door bit just prevents double-designate.
- * Torch        {} — tag for finished torch entities. Torches are decorative
- *              and non-blocking; the tile's torch bit just prevents double-
- *              designate.
+ * Wall / Door / Torch
+ *              { deconstructJobId, progress }
+ *              Tag-ish components for finished structures. The tile's wall/
+ *              door/torch bit in TileGrid is the source of truth for pathing;
+ *              these entities own the instance slot for rendering + save/load.
+ *              `deconstructJobId` > 0 = player marked it for demolition (a
+ *              board job exists); `progress` 0..1 drives visual feedback
+ *              while a cow is demolishing.
  */
 
 /**
@@ -90,10 +89,10 @@ export function registerComponents(world) {
     progress: 0,
   }));
   world.defineComponent('BuildSiteViz', () => ({}));
-  world.defineComponent('Wall', () => ({}));
+  world.defineComponent('Wall', () => ({ deconstructJobId: 0, progress: 0 }));
   world.defineComponent('WallViz', () => ({}));
-  world.defineComponent('Door', () => ({}));
+  world.defineComponent('Door', () => ({ deconstructJobId: 0, progress: 0 }));
   world.defineComponent('DoorViz', () => ({}));
-  world.defineComponent('Torch', () => ({}));
+  world.defineComponent('Torch', () => ({ deconstructJobId: 0, progress: 0 }));
   world.defineComponent('TorchViz', () => ({}));
 }

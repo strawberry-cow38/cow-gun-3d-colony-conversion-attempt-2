@@ -1,9 +1,9 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v10):
+ * Format (v11):
  * {
- *   version: 10,
+ *   version: 11,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
@@ -13,9 +13,9 @@
  *   trees: [ { i, j, marked: boolean, progress: number } ],
  *   items: [ { i, j, kind: string, count: number, capacity: number } ],
  *   buildSites: [ { i, j, kind, requiredKind, required, delivered, progress } ],
- *   walls: [ { i, j } ],
- *   doors: [ { i, j } ],
- *   torches: [ { i, j } ]
+ *   walls: [ { i, j, decon: boolean, progress: number } ],
+ *   doors: [ { i, j, decon: boolean, progress: number } ],
+ *   torches: [ { i, j, decon: boolean, progress: number } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -71,18 +71,24 @@ import { TileGrid } from './tileGrid.js';
  * @typedef SerializedWall
  * @property {number} i
  * @property {number} j
+ * @property {boolean} decon  player marked it for demolition
+ * @property {number} progress  0..1 demolition progress at save time
  */
 
 /**
  * @typedef SerializedDoor
  * @property {number} i
  * @property {number} j
+ * @property {boolean} decon
+ * @property {number} progress
  */
 
 /**
  * @typedef SerializedTorch
  * @property {number} i
  * @property {number} j
+ * @property {boolean} decon
+ * @property {number} progress
  */
 
 /**
@@ -155,17 +161,32 @@ export function serializeState(tileGrid, world) {
   /** @type {SerializedWall[]} */
   const walls = [];
   for (const { components } of world.query(['Wall', 'TileAnchor'])) {
-    walls.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
+    walls.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      decon: components.Wall.deconstructJobId > 0,
+      progress: components.Wall.progress ?? 0,
+    });
   }
   /** @type {SerializedDoor[]} */
   const doors = [];
   for (const { components } of world.query(['Door', 'TileAnchor'])) {
-    doors.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
+    doors.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      decon: components.Door.deconstructJobId > 0,
+      progress: components.Door.progress ?? 0,
+    });
   }
   /** @type {SerializedTorch[]} */
   const torches = [];
   for (const { components } of world.query(['Torch', 'TileAnchor'])) {
-    torches.push({ i: components.TileAnchor.i, j: components.TileAnchor.j });
+    torches.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      decon: components.Torch.deconstructJobId > 0,
+      progress: components.Torch.progress ?? 0,
+    });
   }
   return {
     version: CURRENT_VERSION,
@@ -317,73 +338,67 @@ export function hydrateBuildSites(world, grid, state) {
 }
 
 /**
- * Spawn Wall entities from a (migrated) save state. The grid's wall bitmap is
- * authoritative for pathing (it's set directly from state.tileGrid.wall in
- * hydrateTileGrid); Wall entities just own the instance slot for rendering
- * and round-tripping.
+ * Spawn structure (Wall/Door/Torch) entities from a (migrated) save state. The
+ * grid's wall/door/torch bitmaps are authoritative for pathing (set directly
+ * from the tileGrid section in hydrateTileGrid); these entities just own the
+ * instance slot for rendering + round-tripping. If a structure was marked for
+ * deconstruction at save time, re-post the 'deconstruct' job through `board`
+ * so cows resume the demolition.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {Array<{i: number, j: number, decon?: boolean, progress?: number}>} items
+ * @param {'wall'|'door'|'torch'} kind
+ */
+function hydrateStructures(world, grid, board, items, kind) {
+  const compName = kind === 'wall' ? 'Wall' : kind === 'door' ? 'Door' : 'Torch';
+  const vizName = `${compName}Viz`;
+  for (const s of items) {
+    if (!grid.inBounds(s.i, s.j)) continue;
+    const w = tileToWorld(s.i, s.j, grid.W, grid.H);
+    const id = world.spawn({
+      [compName]: { deconstructJobId: 0, progress: s.progress ?? 0 },
+      [vizName]: {},
+      TileAnchor: { i: s.i, j: s.j },
+      Position: { x: w.x, y: grid.getElevation(s.i, s.j), z: w.z },
+    });
+    if (s.decon) {
+      const job = board.post('deconstruct', { entityId: id, kind, i: s.i, j: s.j });
+      const tag = world.get(id, compName);
+      if (tag) tag.deconstructJobId = job.id;
+    }
+  }
+}
+
+/**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
  * @param {{ walls?: SerializedWall[] }} state
  */
-export function hydrateWalls(world, grid, state) {
-  const walls = state.walls ?? [];
-  for (const wdata of walls) {
-    if (!grid.inBounds(wdata.i, wdata.j)) continue;
-    const w = tileToWorld(wdata.i, wdata.j, grid.W, grid.H);
-    world.spawn({
-      Wall: {},
-      WallViz: {},
-      TileAnchor: { i: wdata.i, j: wdata.j },
-      Position: { x: w.x, y: grid.getElevation(wdata.i, wdata.j), z: w.z },
-    });
-  }
+export function hydrateWalls(world, grid, board, state) {
+  hydrateStructures(world, grid, board, state.walls ?? [], 'wall');
 }
 
 /**
- * Spawn Door entities from a (migrated) save state. Like walls, the grid's
- * `door` bitmap is set from hydrateTileGrid; Door entities just own the
- * instance slot for rendering + round-tripping.
- *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
  * @param {{ doors?: SerializedDoor[] }} state
  */
-export function hydrateDoors(world, grid, state) {
-  const doors = state.doors ?? [];
-  for (const d of doors) {
-    if (!grid.inBounds(d.i, d.j)) continue;
-    const w = tileToWorld(d.i, d.j, grid.W, grid.H);
-    world.spawn({
-      Door: {},
-      DoorViz: {},
-      TileAnchor: { i: d.i, j: d.j },
-      Position: { x: w.x, y: grid.getElevation(d.i, d.j), z: w.z },
-    });
-  }
+export function hydrateDoors(world, grid, board, state) {
+  hydrateStructures(world, grid, board, state.doors ?? [], 'door');
 }
 
 /**
- * Spawn Torch entities from a (migrated) save state. Like walls/doors, the
- * grid's `torch` bitmap is set from hydrateTileGrid; Torch entities just own
- * the instance slot for rendering + round-tripping.
- *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
  * @param {{ torches?: SerializedTorch[] }} state
  */
-export function hydrateTorches(world, grid, state) {
-  const torches = state.torches ?? [];
-  for (const t of torches) {
-    if (!grid.inBounds(t.i, t.j)) continue;
-    const w = tileToWorld(t.i, t.j, grid.W, grid.H);
-    world.spawn({
-      Torch: {},
-      TorchViz: {},
-      TileAnchor: { i: t.i, j: t.j },
-      Position: { x: w.x, y: grid.getElevation(t.i, t.j), z: w.z },
-    });
-  }
+export function hydrateTorches(world, grid, board, state) {
+  hydrateStructures(world, grid, board, state.torches ?? [], 'torch');
 }
 
 /**

@@ -30,6 +30,7 @@ import { createCowNameTags } from './render/cowNameTags.js';
 import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
+import { DeconstructDesignator } from './render/deconstructDesignator.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
@@ -58,6 +59,7 @@ import {
   makeCowWallCollisionSystem,
   makeHungerSystem,
 } from './systems/cow.js';
+import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { spawnInitialTrees } from './systems/trees.js';
 import { TILE_SIZE } from './world/coords.js';
@@ -135,6 +137,11 @@ const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({ sun, hemi, sky });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
+const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
+scheduler.add(lightingSystem);
+// Seed the tile light grid so tick 0 already sees valid values — the cow
+// follow-path system reads it to apply the darkness slowdown.
+lightingSystem.run(world, { tick: 0, dt: 0, dirty: scheduler.dirty });
 const rts = new RtsCamera(camera, canvas);
 // Keep the orbit focus pinned to the playable grid — beyond these the camera
 // just stares at empty void, and follow/dbl-click-focus could otherwise push
@@ -391,6 +398,23 @@ const torchDesignator = new BuildDesignator(
 );
 designators.push(torchDesignator);
 
+const deconstructDesignator = new DeconstructDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  [wallInstancer],
+  scene,
+  () => {
+    deactivateOthers(deconstructDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(deconstructDesignator);
+
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());
 getDrivingCowId = () => fpCamera.drivingCowId;
 const cowCamOverlay = createCowCamOverlay();
@@ -402,6 +426,7 @@ const buildTab = createBuildTab({
   wallDesignator,
   doorDesignator,
   torchDesignator,
+  deconstructDesignator,
 });
 
 const cowPortraitBar = createCowPortraitBar({
@@ -478,7 +503,7 @@ const loop = new SimLoop({
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     wallInstancer.update(world, tileGrid);
     doorInstancer.update(world, tileGrid);
-    torchInstancer.update(world, tileGrid, tSec);
+    torchInstancer.update(world, tileGrid, tSec, camera);
     buildSiteInstancer.update(world, tileGrid);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
