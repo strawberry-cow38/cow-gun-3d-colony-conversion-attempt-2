@@ -16,6 +16,7 @@
  * motion reads as a real action instead of a teleport.
  */
 
+import { defaultWalkable } from '../sim/pathfinding.js';
 import { roofIsSupported } from '../systems/autoRoof.js';
 import { maxStack } from '../world/items.js';
 
@@ -160,6 +161,7 @@ export function snapshotStockpileStacks(world, grid) {
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     if (!grid.isStockpile(a.i, a.j)) continue;
+    if (components.Item.forbidden) continue;
     out.push({
       itemId: id,
       i: a.i,
@@ -250,6 +252,7 @@ export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
     const item = components.Item;
     if (item.kind !== kind) continue;
+    if (item.forbidden) continue;
     const avail = item.count - (claimed.get(id) ?? 0);
     if (avail <= 0) continue;
     const a = components.TileAnchor;
@@ -265,6 +268,39 @@ export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
     }
   }
   return bestLoose ?? bestStock;
+}
+
+/**
+ * Find the nearest walkable tile to (i, j) that is not itself a blueprint
+ * tile and not already reserved by an in-flight relocation. Used to pick a
+ * drop spot for forbidden stacks blocking a wall blueprint.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {Set<number>} blueprintTiles    tile indices to avoid
+ * @param {Set<number>} reservedDropTiles tile indices already dispatched this tick
+ * @param {number} i @param {number} j
+ */
+function findRelocationTile(grid, blueprintTiles, reservedDropTiles, i, j) {
+  // Ring search outward from (i, j); stop at the first acceptable tile. Max
+  // radius = grid diameter so we always find something on any non-degenerate
+  // map.
+  const maxR = Math.max(grid.W, grid.H);
+  for (let r = 1; r <= maxR; r++) {
+    for (let dj = -r; dj <= r; dj++) {
+      for (let di = -r; di <= r; di++) {
+        if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+        const ni = i + di;
+        const nj = j + dj;
+        if (!grid.inBounds(ni, nj)) continue;
+        if (!defaultWalkable(grid, ni, nj)) continue;
+        const idx = grid.idx(ni, nj);
+        if (blueprintTiles.has(idx)) continue;
+        if (reservedDropTiles.has(idx)) continue;
+        return { i: ni, j: nj };
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -291,11 +327,20 @@ export function makeHaulPostingSystem(board, grid) {
       const targetedCounts = buildHaulTargetedCounts(world, board);
       const siteInFlight = buildSiteInFlight(board, grid);
 
+      /** Tiles hosting any pending BuildSite — reused by the blueprint-clear pass. */
+      /** @type {Set<number>} */
+      const blueprintTiles = new Set();
+      /** Wall-blueprint tile coords — only walls block pathing post-build and thus need clearing. */
+      /** @type {{ i: number, j: number }[]} */
+      const wallBlueprintTiles = [];
+
       // Pass 0a: BuildSites short on materials. Post one haul-to-site per
       // deficit unit, picking the nearest available stack of requiredKind.
       for (const { id: siteId, components } of world.query(['BuildSite', 'TileAnchor'])) {
         const site = components.BuildSite;
         const a = components.TileAnchor;
+        blueprintTiles.add(grid.idx(a.i, a.j));
+        if (site.kind === 'wall') wallBlueprintTiles.push({ i: a.i, j: a.j });
         // Door-over-wall: don't haul resources onto the tile until the wall's
         // gone. Otherwise the item would land on a blocked tile the haulers
         // can't pathfind back to.
@@ -342,10 +387,18 @@ export function makeHaulPostingSystem(board, grid) {
         }
       }
 
-      // Pass 1: loose items off stockpile → stockpile tiles.
+      // Pass 1: loose items off stockpile → stockpile tiles. While iterating
+      // we also index forbidden stacks by tile so the blueprint-clear pass
+      // below is an O(1) lookup per wall site instead of another full scan.
+      /** @type {Map<number, { id: number, kind: string, count: number }>} */
+      const forbiddenByTile = new Map();
       for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
         const a = components.TileAnchor;
         const item = components.Item;
+        if (item.forbidden) {
+          forbiddenByTile.set(grid.idx(a.i, a.j), { id, kind: item.kind, count: item.count });
+          continue;
+        }
         if (grid.isStockpile(a.i, a.j)) continue;
         const alreadyClaimed = targetedCounts.get(id) ?? 0;
         let need = item.count - alreadyClaimed;
@@ -361,6 +414,34 @@ export function makeHaulPostingSystem(board, grid) {
             toJ: target.j,
           });
           targetedCounts.set(id, (targetedCounts.get(id) ?? 0) + 1);
+          need--;
+        }
+      }
+
+      // Pass 1b: blueprint-clear. Walls bake into unwalkable tiles once
+      // built, so any forbidden stack on a wall blueprint would be sealed
+      // in. Other blueprint kinds (door/roof/floor/torch) stay walkable.
+      /** @type {Set<number>} */
+      const reservedDropTiles = new Set();
+      for (const { i, j } of wallBlueprintTiles) {
+        const blocker = forbiddenByTile.get(grid.idx(i, j));
+        if (!blocker) continue;
+        const alreadyClaimed = targetedCounts.get(blocker.id) ?? 0;
+        let need = blocker.count - alreadyClaimed;
+        while (need > 0) {
+          const drop = findRelocationTile(grid, blueprintTiles, reservedDropTiles, i, j);
+          if (!drop) break;
+          board.post('haul', {
+            itemId: blocker.id,
+            kind: blocker.kind,
+            fromI: i,
+            fromJ: j,
+            toI: drop.i,
+            toJ: drop.j,
+            toRelocation: true,
+          });
+          targetedCounts.set(blocker.id, (targetedCounts.get(blocker.id) ?? 0) + 1);
+          reservedDropTiles.add(grid.idx(drop.i, drop.j));
           need--;
         }
       }

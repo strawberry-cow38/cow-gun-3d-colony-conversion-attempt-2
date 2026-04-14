@@ -48,6 +48,36 @@ export function allCowIds(world) {
 }
 
 /**
+ * Flip `forbidden` across every stack in `ids`. If any stack isn't yet
+ * forbidden, forbid them all; otherwise allow them all. Returns the new
+ * boolean state so the caller can drive UI/audio off it.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {Iterable<number>} ids
+ * @returns {boolean | null}  new state, or null if the selection was empty
+ */
+export function toggleForbiddenOnStacks(world, ids) {
+  let anyUnforbidden = false;
+  let any = false;
+  for (const id of ids) {
+    const item = world.get(id, 'Item');
+    if (!item) continue;
+    any = true;
+    if (item.forbidden !== true) {
+      anyUnforbidden = true;
+      break;
+    }
+  }
+  if (!any) return null;
+  const target = anyUnforbidden;
+  for (const id of ids) {
+    const item = world.get(id, 'Item');
+    if (item) item.forbidden = target;
+  }
+  return target;
+}
+
+/**
  * @param {import('../ecs/world.js').World} world
  * @param {string} comp
  */

@@ -26,8 +26,9 @@ import { v12_to_v13 } from './v12_to_v13.js';
 import { v13_to_v14 } from './v13_to_v14.js';
 import { v14_to_v15 } from './v14_to_v15.js';
 import { v15_to_v16 } from './v15_to_v16.js';
+import { v16_to_v17 } from './v16_to_v17.js';
 
-export const CURRENT_VERSION = 16;
+export const CURRENT_VERSION = 17;
 
 /**
  * @typedef Migration
@@ -54,6 +55,7 @@ export const migrations = [
   v13_to_v14,
   v14_to_v15,
   v15_to_v16,
+  v16_to_v17,
 ];
 
 /**

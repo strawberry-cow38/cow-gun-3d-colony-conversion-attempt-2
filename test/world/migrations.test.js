@@ -351,6 +351,46 @@ describe('migration runner', () => {
     expect(out.crops).toEqual([{ i: 1, j: 0, kind: 'corn', growthTicks: 42 }]);
   });
 
+  it('adds forbidden: false to every v16 item through the v16→v17 bump', () => {
+    const v16 = {
+      version: 16,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+        roof: [0],
+        ignoreRoof: [0],
+        floor: [0],
+        farmZone: [0],
+        tilled: [0],
+      },
+      cows: [],
+      trees: [],
+      items: [
+        { i: 0, j: 0, kind: 'wood', count: 5, capacity: 50 },
+        { i: 0, j: 0, kind: 'food', count: 2, capacity: 20 },
+      ],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+      crops: [],
+    };
+    const out = runMigrations(v16);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.items).toEqual([
+      { i: 0, j: 0, kind: 'wood', count: 5, capacity: 50, forbidden: false },
+      { i: 0, j: 0, kind: 'food', count: 2, capacity: 20, forbidden: false },
+    ]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

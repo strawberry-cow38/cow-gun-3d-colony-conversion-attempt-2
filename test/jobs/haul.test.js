@@ -11,10 +11,27 @@ function makeWorld() {
   return w;
 }
 
-function spawnItem(world, i, j, kind, count, capacity) {
+function spawnItem(world, i, j, kind, count, capacity, forbidden = false) {
   return world.spawn({
-    Item: { kind, count, capacity },
+    Item: { kind, count, capacity, forbidden },
     ItemViz: {},
+    TileAnchor: { i, j },
+    Position: { x: 0, y: 0, z: 0 },
+  });
+}
+
+function spawnWallSite(world, i, j) {
+  return world.spawn({
+    BuildSite: {
+      kind: 'wall',
+      stuff: 'wood',
+      requiredKind: 'wood',
+      required: 1,
+      delivered: 1,
+      buildJobId: 0,
+      progress: 0,
+    },
+    BuildSiteViz: {},
     TileAnchor: { i, j },
     Position: { x: 0, y: 0, z: 0 },
   });
@@ -79,6 +96,41 @@ describe('haul poster: stack consolidation', () => {
     // Lower itemId merges into higher: src should be `a`, dest `b` tile.
     expect(fromIds.has(a)).toBe(true);
     expect(fromIds.has(b)).toBe(false);
+  });
+
+  it('posts blueprint-clear hauls for forbidden stacks blocking wall sites', () => {
+    const grid = new TileGrid(4, 4);
+    const world = makeWorld();
+    const blocker = spawnItem(world, 1, 1, 'wood', 2, 50, true);
+    spawnWallSite(world, 1, 1);
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    const hauls = board.jobs.filter((j) => j.kind === 'haul' && j.payload.itemId === blocker);
+    expect(hauls.length).toBe(2);
+    for (const h of hauls) {
+      expect(h.payload.toRelocation).toBe(true);
+      expect(h.payload.fromI).toBe(1);
+      expect(h.payload.fromJ).toBe(1);
+      // relocation target must differ from the wall tile itself
+      expect(h.payload.toI === 1 && h.payload.toJ === 1).toBe(false);
+    }
+    // and drop tiles shouldn't collide with each other within one pass
+    const dropKeys = new Set(hauls.map((h) => `${h.payload.toI},${h.payload.toJ}`));
+    expect(dropKeys.size).toBe(hauls.length);
+  });
+
+  it('leaves forbidden stacks alone when no wall blueprint blocks them', () => {
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(3, 3, 1);
+    const world = makeWorld();
+    spawnItem(world, 1, 1, 'wood', 5, 50, true);
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    expect(board.jobs).toHaveLength(0);
   });
 
   it('does not merge across different kinds', () => {

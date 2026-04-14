@@ -263,6 +263,7 @@ export function makeCowBrainSystem(deps) {
                   toI: candidate.payload.toI,
                   toJ: candidate.payload.toJ,
                   toBuildSite: candidate.payload.toBuildSite === true,
+                  toRelocation: candidate.payload.toRelocation === true,
                 };
                 path.steps = [];
                 path.index = 0;
@@ -1122,17 +1123,20 @@ function tileHasCrop(world, i, j) {
  * @param {BrainDeps} deps
  */
 function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
-  const { jobId, itemId, toI, toJ, toBuildSite } =
-    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number, toBuildSite?: boolean }} */ (
+  const { jobId, itemId, toI, toJ, toBuildSite, toRelocation } =
+    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean }} */ (
       job.payload
     );
 
   // Target tile stopped being a valid drop (stockpile undesignated, or
   // BuildSite cancelled/already built) → complete + bail. Delivery to a
   // BuildSite uses the site's existence at that tile, not the stockpile bit.
+  // Blueprint-clear relocations have no persistent marker on the tile; if
+  // the cow can't get there at drop time the state machine falls back to
+  // dropping in place, which is fine.
   const targetGone = toBuildSite
     ? findBuildSiteAt(world, toI, toJ) === null
-    : !grid.isStockpile(toI, toJ);
+    : !toRelocation && !grid.isStockpile(toI, toJ);
   if (targetGone) {
     if (inv.itemKind !== null) {
       dropCarriedItem(world, grid, inv, pos);
@@ -1390,6 +1394,7 @@ function findNearestFood(world, near) {
   let bestD = Number.POSITIVE_INFINITY;
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
     if (components.Item.kind !== 'food' || components.Item.count <= 0) continue;
+    if (components.Item.forbidden) continue;
     const a = components.TileAnchor;
     const d = Math.max(Math.abs(a.i - near.i), Math.abs(a.j - near.j));
     if (d < bestD) {
@@ -1403,7 +1408,8 @@ function findNearestFood(world, near) {
 /** @param {import('../ecs/world.js').World} world */
 function hasAnyFood(world) {
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
-    if (components.Item.kind === 'food' && components.Item.count > 0) return true;
+    const it = components.Item;
+    if (it.kind === 'food' && it.count > 0 && !it.forbidden) return true;
   }
   return false;
 }

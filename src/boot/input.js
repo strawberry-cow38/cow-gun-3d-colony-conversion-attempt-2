@@ -13,6 +13,7 @@ import { dispatch } from './hotkeys.js';
  * @property {boolean} followEnabled
  * @property {number|null} primaryCow
  * @property {Set<number>} selectedCows
+ * @property {Set<number>} selectedItems
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Mesh} tileMesh
  * @property {number} [pausedSpeed]  last non-zero speed, restored when space unpauses
@@ -27,6 +28,7 @@ import { dispatch } from './hotkeys.js';
  * @property {any} fpCamera
  * @property {any} rts
  * @property {any} itemInstancer
+ * @property {{ markDirty: () => void }} itemSelectionViz
  * @property {any} treeInstancer
  * @property {any} stockpileOverlay
  * @property {{ markDirty: () => void }} farmZoneOverlay

@@ -14,6 +14,22 @@ export const MAX_STACK = {
   food: 20,
 };
 
+/** @type {Record<string, { label: string, description: string }>} */
+export const ITEM_INFO = {
+  wood: {
+    label: 'Wood',
+    description: 'Chopped from trees. Builds walls, doors, roofs, and floors.',
+  },
+  stone: {
+    label: 'Stone',
+    description: 'Heavy raw material for sturdier builds.',
+  },
+  food: {
+    label: 'Food',
+    description: 'Harvested crops. Cows eat one unit to restore hunger.',
+  },
+};
+
 /** Hunger restored per unit of food consumed (0..1 scale). */
 export const FOOD_NUTRITION = 0.35;
 
@@ -55,7 +71,7 @@ export function addItemToTile(world, grid, kind, i, j) {
   }
   const w = tileToWorld(i, j, grid.W, grid.H);
   world.spawn({
-    Item: { kind, count: 1, capacity: cap },
+    Item: { kind, count: 1, capacity: cap, forbidden: false },
     ItemViz: {},
     TileAnchor: { i, j },
     Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },

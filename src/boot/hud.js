@@ -98,6 +98,9 @@ export function createHud(ctx) {
           ? /** @type {number} */ (state.selectedCows.values().next().value)
           : null;
     }
+    for (const id of state.selectedItems) {
+      if (!world.get(id, 'Item')) state.selectedItems.delete(id);
+    }
   }
 
   function updateHud() {
@@ -199,7 +202,7 @@ export function createHud(ctx) {
       'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
       'build tab (bottom-left) = chop / stockpile / wall / door / torch / wall-torch / roof / no-roof  (Esc to exit)',
       'V = toggle roof visibility (peek into rooms)',
-      'F = toggle follow (tracks selected cow; Q/E cycle, WASD releases),  H = first-person',
+      'F = forbid/allow selected stacks (else toggle follow; tracks selected cow, Q/E cycle, WASD releases),  H = first-person',
       'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
       'P = toggle debug menu  (also disables the debug-only keys below)',
       'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',

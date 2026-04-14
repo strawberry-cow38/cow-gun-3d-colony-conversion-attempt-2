@@ -47,6 +47,9 @@ import { IgnoreRoofDesignator } from './render/ignoreRoofDesignator.js';
 import { createIgnoreRoofOverlay } from './render/ignoreRoofOverlay.js';
 import { createItemInstancer } from './render/itemInstancer.js';
 import { createItemLabels } from './render/itemLabels.js';
+import { createItemSelectionViz } from './render/itemSelectionViz.js';
+import { ItemSelector } from './render/itemSelector.js';
+import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { createPickTileOverlay } from './render/pickTileOverlay.js';
 import { TilePicker } from './render/picker.js';
@@ -201,6 +204,7 @@ const cowInstancer = createCowInstancer(scene, 256);
 const cowNameTags = createCowNameTags(scene);
 const cowThoughtBubbles = createCowThoughtBubbles(scene);
 const selectionViz = createSelectionViz(scene);
+const itemSelectionViz = createItemSelectionViz(scene);
 const treeInstancer = createTreeInstancer(scene, 2048);
 const wallInstancer = createWallInstancer(scene, 2048);
 const doorInstancer = createDoorInstancer(scene, 512, audio);
@@ -283,6 +287,7 @@ onRoomsRebuilt = () => {
 };
 onWorldItemChange = () => {
   itemInstancer.markDirty();
+  itemSelectionViz.markDirty();
   buildSiteInstancer.markDirty();
 };
 
@@ -302,6 +307,7 @@ const state = {
   followEnabled: false,
   primaryCow: null,
   selectedCows: new Set(),
+  selectedItems: new Set(),
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
 };
@@ -361,12 +367,61 @@ const selectCow = (id, additive) => {
     state.selectedCows.clear();
     state.selectedCows.add(id);
     state.primaryCow = id;
+    state.selectedItems.clear();
     audio.play('click');
   }
+  itemSelectionViz.markDirty();
   updateHud();
 };
 
 new CowSelector(canvas, camera, cowInstancer, () => state.tileMesh, world, selectCow);
+
+/**
+ * Shared item-selection callback. Stacks + cows are mutually exclusive — a
+ * non-additive item click clears cows (and selectCow clears items). Keeps
+ * the HUD simple: one selection pane, one subject.
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectItem = (id, additive) => {
+  if (id === null) {
+    if (!additive) state.selectedItems.clear();
+  } else if (additive) {
+    if (state.selectedItems.has(id)) state.selectedItems.delete(id);
+    else state.selectedItems.add(id);
+    audio.play('click');
+  } else {
+    state.selectedCows.clear();
+    state.primaryCow = null;
+    state.selectedItems.clear();
+    state.selectedItems.add(id);
+    audio.play('click');
+  }
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
+/** @param {number[]} ids */
+const selectItemsMany = (ids) => {
+  state.selectedCows.clear();
+  state.primaryCow = null;
+  state.selectedItems.clear();
+  for (const id of ids) state.selectedItems.add(id);
+  if (ids.length > 0) audio.play('command');
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
+new ItemSelector(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  { W: gridW, H: gridH },
+  world,
+  selectItem,
+  selectItemsMany,
+);
 
 new TilePicker(
   canvas,
@@ -681,6 +736,16 @@ const buildTab = createBuildTab({
   cancelDesignator,
 });
 
+const itemStackPanel = createItemStackPanel({
+  world,
+  state,
+  onChange: () => {
+    itemInstancer.markDirty();
+    itemSelectionViz.markDirty();
+    updateHud();
+  },
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -783,8 +848,10 @@ const loop = new SimLoop({
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
     cowPortraitBar.update();
+    itemStackPanel.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
+    itemSelectionViz.update(world, tileGrid, state.selectedItems);
     clockEl.textContent = `${timeOfDay.getHHMM()} ${speedIcon(loop.speed)}`;
     // Anchor the sky sphere to the camera so no amount of zoom-out or pan
     // can put the camera outside the sky — the purple scene.background stays
@@ -837,6 +904,7 @@ installKeyboard({
   fpCamera,
   rts,
   itemInstancer,
+  itemSelectionViz,
   treeInstancer,
   stockpileOverlay,
   farmZoneOverlay,

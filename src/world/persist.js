@@ -11,7 +11,7 @@
  *     inventory: { itemKind: string | null }
  *   } ],
  *   trees: [ { i, j, marked: boolean, progress: number } ],
- *   items: [ { i, j, kind: string, count: number, capacity: number } ],
+ *   items: [ { i, j, kind: string, count: number, capacity: number, forbidden: boolean } ],
  *   buildSites: [ { i, j, kind, stuff, requiredKind, required, delivered, progress } ],
  *   walls: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   doors: [ { i, j, stuff, decon: boolean, progress: number } ],
@@ -57,6 +57,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {string} kind
  * @property {number} count
  * @property {number} capacity
+ * @property {boolean} forbidden
  */
 
 /**
@@ -177,6 +178,7 @@ export function serializeState(tileGrid, world) {
       kind: components.Item.kind,
       count: components.Item.count,
       capacity: components.Item.capacity,
+      forbidden: components.Item.forbidden === true,
     });
   }
   /** @type {SerializedBuildSite[]} */
@@ -381,7 +383,12 @@ export function hydrateItems(world, grid, state) {
     if (it.count <= 0) continue;
     const w = tileToWorld(it.i, it.j, grid.W, grid.H);
     world.spawn({
-      Item: { kind: it.kind, count: it.count, capacity: it.capacity },
+      Item: {
+        kind: it.kind,
+        count: it.count,
+        capacity: it.capacity,
+        forbidden: it.forbidden === true,
+      },
       ItemViz: {},
       TileAnchor: { i: it.i, j: it.j },
       Position: { x: w.x, y: grid.getElevation(it.i, it.j), z: w.z },

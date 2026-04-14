@@ -34,7 +34,13 @@ import {
 } from '../world/persist.js';
 import { toggleDraft } from './drafting.js';
 import { spawnCowAt } from './spawn.js';
-import { allCowIds, base64ToBytes, bytesToBase64, despawnAllComp } from './utils.js';
+import {
+  allCowIds,
+  base64ToBytes,
+  bytesToBase64,
+  despawnAllComp,
+  toggleForbiddenOnStacks,
+} from './utils.js';
 
 /** @typedef {import('./input.js').InputCtx} InputCtx */
 
@@ -122,6 +128,19 @@ export const HOTKEYS = [
     run: (ctx, e) => {
       ctx.fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
       ctx.audio.play('cycle');
+    },
+  },
+  // F while stacks are selected — toggle forbidden on the whole selection.
+  // Must match before the follow-F below so the context wins.
+  {
+    match: (e, ctx) => e.code === 'KeyF' && ctx.state.selectedItems.size > 0,
+    run: (ctx) => {
+      const target = toggleForbiddenOnStacks(ctx.world, ctx.state.selectedItems);
+      if (target === null) return;
+      ctx.itemInstancer.markDirty();
+      ctx.itemSelectionViz.markDirty();
+      ctx.audio.play(target ? 'toggle_off' : 'toggle_on');
+      ctx.updateHud();
     },
   },
   // F — toggle camera follow. Auto-selects the first cow if nothing's
