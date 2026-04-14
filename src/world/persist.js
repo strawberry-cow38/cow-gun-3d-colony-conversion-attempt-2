@@ -1,16 +1,16 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v16):
+ * Format (v18):
  * {
- *   version: 16,
+ *   version: 18,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
  *     inventory: { itemKind: string | null }
  *   } ],
- *   trees: [ { i, j, marked: boolean, progress: number } ],
+ *   trees: [ { i, j, marked: boolean, progress: number, kind: string, growth: number } ],
  *   items: [ { i, j, kind: string, count: number, capacity: number, forbidden: boolean } ],
  *   buildSites: [ { i, j, kind, stuff, requiredKind, required, delivered, progress } ],
  *   walls: [ { i, j, stuff, decon: boolean, progress: number } ],
@@ -48,6 +48,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} j
  * @property {boolean} marked
  * @property {number} progress  0..1 chop progress at save time
+ * @property {string} kind      species: birch/pine/oak/maple
+ * @property {number} growth    0..1 sapling→mature progress
  */
 
 /**
@@ -167,6 +169,8 @@ export function serializeState(tileGrid, world) {
       j: components.TileAnchor.j,
       marked: components.Tree.markedJobId > 0,
       progress: components.Tree.progress,
+      kind: components.Tree.kind,
+      growth: components.Tree.growth,
     });
   }
   /** @type {SerializedItem[]} */
@@ -356,7 +360,7 @@ export function hydrateTrees(world, grid, board, state) {
     grid.blockTile(t.i, t.j);
     const w = tileToWorld(t.i, t.j, grid.W, grid.H);
     const id = world.spawn({
-      Tree: { markedJobId: 0, progress: t.progress ?? 0 },
+      Tree: { markedJobId: 0, progress: t.progress, kind: t.kind, growth: t.growth },
       TreeViz: {},
       TileAnchor: { i: t.i, j: t.j },
       Position: { x: w.x, y: grid.getElevation(t.i, t.j), z: w.z },

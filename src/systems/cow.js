@@ -25,6 +25,7 @@ import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropKindFor } from '../world/crops.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
+import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
 export const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
@@ -1474,11 +1475,11 @@ function dropCarriedItem(world, grid, inv, pos) {
  */
 function finishChop(world, grid, treeId, jobId, board) {
   const anchor = world.get(treeId, 'TileAnchor');
+  const tree = world.get(treeId, 'Tree');
   if (anchor) {
     grid.unblockTile(anchor.i, anchor.j);
-    // Trees drop 20 wood each — addItemToTile merges into an open stack if
-    // there is one, else spawns a second item when the first stack hits cap.
-    for (let k = 0; k < 20; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+    const yielded = tree ? woodYieldFor(tree.kind, tree.growth) : 0;
+    for (let k = 0; k < yielded; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   }
   world.despawn(treeId);
   board.complete(jobId);

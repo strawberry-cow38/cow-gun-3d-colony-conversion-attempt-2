@@ -391,6 +391,46 @@ describe('migration runner', () => {
     ]);
   });
 
+  it('defaults every v17 tree to oak at full growth through the v17→v18 bump', () => {
+    const v17 = {
+      version: 17,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+        roof: [0],
+        ignoreRoof: [0],
+        floor: [0],
+        farmZone: [0],
+        tilled: [0],
+      },
+      cows: [],
+      trees: [
+        { i: 0, j: 0, marked: false, progress: 0 },
+        { i: 1, j: 2, marked: true, progress: 0.4 },
+      ],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+      crops: [],
+    };
+    const out = runMigrations(v17);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.trees).toEqual([
+      { i: 0, j: 0, marked: false, progress: 0, kind: 'oak', growth: 1 },
+      { i: 1, j: 2, marked: true, progress: 0.4, kind: 'oak', growth: 1 },
+    ]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

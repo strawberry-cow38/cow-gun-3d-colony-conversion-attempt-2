@@ -84,7 +84,11 @@ import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { runRoofCollapse } from './systems/roofCollapse.js';
 import { createRooms, makeRoomsSystem } from './systems/rooms.js';
-import { spawnInitialTrees } from './systems/trees.js';
+import {
+  makeSaplingSpawnSystem,
+  makeTreeGrowthSystem,
+  spawnInitialTrees,
+} from './systems/trees.js';
 import { TILE_SIZE } from './world/coords.js';
 import { TileGrid } from './world/tileGrid.js';
 import { createTimeOfDay } from './world/timeOfDay.js';
@@ -184,6 +188,23 @@ scheduler.add(
     onStageChange: () => {
       // Forward-decl safe: cropInstancer exists by the time the first tick fires.
       cropInstancer.markDirty();
+    },
+  }),
+);
+scheduler.add(
+  makeTreeGrowthSystem({
+    // Forward-decl safe: treeInstancer exists by the time the first tick fires.
+    onGrowthChange: () => treeInstancer.markDirty(),
+  }),
+);
+scheduler.add(
+  makeSaplingSpawnSystem({
+    grid: tileGrid,
+    onSpawn: () => {
+      treeInstancer.markDirty();
+      // New tree tiles are `occupancy=1` — paths through the newly blocked
+      // tile need to be re-planned on the next wake.
+      pathCache.clear();
     },
   }),
 );

@@ -18,10 +18,17 @@
  * Job         { kind, state, payload } kind='none' = idle
  * Path        { steps, index }       current path; index >= steps.length = arrived
  *
- * Tree / TreeViz  { markedJobId, progress } — markedJobId>0 means player
- *                                   designated it for chop; progress 0..1 drives
- *                                   visual feedback. Kept on Tree itself since
- *                                   the archetype ECS can't add/remove components.
+ * Tree / TreeViz  { markedJobId, progress, kind, growth }
+ *                                   markedJobId>0 means player designated it for
+ *                                   chop; progress 0..1 drives chop visual
+ *                                   feedback. Kept on Tree itself since the
+ *                                   archetype ECS can't add/remove components.
+ *                                   `kind` selects the species (birch/pine/oak/
+ *                                   maple) and drives trunk+canopy colors and
+ *                                   per-instance scale. `growth` 0..1 advances
+ *                                   from sapling → mature via the treeGrowth
+ *                                   system and caps at 1. Wood yield at chop
+ *                                   scales with both (see trees.js).
  * TileAnchor   { i, j }              tile this world entity occupies
  * Item         { kind: string, count, capacity, forbidden } — a stack of N
  *                                   items on a tile; when count reaches 0 the
@@ -86,7 +93,12 @@ export function registerComponents(world) {
     index: 0,
   }));
   world.defineComponent('CowViz', () => ({}));
-  world.defineComponent('Tree', () => ({ markedJobId: 0, progress: 0 }));
+  world.defineComponent('Tree', () => ({
+    markedJobId: 0,
+    progress: 0,
+    kind: 'oak',
+    growth: 1,
+  }));
   world.defineComponent('TreeViz', () => ({}));
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
   world.defineComponent('Item', () => ({ kind: 'wood', count: 1, capacity: 50, forbidden: false }));

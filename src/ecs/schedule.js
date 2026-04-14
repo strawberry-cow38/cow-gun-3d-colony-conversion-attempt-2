@@ -12,7 +12,7 @@
  * same tick (CPU load smoothing).
  */
 
-const TIER_PERIODS = {
+export const TIER_PERIODS = {
   every: 1,
   rare: 8,
   long: 64,

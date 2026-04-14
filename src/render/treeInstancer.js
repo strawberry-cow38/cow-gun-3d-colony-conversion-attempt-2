@@ -3,17 +3,21 @@
  * chop-designation marker (handle + head of a floating axe icon) that only
  * render for trees with Tree.markedJobId > 0.
  *
- * Trunk + canopy are static — matrices rebuild only when the top-level
- * `dirty` flag is flipped by spawn/despawn. The axe marker bobs every frame,
- * so its matrices are rebuilt in `updateMarkers(world, grid, timeSec)` which
- * is cheap: there are only ever a handful of marked trees at once.
+ * Per-instance trunk+canopy color comes from TREE_VISUALS[kind]; per-instance
+ * scale combines kind-specific proportions with the tree's `growth` 0..1 (see
+ * growthScale in trees.js). Trunk + canopy matrices rebuild only when the
+ * top-level `dirty` flag is flipped — spawn, despawn, growth tick, or chop.
+ * The axe marker bobs every frame, so its matrices are rebuilt in
+ * `updateMarkers(world, grid, timeSec)` which is cheap: there are only ever
+ * a handful of marked trees at once.
  *
- * `pickFromInstanceId` maps a trunk/canopy raycast hit back to the tree
+ * `entityFromInstanceId` maps a trunk/canopy raycast hit back to the tree
  * entity behind that slot so the designator can mark it for chop.
  */
 
 import * as THREE from 'three';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { TREE_KINDS, TREE_VISUALS, growthScale } from '../world/trees.js';
 
 const TRUNK_HEIGHT = 2.2 * UNITS_PER_METER;
 const TRUNK_RADIUS = 0.18 * UNITS_PER_METER;
@@ -30,10 +34,31 @@ const MARKER_BOB_AMP = 0.15 * UNITS_PER_METER;
 const MARKER_BOB_FREQ_HZ = 1.4;
 const MARKER_SPIN_RATE = 1.1; // rad/sec
 
+// Pre-bake per-kind THREE.Color instances so setColorAt doesn't re-unpack a
+// hex int on every instance write. Oak doubles as the fallback for unknown
+// kinds (legacy saves default to oak too).
+/** @type {Map<string, { trunk: THREE.Color, canopy: THREE.Color, trunkScale: number[], canopyScale: number[] }>} */
+const TREE_DRAW = new Map();
+for (const kind of TREE_KINDS) {
+  const v = TREE_VISUALS[kind];
+  if (!v) continue;
+  TREE_DRAW.set(kind, {
+    trunk: new THREE.Color(v.trunkColor),
+    canopy: new THREE.Color(v.canopyColor),
+    trunkScale: v.trunkScale,
+    canopyScale: v.canopyScale,
+  });
+}
+const FALLBACK_DRAW = /** @type {NonNullable<ReturnType<typeof TREE_DRAW.get>>} */ (
+  TREE_DRAW.get('oak') ?? TREE_DRAW.get(TREE_KINDS[0])
+);
+
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
-const _scale = new THREE.Vector3(1, 1, 1);
+const _trunkScale = new THREE.Vector3(1, 1, 1);
+const _canopyScale = new THREE.Vector3(1, 1, 1);
+const _markerScale = new THREE.Vector3(1, 1, 1);
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
 /**
@@ -49,7 +74,7 @@ export function createTreeInstancer(scene, capacity = 2048) {
     1,
   );
   trunkGeo.translate(0, TRUNK_HEIGHT * 0.5, 0);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a3820, flatShading: true });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, capacity);
   trunkMesh.count = 0;
   trunkMesh.frustumCulled = false;
@@ -59,7 +84,7 @@ export function createTreeInstancer(scene, capacity = 2048) {
 
   const canopyGeo = new THREE.ConeGeometry(CANOPY_RADIUS, CANOPY_HEIGHT, 7, 1);
   canopyGeo.translate(0, TRUNK_HEIGHT + CANOPY_HEIGHT * 0.5, 0);
-  const canopyMat = new THREE.MeshStandardMaterial({ color: 0x2e6f3a, flatShading: true });
+  const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, capacity);
   canopyMesh.count = 0;
   canopyMesh.frustumCulled = false;
@@ -113,12 +138,20 @@ export function createTreeInstancer(scene, capacity = 2048) {
     for (const { id, components } of world.query(['Tree', 'TileAnchor', 'TreeViz'])) {
       if (i >= capacity) break;
       const anchor = components.TileAnchor;
+      const tree = components.Tree;
+      const draw = TREE_DRAW.get(tree.kind) ?? FALLBACK_DRAW;
+      const g = growthScale(tree.growth);
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
       _position.set(w.x, y, w.z);
-      _matrix.compose(_position, _quat, _scale);
+      _trunkScale.set(draw.trunkScale[0] * g, draw.trunkScale[1] * g, draw.trunkScale[2] * g);
+      _matrix.compose(_position, _quat, _trunkScale);
       trunkMesh.setMatrixAt(i, _matrix);
+      trunkMesh.setColorAt(i, draw.trunk);
+      _canopyScale.set(draw.canopyScale[0] * g, draw.canopyScale[1] * g, draw.canopyScale[2] * g);
+      _matrix.compose(_position, _quat, _canopyScale);
       canopyMesh.setMatrixAt(i, _matrix);
+      canopyMesh.setColorAt(i, draw.canopy);
       slotToEntity[i] = id;
       i++;
     }
@@ -126,6 +159,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
     canopyMesh.count = i;
     trunkMesh.instanceMatrix.needsUpdate = true;
     canopyMesh.instanceMatrix.needsUpdate = true;
+    if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
+    if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
     dirty = false;
   }
 
@@ -142,15 +177,20 @@ export function createTreeInstancer(scene, capacity = 2048) {
     const yaw = timeSec * MARKER_SPIN_RATE;
     _euler.set(0, yaw, 0);
     _quat.setFromEuler(_euler);
+    _markerScale.set(1, 1, 1);
     let i = 0;
     for (const { components } of world.query(['Tree', 'TileAnchor', 'TreeViz'])) {
-      if (components.Tree.markedJobId <= 0) continue;
+      const tree = components.Tree;
+      if (tree.markedJobId <= 0) continue;
       if (i >= markerCap) break;
       const anchor = components.TileAnchor;
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
-      _position.set(w.x, y + MARKER_HOVER_BASE + bob, w.z);
-      _matrix.compose(_position, _quat, _scale);
+      // Follow the visible top of the tree so saplings don't have a marker
+      // floating metres above their tiny canopy.
+      const g = growthScale(tree.growth);
+      _position.set(w.x, y + MARKER_HOVER_BASE * g + bob, w.z);
+      _matrix.compose(_position, _quat, _markerScale);
       markerHandleMesh.setMatrixAt(i, _matrix);
       markerHeadMesh.setMatrixAt(i, _matrix);
       i++;
