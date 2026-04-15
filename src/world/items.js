@@ -77,26 +77,39 @@ export function maxStack(kind) {
  * Drop one unit of `kind` at (i, j), merging into an existing same-kind stack
  * with room if one is there, else spawning a fresh stack with count=1.
  *
+ * `opts.forbidden` (default false) sets the forbidden flag on a freshly spawned
+ * stack and gates merging — a forbidden drop won't merge into an unforbidden
+ * stack and vice versa, so the supply path can leave items reserved on a
+ * furnace work spot without them blending into a haul-bound pile.
+ *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {string} kind
  * @param {number} i
  * @param {number} j
+ * @param {{ forbidden?: boolean }} [opts]
  */
-export function addItemToTile(world, grid, kind, i, j) {
+export function addItemToTile(world, grid, kind, i, j, opts) {
   if (!grid.inBounds(i, j)) return;
+  const forbidden = opts?.forbidden === true;
   const cap = maxStack(kind);
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     const it = components.Item;
-    if (a.i === i && a.j === j && it.kind === kind && it.count < cap) {
+    if (
+      a.i === i &&
+      a.j === j &&
+      it.kind === kind &&
+      it.count < cap &&
+      it.forbidden === forbidden
+    ) {
       it.count += 1;
       return;
     }
   }
   const w = tileToWorld(i, j, grid.W, grid.H);
   world.spawn({
-    Item: { kind, count: 1, capacity: cap, forbidden: false },
+    Item: { kind, count: 1, capacity: cap, forbidden },
     ItemViz: {},
     TileAnchor: { i, j },
     Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },

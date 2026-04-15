@@ -4,7 +4,7 @@
  *   0  emergency — flee, danger (future)
  *   1  self-care — eat (self-assigned, not board-backed)
  *   2  player-directed — chop, move-to, build, deliver (materials to a blueprint)
- *   3  autonomous work — haul (loose→stockpile, stockpile consolidation)
+ *   3  autonomous work — haul (loose→stockpile, consolidation), supply (ingredients to a furnace)
  *   4  idle — wander
  *   5  no job — the cow literally has nothing assigned
  *
@@ -32,6 +32,7 @@ export const JOB_TIERS = {
   harvest: 2,
   deliver: 2,
   haul: 3,
+  supply: 3,
   wander: 4,
   none: 5,
 };

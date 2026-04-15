@@ -82,7 +82,7 @@ export function buildHaulTargetedCounts(world, board) {
   const counts = new Map();
   for (const j of board.jobs) {
     if (j.completed) continue;
-    if (j.kind !== 'haul' && j.kind !== 'deliver') continue;
+    if (j.kind !== 'haul' && j.kind !== 'deliver' && j.kind !== 'supply') continue;
     const id = j.payload.itemId;
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }

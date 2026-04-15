@@ -88,6 +88,7 @@ import {
   makeHungerSystem,
 } from './systems/cow.js';
 import { makeFarmPostingSystem } from './systems/farm.js';
+import { makeFurnaceSystem } from './systems/furnace.js';
 import { makeGrowthSystem } from './systems/growth.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
@@ -177,6 +178,16 @@ if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
 scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world));
+scheduler.add(
+  makeFurnaceSystem(jobBoard, tileGrid, {
+    // Forward-decl safe: furnaceInstancer + onWorldItemChange exist by the
+    // time the first tick fires.
+    onCraftChange: () => {
+      furnaceInstancer.markDirty();
+      onWorldItemChange();
+    },
+  }),
+);
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
 let onRoomsRebuilt = () => {};

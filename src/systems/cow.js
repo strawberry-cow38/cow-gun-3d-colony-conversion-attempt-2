@@ -143,6 +143,7 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'mine' ||
             job.kind === 'haul' ||
             job.kind === 'deliver' ||
+            job.kind === 'supply' ||
             job.kind === 'eat' ||
             job.kind === 'build' ||
             job.kind === 'deconstruct' ||
@@ -186,7 +187,12 @@ export function makeCowBrainSystem(deps) {
 
         // Dropped out of haul unexpectedly while carrying? Drop the item on
         // the ground where we stand so it re-enters the haul pool.
-        if (inv.itemKind !== null && job.kind !== 'haul' && job.kind !== 'deliver') {
+        if (
+          inv.itemKind !== null &&
+          job.kind !== 'haul' &&
+          job.kind !== 'deliver' &&
+          job.kind !== 'supply'
+        ) {
           dropCarriedItem(world, grid, inv, pos);
           deps.onItemChange();
         }
@@ -284,7 +290,9 @@ export function makeCowBrainSystem(deps) {
                 path.index = 0;
               } else if (
                 candidate &&
-                (candidate.kind === 'haul' || candidate.kind === 'deliver') &&
+                (candidate.kind === 'haul' ||
+                  candidate.kind === 'deliver' ||
+                  candidate.kind === 'supply') &&
                 board.claim(candidate.id, id)
               ) {
                 job.kind = candidate.kind;
@@ -298,6 +306,8 @@ export function makeCowBrainSystem(deps) {
                   toJ: candidate.payload.toJ,
                   toBuildSite: candidate.payload.toBuildSite === true,
                   toRelocation: candidate.payload.toRelocation === true,
+                  toSupply: candidate.payload.toSupply === true,
+                  furnaceId: candidate.payload.furnaceId,
                 };
                 path.steps = [];
                 path.index = 0;
@@ -395,7 +405,7 @@ export function makeCowBrainSystem(deps) {
           runPlantJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'harvest') {
           runHarvestJob(world, job, path, pos, grid, paths, board, deps);
-        } else if (job.kind === 'haul' || job.kind === 'deliver') {
+        } else if (job.kind === 'haul' || job.kind === 'deliver' || job.kind === 'supply') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
           runEatJob(world, job, path, pos, hunger, grid, paths, deps);
@@ -1423,20 +1433,23 @@ function tileHasCrop(world, i, j) {
  * @param {BrainDeps} deps
  */
 function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
-  const { jobId, itemId, toI, toJ, toBuildSite, toRelocation } =
-    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean }} */ (
+  const { jobId, itemId, toI, toJ, toBuildSite, toRelocation, toSupply, furnaceId } =
+    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number }} */ (
       job.payload
     );
 
   // Target tile stopped being a valid drop (stockpile undesignated, or
-  // BuildSite cancelled/already built) → complete + bail. Delivery to a
-  // BuildSite uses the site's existence at that tile, not the stockpile bit.
+  // BuildSite cancelled/already built, or furnace gone) → complete + bail.
+  // Delivery to a BuildSite uses the site's existence at that tile, not the
+  // stockpile bit. Supply uses the furnace's work spot still pointing here.
   // Blueprint-clear relocations have no persistent marker on the tile; if
   // the cow can't get there at drop time the state machine falls back to
   // dropping in place, which is fine.
   const targetGone = toBuildSite
     ? findBuildSiteAt(world, toI, toJ) === null
-    : !toRelocation && !grid.isStockpile(toI, toJ);
+    : toSupply
+      ? !furnaceWorkSpotMatches(world, furnaceId, toI, toJ)
+      : !toRelocation && !grid.isStockpile(toI, toJ);
   if (targetGone) {
     if (inv.itemKind !== null) {
       dropCarriedItem(world, grid, inv, pos);
@@ -1580,6 +1593,11 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
             addItemToTile(world, grid, inv.itemKind, toI, toJ);
             inv.itemKind = null;
           }
+        } else if (toSupply) {
+          // Drop forbidden so the haul poster doesn't immediately yank the
+          // ingredient back to the stockpile before the furnace consumes it.
+          addItemToTile(world, grid, inv.itemKind, toI, toJ, { forbidden: true });
+          inv.itemKind = null;
         } else {
           addItemToTile(world, grid, inv.itemKind, toI, toJ);
           inv.itemKind = null;
@@ -1606,6 +1624,22 @@ function findBuildSiteAt(world, i, j) {
     if (components.TileAnchor.i === i && components.TileAnchor.j === j) return id;
   }
   return null;
+}
+
+/**
+ * True when the furnace entity still exists and its work spot is still (i, j).
+ * If the furnace was deconstructed mid-haul (or the player rebuilt it elsewhere
+ * and reused the id slot — won't happen with monotonically growing ids, but
+ * cheap to check), the supply job no longer has a valid drop target.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number | undefined} furnaceId
+ * @param {number} i @param {number} j
+ */
+function furnaceWorkSpotMatches(world, furnaceId, i, j) {
+  if (typeof furnaceId !== 'number') return false;
+  const f = world.get(furnaceId, 'Furnace');
+  return f !== undefined && f.workI === i && f.workJ === j;
 }
 
 /**
