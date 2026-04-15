@@ -14,6 +14,7 @@
 import { runAutoRoof } from '../systems/autoRoof.js';
 import { runRoofCollapse } from '../systems/roofCollapse.js';
 import { worldToTile } from '../world/coords.js';
+import { BIOME } from '../world/tileGrid.js';
 
 /**
  * @param {{
@@ -95,7 +96,9 @@ export function setupWorldCallbacks({
     },
     /** @param {{x:number,y:number,z:number}} pos */
     onWorldCowStep(pos) {
-      audio.playAt('footfall', pos);
+      const { i, j } = worldToTile(pos.x, pos.z, tileGrid.W, tileGrid.H);
+      const onWater = i >= 0 && tileGrid.biome[tileGrid.idx(i, j)] === BIOME.SHALLOW_WATER;
+      audio.playAt(onWater ? 'splash' : 'footfall', pos);
     },
     /** @param {{x:number,y:number,z:number}} pos */
     onWorldCowHammer(pos) {

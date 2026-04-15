@@ -18,7 +18,8 @@ const BIOME_COLORS = {
   [BIOME.DIRT]: new THREE.Color(0x6b4f2a),
   [BIOME.STONE]: new THREE.Color(0x6a6e74),
   [BIOME.SAND]: new THREE.Color(0xc8b27a),
-  [BIOME.WATER]: new THREE.Color(0x3a7bb0),
+  [BIOME.SHALLOW_WATER]: new THREE.Color(0x5aa0c8),
+  [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 
 /**

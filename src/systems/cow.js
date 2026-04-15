@@ -40,6 +40,7 @@ import {
 } from '../world/items.js';
 import { generatePainting } from '../world/painting.js';
 import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
+import { BIOME } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
@@ -2713,6 +2714,8 @@ export function makeCowFollowPathSystem(deps) {
           if (!grid.isFloor(cur.i, cur.j)) speed *= 0.85;
           // Half speed on dim tiles (<40% light) — cows stumble in the dark.
           if (grid.getLight(cur.i, cur.j) < DARK_LIGHT_BYTE) speed *= 0.5;
+          // Wading through shallow water: 15% speed.
+          if (grid.biome[grid.idx(cur.i, cur.j)] === BIOME.SHALLOW_WATER) speed *= 0.15;
         }
         vel.x = nx * speed;
         vel.z = nz * speed;

@@ -50,15 +50,22 @@ export const BIOME = Object.freeze({
   DIRT: 1,
   STONE: 2,
   SAND: 3,
-  WATER: 4,
+  SHALLOW_WATER: 4,
+  DEEP_WATER: 5,
 });
 
+/** Tiles cows can wade across at swim speed; deep water blocks pathing entirely. */
+export function isWaterBiome(b) {
+  return b === BIOME.SHALLOW_WATER || b === BIOME.DEEP_WATER;
+}
+
 /**
- * Erode sand regions so any sand tile with an unbroken 2-tile-thick sand
- * buffer in all directions becomes WATER. Smaller patches stay all sand;
- * large beaches get an inner lake ringed by a visible shore. Mutates the
- * given biome buffer in place. Shared between `generateTerrain()` (new
- * worlds) and the v31→v32 migration (old saves).
+ * Erode sand → shallow water: any sand tile with an unbroken 2-tile-thick sand
+ * buffer in all directions (full 5×5 sand neighborhood, Chebyshev distance
+ * from non-sand > 2) flips to SHALLOW_WATER. The 2-tile sand ring that
+ * survives is the shore. Mutates the biome buffer in place. Shared between
+ * `generateTerrain()` (new worlds) and the v31→v32 migration (old saves) —
+ * its semantics are FROZEN so old saves replay deterministically.
  * @param {Uint8Array | number[]} biome
  * @param {number} W
  * @param {number} H
@@ -80,7 +87,39 @@ export function carveWaterLakes(biome, W, H) {
           }
         }
       }
-      if (allSand) out[k] = BIOME.WATER;
+      if (allSand) out[k] = BIOME.SHALLOW_WATER;
+    }
+  }
+  for (let k = 0; k < biome.length; k++) biome[k] = out[k];
+}
+
+/**
+ * Promote interior shallow water → deep water. Any shallow tile with an
+ * unbroken 6-tile-thick shallow-water buffer (full 13×13 shallow neighborhood,
+ * Chebyshev distance from non-shallow > 6) flips to DEEP_WATER. That leaves
+ * exactly 6 rings of shallow water between shore and deep — the wade zone.
+ * Mutates the biome buffer in place. Shared between `generateTerrain()` and
+ * the v32→v33 migration.
+ * @param {Uint8Array | number[]} biome
+ * @param {number} W
+ * @param {number} H
+ */
+export function carveDeepWater(biome, W, H) {
+  const out = typeof biome.slice === 'function' ? biome.slice() : Array.from(biome);
+  for (let j = 6; j < H - 6; j++) {
+    for (let i = 6; i < W - 6; i++) {
+      const k = j * W + i;
+      if (biome[k] !== BIOME.SHALLOW_WATER) continue;
+      let allShallow = true;
+      for (let dj = -6; dj <= 6 && allShallow; dj++) {
+        for (let di = -6; di <= 6; di++) {
+          if (biome[(j + dj) * W + (i + di)] !== BIOME.SHALLOW_WATER) {
+            allShallow = false;
+            break;
+          }
+        }
+      }
+      if (allShallow) out[k] = BIOME.DEEP_WATER;
     }
   }
   for (let k = 0; k < biome.length; k++) biome[k] = out[k];
@@ -347,5 +386,6 @@ export class TileGrid {
       }
     }
     carveWaterLakes(this.biome, this.W, this.H);
+    carveDeepWater(this.biome, this.W, this.H);
   }
 }

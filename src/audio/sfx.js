@@ -190,6 +190,52 @@ export function playDoor(ctx, dest) {
 }
 
 /** @type {SfxGenerator} */
+export function playSplash(ctx, dest) {
+  // A short wet "splish" — highpassed white noise with a fast attack and a
+  // slightly longer decay than footfall, plus a tiny pitched "plip" on top so
+  // it reads as water-on-hoof and not just general rustle.
+  const now = ctx.currentTime;
+  const dur = 0.22;
+
+  const bufDur = 0.2;
+  const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * bufDur), ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const t = i / data.length;
+    data[i] = (Math.random() * 2 - 1) * (1 - t) ** 1.8;
+  }
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(2800, now);
+  bp.frequency.exponentialRampToValueAtTime(1400, now + dur);
+  bp.Q.value = 1.4;
+  const noiseEnv = ctx.createGain();
+  noiseEnv.gain.setValueAtTime(0.0001, now);
+  noiseEnv.gain.exponentialRampToValueAtTime(0.45, now + 0.008);
+  noiseEnv.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  src.connect(bp).connect(noiseEnv).connect(dest);
+  src.start(now);
+  src.stop(now + bufDur);
+
+  // Pitched plip — sine that drops an octave, gives the "droplet" quality.
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(900, now);
+  osc.frequency.exponentialRampToValueAtTime(380, now + 0.08);
+  const oscEnv = ctx.createGain();
+  oscEnv.gain.setValueAtTime(0.0001, now);
+  oscEnv.gain.exponentialRampToValueAtTime(0.18, now + 0.006);
+  oscEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  osc.connect(oscEnv).connect(dest);
+  osc.start(now);
+  osc.stop(now + 0.13);
+
+  return dur;
+}
+
+/** @type {SfxGenerator} */
 export function playFootfall(ctx, dest) {
   const now = ctx.currentTime;
   const dur = 0.11;

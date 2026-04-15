@@ -10,7 +10,8 @@
  */
 
 import * as THREE from 'three';
-import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { UNITS_PER_METER, tileToWorld, worldToTileClamp } from '../world/coords.js';
+import { BIOME } from '../world/tileGrid.js';
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
@@ -27,6 +28,14 @@ const COW_BOB_FREQ_HZ = 6;
 // Chopping rhythm: forward-lean pulse at ~2.5 Hz, 25° max lean.
 const CHOP_PITCH_AMP = 0.44; // ≈ 25°
 const CHOP_PITCH_FREQ_HZ = 2.5;
+// Swim: cow sinks ~55% into the water; paddling shows as a slow vertical bob
+// plus a gentle side-to-side roll so the silhouette clearly reads as "wading"
+// rather than "standing" on a flat blue tile.
+const SWIM_SINK = 0.55 * COW_HEIGHT;
+const SWIM_BOB_AMPLITUDE = 0.05 * UNITS_PER_METER;
+const SWIM_BOB_FREQ_HZ = 1.6;
+const SWIM_ROLL_AMP = 0.18; // ≈ 10°
+const SWIM_ROLL_FREQ_HZ = 1.2;
 
 // Carried-item indicator: a small tinted cube hovering above the cow.
 const CARRY_SIZE = 0.35 * UNITS_PER_METER;
@@ -107,10 +116,23 @@ export function createCowInstancer(scene, capacity = 256) {
       const chopping = job.kind === 'chop' && job.state === 'chopping';
       const speedSq = v.x * v.x + v.z * v.z;
       const moving = speedSq > 0.01;
-      const bob =
-        moving && !chopping
-          ? COW_BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * COW_BOB_FREQ_HZ * Math.PI))
-          : 0;
+
+      let swimming = false;
+      if (grid) {
+        const t = worldToTileClamp(x, z, grid.W, grid.H);
+        swimming = grid.biome[grid.idx(t.i, t.j)] === BIOME.SHALLOW_WATER;
+      }
+
+      let bob;
+      let roll = 0;
+      if (swimming) {
+        bob = SWIM_BOB_AMPLITUDE * Math.sin(timeSec * SWIM_BOB_FREQ_HZ * Math.PI * 2);
+        roll = SWIM_ROLL_AMP * Math.sin(timeSec * SWIM_ROLL_FREQ_HZ * Math.PI * 2);
+      } else if (moving && !chopping) {
+        bob = COW_BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * COW_BOB_FREQ_HZ * Math.PI));
+      } else {
+        bob = 0;
+      }
 
       // Face the tree while chopping so the forward-lean reads as "swinging at it".
       let yaw;
@@ -125,12 +147,17 @@ export function createCowInstancer(scene, capacity = 256) {
 
       // Clamped positive lean — the cow rocks forward (toward the tree) and
       // back to neutral, never backwards. |sin| gives the hit-then-recover feel.
-      const pitch = chopping
-        ? CHOP_PITCH_AMP * Math.abs(Math.sin(timeSec * CHOP_PITCH_FREQ_HZ * Math.PI))
-        : 0;
+      // Suppressed while swimming so the roll animation reads cleanly.
+      const pitch =
+        chopping && !swimming
+          ? CHOP_PITCH_AMP * Math.abs(Math.sin(timeSec * CHOP_PITCH_FREQ_HZ * Math.PI))
+          : 0;
 
-      _position.set(x, y + COW_HEIGHT * 0.5 + bob, z);
-      _euler.set(pitch, yaw, 0);
+      const centerY = swimming
+        ? y + COW_HEIGHT * 0.5 - SWIM_SINK + bob
+        : y + COW_HEIGHT * 0.5 + bob;
+      _position.set(x, centerY, z);
+      _euler.set(pitch, yaw, roll);
       _quat.setFromEuler(_euler);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(i, _matrix);

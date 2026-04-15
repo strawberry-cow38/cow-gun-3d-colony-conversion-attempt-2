@@ -38,7 +38,8 @@ function octile(ax, ay, bx, by) {
 
 /**
  * Default walkability: tile must be in-bounds, not in the occupancy array
- * (trees/rocks), not flagged as a finished wall, and not a water biome.
+ * (trees/rocks), not flagged as a finished wall, and not deep water. Shallow
+ * water is walkable — cows wade across it at reduced speed (see cow.js).
  * BuildSites deliberately do NOT block — haulers walk onto them to deliver
  * materials — only the erected Wall does.
  * @param {TileGrid} grid @param {number} i @param {number} j
@@ -46,7 +47,7 @@ function octile(ax, ay, bx, by) {
 export function defaultWalkable(grid, i, j) {
   if (!grid.inBounds(i, j)) return false;
   const k = grid.idx(i, j);
-  if (grid.biome[k] === BIOME.WATER) return false;
+  if (grid.biome[k] === BIOME.DEEP_WATER) return false;
   return grid.occupancy[k] === 0 && grid.wall[k] === 0;
 }
 

@@ -20,7 +20,15 @@
 
 import * as THREE from 'three';
 import { playDawnLoop, playDayLoop, playDuskLoop, playNightLoop, playRainLoop } from './ambient.js';
-import { playChop, playDoor, playFootfall, playHammer, playMunch, playThunder } from './sfx.js';
+import {
+  playChop,
+  playDoor,
+  playFootfall,
+  playHammer,
+  playMunch,
+  playSplash,
+  playThunder,
+} from './sfx.js';
 import {
   playClick,
   playCommand,
@@ -48,6 +56,7 @@ const SFX = {
   hammer: { gen: playHammer, maxConcurrent: 4 },
   munch: { gen: playMunch, maxConcurrent: 6 },
   footfall: { gen: playFootfall, maxConcurrent: 8 },
+  splash: { gen: playSplash, maxConcurrent: 8 },
   door: { gen: playDoor, maxConcurrent: 4 },
 };
 

@@ -614,9 +614,44 @@ describe('migration runner', () => {
     const out = runMigrations(v31);
     expect(out.version).toBe(CURRENT_VERSION);
     const b = out.tileGrid.biome;
-    expect(b[3 * W + 3]).toBe(4); // BIOME.WATER at center
+    expect(b[3 * W + 3]).toBe(4); // BIOME.SHALLOW_WATER at center
     expect(b[1 * W + 1]).toBe(3); // shore sand stays sand
     expect(b[2 * W + 2]).toBe(3); // inner sand without 5x5 sand neighborhood stays sand
+    expect(b[0]).toBe(1); // dirt border untouched
+  });
+
+  it('promotes interior shallow water to deep in the v32→v33 bump', () => {
+    // 19×19 grid: single-tile dirt border, 17×17 sand interior. Shore erosion
+    // (5×5) turns tiles (3..15, 3..15) into shallow water; deep erosion
+    // (13×13) then picks out exactly the center tile (9,9), whose window
+    // [3..15] × [3..15] is fully inside the shallow region. A 6-tile-wide
+    // shallow ring survives between shore and deep — the wade zone.
+    const W = 19;
+    const H = 19;
+    const biome = new Array(W * H).fill(1); // BIOME.DIRT border
+    for (let j = 1; j < H - 1; j++) {
+      for (let i = 1; i < W - 1; i++) biome[j * W + i] = 3; // BIOME.SAND
+    }
+    const v31 = {
+      version: 31,
+      tileGrid: {
+        W,
+        H,
+        elevation: new Array(W * H).fill(0),
+        biome,
+        stockpile: new Array(W * H).fill(0),
+      },
+      cows: [],
+      trees: [],
+      items: [],
+    };
+    const out = runMigrations(v31);
+    expect(out.version).toBe(CURRENT_VERSION);
+    const b = out.tileGrid.biome;
+    expect(b[9 * W + 9]).toBe(5); // BIOME.DEEP_WATER — lone center tile
+    // Shore-facing edge of the lake (distance 6 from center): still shallow.
+    expect(b[3 * W + 9]).toBe(4); // BIOME.SHALLOW_WATER
+    expect(b[1 * W + 9]).toBe(3); // sand shore stays sand
     expect(b[0]).toBe(1); // dirt border untouched
   });
 
