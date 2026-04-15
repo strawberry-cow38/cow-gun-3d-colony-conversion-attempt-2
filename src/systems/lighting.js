@@ -18,6 +18,11 @@
 export const TORCH_RADIUS_TILES = 5;
 export const TORCH_LIGHT_PCT = 0.5;
 export const DARKNESS_SLOWDOWN_THRESHOLD = 0.4;
+// Active furnaces throw a small bubble of firelight — smaller than a torch,
+// matching the point-light + ember visuals. Only contributes while
+// `activeBillId > 0`; idle furnaces are visually dark.
+export const FURNACE_LIGHT_RADIUS_TILES = 3;
+export const FURNACE_LIGHT_PCT = 0.5;
 
 /**
  * @param {{
@@ -32,10 +37,12 @@ export function makeLightingSystem(opts) {
   // radius from the center is TORCH_RADIUS_TILES - 1.
   const radius = TORCH_RADIUS_TILES - 1;
   const radius2 = radius * radius;
+  const furnaceRadius = FURNACE_LIGHT_RADIUS_TILES - 1;
+  const furnaceRadius2 = furnaceRadius * furnaceRadius;
   return {
     name: 'lighting',
     tier: 'rare',
-    run() {
+    run(world) {
       const sun = Math.max(0, Math.min(1, timeOfDay.getSunLightPercent()));
       const base = Math.round(sun * 255);
       const { W, H, light, roof, wall, door } = grid;
@@ -48,7 +55,10 @@ export function makeLightingSystem(opts) {
           light[k] = roof[k] !== 0 ? 0 : base;
         }
       }
-      if (sun >= TORCH_LIGHT_PCT && !anyRoof) return;
+      if (sun >= TORCH_LIGHT_PCT && !anyRoof) {
+        stampFurnaces(world, grid, anyBlocker, furnaceRadius, furnaceRadius2);
+        return;
+      }
       const torchVal = Math.round(TORCH_LIGHT_PCT * 255);
       for (const k of grid.torchTiles) {
         const i = k % W;
@@ -69,8 +79,45 @@ export function makeLightingSystem(opts) {
           }
         }
       }
+      stampFurnaces(world, grid, anyBlocker, furnaceRadius, furnaceRadius2);
     },
   };
+}
+
+/**
+ * Stamp a firelight disc around every currently-crafting furnace. Runs after
+ * the torch pass so torch-and-furnace overlap picks the higher value.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {boolean} anyBlocker
+ * @param {number} furnaceRadius
+ * @param {number} furnaceRadius2
+ */
+function stampFurnaces(world, grid, anyBlocker, furnaceRadius, furnaceRadius2) {
+  const { W, H, light, wall, door } = grid;
+  const furnaceVal = Math.round(FURNACE_LIGHT_PCT * 255);
+  for (const { components } of world.query(['Furnace', 'TileAnchor'])) {
+    if (components.Furnace.activeBillId <= 0) continue;
+    const a = components.TileAnchor;
+    const i = a.i;
+    const j = a.j;
+    const j0 = Math.max(0, j - furnaceRadius);
+    const j1 = Math.min(H - 1, j + furnaceRadius);
+    const i0 = Math.max(0, i - furnaceRadius);
+    const i1 = Math.min(W - 1, i + furnaceRadius);
+    for (let jj = j0; jj <= j1; jj++) {
+      const dj = jj - j;
+      const dj2 = dj * dj;
+      for (let ii = i0; ii <= i1; ii++) {
+        const di = ii - i;
+        if (di * di + dj2 > furnaceRadius2) continue;
+        if (anyBlocker && !hasLineOfSight(W, wall, door, i, j, ii, jj)) continue;
+        const kk = jj * W + ii;
+        if (furnaceVal > light[kk]) light[kk] = furnaceVal;
+      }
+    }
+  }
 }
 
 /**

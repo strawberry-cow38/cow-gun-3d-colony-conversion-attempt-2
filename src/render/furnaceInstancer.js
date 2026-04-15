@@ -6,10 +6,11 @@ export const FURNACE_FOOTPRINT = TILE_SIZE * 0.86;
 export const FURNACE_HEIGHT = 1.4 * UNITS_PER_METER;
 const CHIMNEY_WIDTH = TILE_SIZE * 0.28;
 const CHIMNEY_HEIGHT = 0.7 * UNITS_PER_METER;
+export const CHIMNEY_TOP_Y = FURNACE_HEIGHT + CHIMNEY_HEIGHT;
 const GLOW_WIDTH = TILE_SIZE * 0.42;
 const GLOW_HEIGHT = 0.35 * UNITS_PER_METER;
 const GLOW_DEPTH = 0.05 * UNITS_PER_METER;
-const GLOW_Y = 0.45 * UNITS_PER_METER;
+export const FRONT_GLOW_Y = 0.45 * UNITS_PER_METER;
 const GLOW_FRONT_OFFSET = FURNACE_FOOTPRINT * 0.5 + GLOW_DEPTH * 0.4;
 
 const BODY_COLOR = 0x5a5048;
@@ -95,7 +96,11 @@ export function createFurnaceInstancer(scene, capacity = 64) {
       // Glow sits on the "front" face — offset rotated by the same yaw so it
       // tracks the furnace's actual facing direction.
       const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
-      _position.set(w.x + off.di * GLOW_FRONT_OFFSET, y + GLOW_Y, w.z + off.dj * GLOW_FRONT_OFFSET);
+      _position.set(
+        w.x + off.di * GLOW_FRONT_OFFSET,
+        y + FRONT_GLOW_Y,
+        w.z + off.dj * GLOW_FRONT_OFFSET,
+      );
       _matrix.compose(_position, _quat, _scale);
       glowMesh.setMatrixAt(i, _matrix);
 

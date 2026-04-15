@@ -47,6 +47,7 @@ import { FarmZoneDesignator } from './render/farmZoneDesignator.js';
 import { createFarmZoneOverlay } from './render/farmZoneOverlay.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createFloorInstancer } from './render/floorInstancer.js';
+import { createFurnaceEffects } from './render/furnaceEffects.js';
 import { createFurnaceInstancer } from './render/furnaceInstancer.js';
 import { createFurnacePanel } from './render/furnacePanel.js';
 import { createFurnaceProgressBars } from './render/furnaceProgressBars.js';
@@ -90,6 +91,7 @@ import {
 } from './systems/cow.js';
 import { makeFarmPostingSystem } from './systems/farm.js';
 import { makeFurnaceSystem } from './systems/furnace.js';
+import { makeFurnaceExpelSystem } from './systems/furnaceExpel.js';
 import { makeGrowthSystem } from './systems/growth.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
@@ -189,6 +191,7 @@ scheduler.add(
     },
   }),
 );
+scheduler.add(makeFurnaceExpelSystem(tileGrid));
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
 let onRoomsRebuilt = () => {};
@@ -260,6 +263,7 @@ const roofInstancer = createRoofInstancer(scene, gridW * gridH);
 const roofCollapseParticles = createRoofCollapseParticles(scene);
 const floorInstancer = createFloorInstancer(scene, gridW * gridH);
 const furnaceInstancer = createFurnaceInstancer(scene, 256);
+const furnaceEffects = createFurnaceEffects(scene);
 const furnaceProgressBars = createFurnaceProgressBars(scene);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const cropInstancer = createCropInstancer(scene, 1024);
@@ -523,6 +527,17 @@ const selectFurnace = (id, additive) => {
   updateHud();
 };
 
+// FurnaceSelector registered BEFORE ItemSelector so a click on a furnace
+// mesh wins even when an item stack sits on the same tile. It only stops
+// propagation on a mesh hit — misses fall through to the item picker.
+new FurnaceSelector(
+  canvas,
+  camera,
+  () => [furnaceInstancer.bodyMesh, furnaceInstancer.chimneyMesh],
+  (instanceId) => furnaceInstancer.entityFromInstanceId(instanceId),
+  selectFurnace,
+);
+
 new ItemSelector(
   canvas,
   camera,
@@ -531,15 +546,6 @@ new ItemSelector(
   world,
   selectItem,
   selectItemsMany,
-);
-
-new FurnaceSelector(
-  canvas,
-  camera,
-  () => state.tileMesh,
-  { W: gridW, H: gridH },
-  world,
-  selectFurnace,
 );
 
 new TilePicker(
@@ -1023,6 +1029,7 @@ const loop = new SimLoop({
     floorInstancer.update(world, tileGrid);
     furnaceInstancer.update(world, tileGrid);
     furnaceInstancer.updateGlow(tSec);
+    furnaceEffects.update(world, tileGrid, rdt, tSec, camera);
     furnaceProgressBars.update(world, tileGrid, camera);
     roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
