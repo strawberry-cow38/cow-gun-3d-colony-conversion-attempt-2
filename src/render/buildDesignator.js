@@ -15,6 +15,8 @@
  */
 
 import * as THREE from 'three';
+import { findAdjacentWalkable } from '../jobs/chop.js';
+import { defaultWalkable } from '../sim/pathfinding.js';
 import {
   ROOF_MAX_WALL_DISTANCE,
   hasOrthoStructure,
@@ -25,10 +27,12 @@ import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
+import { createFurnaceGhost } from './furnaceInstancer.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
+const WORK_SPOT_COLOR = 0x7cffb0;
 
 /**
  * @typedef {Object} BuildDesignatorConfig
@@ -180,6 +184,12 @@ export class BuildDesignator {
     this.radiusRing = config.previewRadiusTiles
       ? buildRadiusRing(scene, config.previewColorAdd, (config.previewRadiusTiles - 1) * TILE_SIZE)
       : null;
+    // Furnace ghost: translucent silhouette at the hover tile + a green wire
+    // square at the interaction spot (where cows will stand). Both ride along
+    // the cursor so the player can see footprint AND facing-implied workspot
+    // before committing.
+    this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
+    this.workSpotPreview = config.kind === 'furnace' ? buildPreview(scene, WORK_SPOT_COLOR) : null;
 
     dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -282,7 +292,20 @@ export class BuildDesignator {
       this.#renderPreview();
       return;
     }
-    if (!this.mousedown) return;
+    if (!this.mousedown) {
+      // Drag-mode hover: 1-tile preview at the cursor so the player can see
+      // where a click would start before pressing.
+      const tile = this.#pickTile(e);
+      if (!tile) {
+        this.#hidePreview();
+        return;
+      }
+      this.startTile = tile;
+      this.curTile = tile;
+      this.removing = e.shiftKey;
+      this.#renderPreview();
+      return;
+    }
     const tile = this.#pickTile(e);
     if (!tile) return;
     this.curTile = tile;
@@ -533,11 +556,25 @@ export class BuildDesignator {
       );
       this.radiusRing.line.visible = true;
     }
+    if (this.furnaceGhost && this.workSpotPreview) {
+      const cx = (x0 + x1) * 0.5;
+      const cz = (z0 + z1) * 0.5;
+      this.furnaceGhost.group.position.set(cx, y, cz);
+      this.furnaceGhost.group.visible = !this.removing;
+      const spot = findAdjacentWalkable(grid, defaultWalkable, this.curTile.i, this.curTile.j);
+      if (spot && !this.removing) {
+        renderTilePreview(this.workSpotPreview, grid, spot.i, spot.j, WORK_SPOT_COLOR);
+      } else {
+        this.workSpotPreview.line.visible = false;
+      }
+    }
   }
 
   #hidePreview() {
     this.preview.line.visible = false;
     if (this.radiusRing) this.radiusRing.line.visible = false;
+    if (this.furnaceGhost) this.furnaceGhost.group.visible = false;
+    if (this.workSpotPreview) this.workSpotPreview.line.visible = false;
   }
 
   /**
@@ -606,6 +643,44 @@ export function releaseBuildSite(world, board, tileGrid, site, i, j) {
     if (job.completed || job.kind !== 'deliver') continue;
     if (job.payload.toI === i && job.payload.toJ === j) board.complete(job.id);
   }
+}
+
+/**
+ * Re-position an existing buildPreview line so it spans a single tile (i, j).
+ * Used by the furnace work-spot indicator.
+ *
+ * @param {{ geo: THREE.BufferGeometry, positions: Float32Array, line: THREE.Line }} preview
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j
+ * @param {number} color
+ */
+function renderTilePreview(preview, grid, i, j, color) {
+  const w = tileToWorld(i, j, grid.W, grid.H);
+  const x0 = w.x - TILE_SIZE * 0.5;
+  const x1 = w.x + TILE_SIZE * 0.5;
+  const z0 = w.z - TILE_SIZE * 0.5;
+  const z1 = w.z + TILE_SIZE * 0.5;
+  const y = grid.getElevation(i, j) + PREVIEW_CLEARANCE;
+  const p = preview.positions;
+  p[0] = x0;
+  p[1] = y;
+  p[2] = z0;
+  p[3] = x1;
+  p[4] = y;
+  p[5] = z0;
+  p[6] = x1;
+  p[7] = y;
+  p[8] = z1;
+  p[9] = x0;
+  p[10] = y;
+  p[11] = z1;
+  p[12] = x0;
+  p[13] = y;
+  p[14] = z0;
+  preview.geo.attributes.position.needsUpdate = true;
+  /** @type {THREE.LineBasicMaterial} */
+  (preview.line.material).color.setHex(color);
+  preview.line.visible = true;
 }
 
 /**

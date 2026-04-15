@@ -143,3 +143,38 @@ export function createFurnaceInstancer(scene, capacity = 64) {
     entityFromInstanceId,
   };
 }
+
+/**
+ * Translucent furnace silhouette + chimney for the placement preview. Single
+ * mesh group, follow-the-cursor positioning. The interaction-spot marker is a
+ * separate object since it lives one tile away from the body.
+ *
+ * @param {THREE.Scene} scene
+ */
+export function createFurnaceGhost(scene) {
+  const group = new THREE.Group();
+  group.visible = false;
+  group.frustumCulled = false;
+
+  const ghostMat = new THREE.MeshStandardMaterial({
+    color: BODY_COLOR,
+    transparent: true,
+    opacity: 0.35,
+    depthWrite: false,
+    roughness: 0.9,
+  });
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(FURNACE_FOOTPRINT, FURNACE_HEIGHT, FURNACE_FOOTPRINT),
+    ghostMat,
+  );
+  body.position.y = FURNACE_HEIGHT * 0.5;
+  const chimney = new THREE.Mesh(
+    new THREE.BoxGeometry(CHIMNEY_WIDTH, CHIMNEY_HEIGHT, CHIMNEY_WIDTH),
+    ghostMat,
+  );
+  chimney.position.y = FURNACE_HEIGHT + CHIMNEY_HEIGHT * 0.5;
+  group.add(body, chimney);
+  scene.add(group);
+
+  return { group, ghostMat };
+}
