@@ -4,6 +4,7 @@ import { World } from '../../src/ecs/world.js';
 import { JobBoard } from '../../src/jobs/board.js';
 import {
   hydrateCows,
+  hydrateFurnaces,
   hydrateItems,
   hydrateTileGrid,
   hydrateTorches,
@@ -214,6 +215,93 @@ describe('torch save/load roundtrip', () => {
     expect(tg2.isTorch(1, 2)).toBe(true);
     expect(tg2.isTorch(0, 0)).toBe(true);
     expect(tg2.isTorch(2, 2)).toBe(false);
+  });
+});
+
+describe('furnace save/load roundtrip', () => {
+  it('preserves furnace tile, work spot, stuff, and blocks the tile on hydrate', () => {
+    const tg = new TileGrid(4, 4);
+    tg.blockTile(2, 2);
+    const w1 = makeWorld();
+    w1.spawn({
+      Furnace: {
+        deconstructJobId: 0,
+        progress: 0,
+        stuff: 'stone',
+        workI: 2,
+        workJ: 3,
+        workTicksRemaining: 0,
+        activeBillId: 0,
+      },
+      FurnaceViz: {},
+      Bills: { list: [], nextBillId: 1 },
+      TileAnchor: { i: 2, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    const state = serializeState(tg, w1);
+    expect(state.furnaces).toHaveLength(1);
+    expect(state.furnaces[0]).toMatchObject({
+      i: 2,
+      j: 2,
+      stuff: 'stone',
+      workI: 2,
+      workJ: 3,
+    });
+
+    const migrated = loadState(JSON.parse(JSON.stringify(state)));
+    const tg2 = hydrateTileGrid(migrated);
+    const w2 = makeWorld();
+    hydrateFurnaces(w2, tg2, new JobBoard(), migrated);
+
+    /** @type {{ i: number, j: number, workI: number, workJ: number, stuff: string }[]} */
+    const furnaces = [];
+    for (const { components } of w2.query(['Furnace', 'TileAnchor', 'Bills'])) {
+      furnaces.push({
+        i: components.TileAnchor.i,
+        j: components.TileAnchor.j,
+        workI: components.Furnace.workI,
+        workJ: components.Furnace.workJ,
+        stuff: components.Furnace.stuff,
+      });
+    }
+    expect(furnaces).toHaveLength(1);
+    expect(furnaces[0]).toMatchObject({ i: 2, j: 2, workI: 2, workJ: 3, stuff: 'stone' });
+    expect(tg2.isBlocked(2, 2)).toBe(true);
+  });
+
+  it('re-posts a deconstruct job when the saved furnace was marked', () => {
+    const tg = new TileGrid(4, 4);
+    const w1 = makeWorld();
+    w1.spawn({
+      Furnace: {
+        deconstructJobId: 9,
+        progress: 0.2,
+        stuff: 'stone',
+        workI: 1,
+        workJ: 0,
+        workTicksRemaining: 0,
+        activeBillId: 0,
+      },
+      FurnaceViz: {},
+      Bills: { list: [], nextBillId: 1 },
+      TileAnchor: { i: 1, j: 1 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    const state = serializeState(tg, w1);
+    const migrated = loadState(JSON.parse(JSON.stringify(state)));
+    const tg2 = hydrateTileGrid(migrated);
+    const w2 = makeWorld();
+    const board = new JobBoard();
+    hydrateFurnaces(w2, tg2, board, migrated);
+
+    expect(board.openCount).toBe(1);
+    let deconJobId = 0;
+    for (const { components } of w2.query(['Furnace'])) {
+      deconJobId = components.Furnace.deconstructJobId;
+    }
+    expect(deconJobId).toBeGreaterThan(0);
   });
 });
 

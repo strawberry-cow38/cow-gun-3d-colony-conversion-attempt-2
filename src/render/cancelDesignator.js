@@ -21,7 +21,7 @@ const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 export const CANCEL_PREVIEW_COLOR = 0xffe24a;
 
-const DECON_COMPS = /** @type {const} */ (['Wall', 'Door', 'Torch', 'Roof', 'Floor']);
+const DECON_COMPS = /** @type {const} */ (['Wall', 'Door', 'Torch', 'Roof', 'Floor', 'Furnace']);
 
 export class CancelDesignator {
   /**

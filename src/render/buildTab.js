@@ -52,6 +52,7 @@ import { colorToCss } from './dragSizeLabel.js';
  * @property {ToggleableDesignator} wallTorchDesignator
  * @property {ToggleableDesignator} roofDesignator
  * @property {ToggleableDesignator} floorDesignator
+ * @property {ToggleableDesignator} furnaceDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
@@ -158,6 +159,14 @@ export function createBuildTab(opts) {
       activeColor: '#bf9a6a',
       designator: opts.floorDesignator,
       stuffed: true,
+    },
+    {
+      id: 'furnace',
+      label: 'Furnace',
+      icon: '🏭',
+      hotkeyHint: 'click a tile to place a furnace (15 stone)',
+      activeColor: '#d2785a',
+      designator: opts.furnaceDesignator,
     },
     {
       id: 'no-roof',

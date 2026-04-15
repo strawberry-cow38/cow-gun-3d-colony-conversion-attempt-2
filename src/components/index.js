@@ -72,6 +72,18 @@
  *              because a cut job is a strict superset — cut applies to any
  *              growth stage, and cut's yield depends on the target's own kind
  *              (woodYieldFor for Tree, cropYieldFor for Crop).
+ *
+ * Furnace / FurnaceViz / Bills
+ *              { deconstructJobId, progress, stuff, workI, workJ,
+ *                workTicksRemaining, activeBillId }
+ *              An unmanned production station. Cows haul ingredients to the
+ *              work-spot tile (workI, workJ — a cardinal-adjacent walkable
+ *              picked at spawn); the furnace ticks autonomously and spawns
+ *              output on the same tile for haulers to pick up. `Bills.list`
+ *              holds ordered, player-edited recipe jobs (see src/world/recipes.js).
+ *              `activeBillId > 0` means a bill is mid-production; `workTicksRemaining`
+ *              counts down to 0 on completion. Bills must exist at spawn
+ *              (archetype ECS) — empty list is fine.
  */
 
 /**
@@ -153,4 +165,19 @@ export function registerComponents(world) {
   }));
   world.defineComponent('CropViz', () => ({}));
   world.defineComponent('Cuttable', () => ({ markedJobId: 0, progress: 0 }));
+  world.defineComponent('Furnace', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    stuff: 'stone',
+    workI: 0,
+    workJ: 0,
+    workTicksRemaining: 0,
+    activeBillId: 0,
+  }));
+  world.defineComponent('FurnaceViz', () => ({}));
+  world.defineComponent('Bills', () => ({
+    /** @type {import('../world/recipes.js').Bill[]} */
+    list: [],
+    nextBillId: 1,
+  }));
 }

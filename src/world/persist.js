@@ -1,7 +1,7 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v19):
+ * Format (v21):
  * {
  *   version: 18,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
@@ -18,7 +18,8 @@
  *   torches: [ { i, j, decon: boolean, progress: number } ],
  *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   floors: [ { i, j, stuff, decon: boolean, progress: number } ],
- *   crops: [ { i, j, kind: string, growthTicks: number } ]
+ *   crops: [ { i, j, kind: string, growthTicks: number } ],
+ *   furnaces: [ { i, j, stuff, workI, workJ, decon, progress, workTicksRemaining, activeBillId } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -139,6 +140,19 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} growthTicks
  * @property {boolean} cutMarked
  * @property {number} cutProgress
+ */
+
+/**
+ * @typedef SerializedFurnace
+ * @property {number} i
+ * @property {number} j
+ * @property {string} stuff
+ * @property {number} workI
+ * @property {number} workJ
+ * @property {boolean} decon
+ * @property {number} progress
+ * @property {number} workTicksRemaining
+ * @property {number} activeBillId
  */
 
 /**
@@ -293,6 +307,21 @@ export function serializeState(tileGrid, world) {
       cutProgress: components.Cuttable.progress,
     });
   }
+  /** @type {SerializedFurnace[]} */
+  const furnaces = [];
+  for (const { components } of world.query(['Furnace', 'TileAnchor'])) {
+    furnaces.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      stuff: components.Furnace.stuff ?? 'stone',
+      workI: components.Furnace.workI,
+      workJ: components.Furnace.workJ,
+      decon: components.Furnace.deconstructJobId > 0,
+      progress: components.Furnace.progress ?? 0,
+      workTicksRemaining: components.Furnace.workTicksRemaining ?? 0,
+      activeBillId: components.Furnace.activeBillId ?? 0,
+    });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -321,6 +350,7 @@ export function serializeState(tileGrid, world) {
     roofs,
     floors,
     crops,
+    furnaces,
   };
 }
 
@@ -627,10 +657,45 @@ export function hydrateCrops(world, grid, board, state) {
 }
 
 /**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ furnaces?: SerializedFurnace[] }} state
+ */
+export function hydrateFurnaces(world, grid, board, state) {
+  const furnaces = state.furnaces ?? [];
+  for (const f of furnaces) {
+    if (!grid.inBounds(f.i, f.j) || grid.isBlocked(f.i, f.j)) continue;
+    grid.blockTile(f.i, f.j);
+    const w = tileToWorld(f.i, f.j, grid.W, grid.H);
+    const id = world.spawn({
+      Furnace: {
+        deconstructJobId: 0,
+        progress: f.progress ?? 0,
+        stuff: f.stuff ?? 'stone',
+        workI: f.workI,
+        workJ: f.workJ,
+        workTicksRemaining: f.workTicksRemaining ?? 0,
+        activeBillId: f.activeBillId ?? 0,
+      },
+      FurnaceViz: {},
+      Bills: { list: [], nextBillId: 1 },
+      TileAnchor: { i: f.i, j: f.j },
+      Position: { x: w.x, y: grid.getElevation(f.i, f.j), z: w.z },
+    });
+    if (f.decon) {
+      const job = board.post('deconstruct', { entityId: id, kind: 'furnace', i: f.i, j: f.j });
+      const rec = world.get(id, 'Furnace');
+      if (rec) rec.deconstructJobId = job.id;
+    }
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

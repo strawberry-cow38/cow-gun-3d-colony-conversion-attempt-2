@@ -32,7 +32,7 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -106,6 +106,17 @@ export const FLOOR_DESIGNATOR_CONFIG = {
   addVerb: 'floor',
   cancelVerb: 'cancel floor',
   stuffed: true,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const FURNACE_DESIGNATOR_CONFIG = {
+  kind: 'furnace',
+  previewColorAdd: 0xd2785a,
+  addVerb: 'furnace',
+  cancelVerb: 'cancel furnace',
+  singlePlace: true,
+  required: 15,
+  requiredKind: 'stone',
 };
 
 export class BuildDesignator {

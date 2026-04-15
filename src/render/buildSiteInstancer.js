@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { getStuff } from '../world/stuff.js';
+import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = WALL_HEIGHT * 0.7;
@@ -102,6 +103,10 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
         sy = ROOF_THICKNESS;
         sz = TILE_SIZE;
         py = y + WALL_HEIGHT;
+      } else if (site.kind === 'furnace') {
+        sx = FURNACE_FOOTPRINT;
+        sy = FURNACE_HEIGHT * yScale;
+        sz = FURNACE_FOOTPRINT;
       }
       _scale.set(sx, sy, sz);
       _position.set(w.x, py, w.z);

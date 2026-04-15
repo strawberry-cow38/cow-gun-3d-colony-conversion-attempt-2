@@ -20,6 +20,7 @@ import {
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
   FLOOR_DESIGNATOR_CONFIG,
+  FURNACE_DESIGNATOR_CONFIG,
   ROOF_DESIGNATOR_CONFIG,
   TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
@@ -46,6 +47,7 @@ import { FarmZoneDesignator } from './render/farmZoneDesignator.js';
 import { createFarmZoneOverlay } from './render/farmZoneOverlay.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createFloorInstancer } from './render/floorInstancer.js';
+import { createFurnaceInstancer } from './render/furnaceInstancer.js';
 import { IgnoreRoofDesignator } from './render/ignoreRoofDesignator.js';
 import { createIgnoreRoofOverlay } from './render/ignoreRoofOverlay.js';
 import { createItemInstancer } from './render/itemInstancer.js';
@@ -243,6 +245,7 @@ const torchInstancer = createTorchInstancer(scene, 512);
 const roofInstancer = createRoofInstancer(scene, gridW * gridH);
 const roofCollapseParticles = createRoofCollapseParticles(scene);
 const floorInstancer = createFloorInstancer(scene, gridW * gridH);
+const furnaceInstancer = createFurnaceInstancer(scene, 256);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const cropInstancer = createCropInstancer(scene, 1024);
 const cuttableMarkerInstancer = createCuttableMarkerInstancer(scene, 256);
@@ -294,13 +297,15 @@ onWorldBuildComplete = (pos, kind) => {
   wallInstancer.markDirty();
   roofInstancer.markDirty();
   floorInstancer.markDirty();
+  furnaceInstancer.markDirty();
   buildSiteInstancer.markDirty();
   deconstructOverlay.markDirty();
-  // Only walls/doors change walkability; torches/floors/roofs stay passable,
-  // so don't invalidate the path cache or fire a topology rebuild (room
-  // flood-fill + auto-roof + roof-collapse BFS) for them. Saves a stutter
-  // when the player drops a row of torches or floors.
-  if (kind === 'wall' || kind === 'door') {
+  // Walls/doors/furnaces all change walkability (furnace blocks its tile via
+  // the generic occupancy bitmap; door deconstruct/build flips the door bit).
+  // Torches/floors/roofs stay passable, so skip the cache invalidation +
+  // topology rebuild for them — that keeps the stutter off when the player
+  // drops a row of torches or floors.
+  if (kind === 'wall' || kind === 'door' || kind === 'furnace') {
     pathCache.clear();
     scheduler.dirty.mark('topology');
   }
@@ -694,6 +699,24 @@ const floorDesignator = new BuildDesignator(
 );
 designators.push(floorDesignator);
 
+const furnaceDesignator = new BuildDesignator(
+  FURNACE_DESIGNATOR_CONFIG,
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  world,
+  jobBoard,
+  buildSiteInstancer,
+  scene,
+  () => {
+    deactivateOthers(furnaceDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(furnaceDesignator);
+
 const ignoreRoofDesignator = new IgnoreRoofDesignator(
   canvas,
   camera,
@@ -716,7 +739,7 @@ const deconstructDesignator = new DeconstructDesignator(
   tileGrid,
   world,
   jobBoard,
-  [wallInstancer, floorInstancer, deconstructOverlay],
+  [wallInstancer, floorInstancer, furnaceInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(deconstructDesignator);
@@ -781,7 +804,7 @@ const cancelDesignator = new CancelDesignator(
   world,
   jobBoard,
   buildSiteInstancer,
-  [wallInstancer, roofInstancer, floorInstancer, deconstructOverlay],
+  [wallInstancer, roofInstancer, floorInstancer, furnaceInstancer, deconstructOverlay],
   scene,
   () => {
     deactivateOthers(cancelDesignator);
@@ -808,6 +831,7 @@ const buildTab = createBuildTab({
   wallTorchDesignator,
   roofDesignator,
   floorDesignator,
+  furnaceDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,
@@ -916,6 +940,8 @@ const loop = new SimLoop({
     torchInstancer.update(world, tileGrid, tSec, camera);
     roofInstancer.update(world, tileGrid);
     floorInstancer.update(world, tileGrid);
+    furnaceInstancer.update(world, tileGrid);
+    furnaceInstancer.updateGlow(tSec);
     roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);
@@ -998,6 +1024,7 @@ installKeyboard({
   ignoreRoofOverlay,
   roofInstancer,
   floorInstancer,
+  furnaceInstancer,
   buildSiteInstancer,
   wallInstancer,
   cropInstancer,

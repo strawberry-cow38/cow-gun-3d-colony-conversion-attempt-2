@@ -513,6 +513,41 @@ describe('migration runner', () => {
     expect(out.crops[0]).toMatchObject({ cutMarked: false, cutProgress: 0, growthTicks: 12 });
   });
 
+  it('adds an empty furnaces array through the v20→v21 bump', () => {
+    const v20 = {
+      version: 20,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+        roof: [0],
+        ignoreRoof: [0],
+        floor: [0],
+        farmZone: [0],
+        tilled: [0],
+      },
+      cows: [],
+      trees: [],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+      crops: [],
+      boulders: [],
+    };
+    const out = runMigrations(v20);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.furnaces).toEqual([]);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

@@ -31,8 +31,9 @@ const NBRS = [
  * @param {number} i @param {number} j
  */
 export function findDeconstructStandTile(grid, walkable, kind, i, j) {
-  if (kind !== 'wall') {
+  if (kind !== 'wall' && kind !== 'furnace') {
     // Doors, torches, floors are walkable; stand on the target tile itself.
+    // Walls and furnaces block their own tile, so cow stands adjacent.
     if (grid.inBounds(i, j) && walkable(grid, i, j)) return { i, j };
   }
   for (const [di, dj] of NBRS) {

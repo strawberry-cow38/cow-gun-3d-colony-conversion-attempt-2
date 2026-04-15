@@ -868,7 +868,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
         return;
       }
       deps.onBuildComplete(pos, site.kind);
-      finishBuild(world, grid, siteId, jobId, board);
+      finishBuild(world, grid, siteId, jobId, board, walkable);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -907,19 +907,21 @@ function cowOnTileExcluding(world, grid, i, j, excludeId) {
 }
 
 /**
- * Convert a BuildSite entity into its finished form (Wall / Door / Torch based
- * on `site.kind`), update the matching tile bitmap so pathing + future
- * designations agree, and mark the job complete. Walls flip the `wall` bit
- * (blocking); doors flip the `door` bit only (walkable); torches flip the
- * `torch` bit only (walkable, decorative).
+ * Convert a BuildSite entity into its finished form (Wall / Door / Torch /
+ * Furnace based on `site.kind`), update the matching tile bitmap so pathing +
+ * future designations agree, and mark the job complete. Walls flip the `wall`
+ * bit (blocking); doors flip the `door` bit only (walkable); torches flip the
+ * `torch` bit only (walkable, decorative); furnaces use the generic occupancy
+ * bitmap since they aren't tile-bitmap-backed structures.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} siteId
  * @param {number} jobId
  * @param {import('../jobs/board.js').JobBoard} board
+ * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
  */
-function finishBuild(world, grid, siteId, jobId, board) {
+function finishBuild(world, grid, siteId, jobId, board, walkable) {
   const anchor = world.get(siteId, 'TileAnchor');
   const site = world.get(siteId, 'BuildSite');
   if (!anchor || !site) {
@@ -974,6 +976,23 @@ function finishBuild(world, grid, siteId, jobId, board) {
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });
+  } else if (site.kind === 'furnace') {
+    // Pick work-spot BEFORE blocking the tile — findAdjacentWalkable checks
+    // neighbors, and we want to accept adjacent tiles even if the furnace's
+    // own tile is about to become blocked. Fallback = the furnace tile itself;
+    // the bills poster will just skip bills that can't find a reachable spot.
+    const workSpot = findAdjacentWalkable(grid, walkable, anchor.i, anchor.j) ?? {
+      i: anchor.i,
+      j: anchor.j,
+    };
+    grid.blockTile(anchor.i, anchor.j);
+    world.spawn({
+      Furnace: { stuff, workI: workSpot.i, workJ: workSpot.j },
+      FurnaceViz: {},
+      Bills: { list: [], nextBillId: 1 },
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
   } else {
     grid.setWall(anchor.i, anchor.j, 1);
     world.spawn({
@@ -1019,6 +1038,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   torch: 'Torch',
   roof: 'Roof',
   floor: 'Floor',
+  furnace: 'Furnace',
 });
 
 /**
@@ -1039,8 +1059,9 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
 function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
-  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'} */ (
-    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'} */ (kind)] ?? 'Wall'
+  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'} */ (
+    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'} */ (kind)] ??
+      'Wall'
   );
   const tag = world.get(entityId, compName);
   const boardJob = board.get(jobId);
@@ -1131,12 +1152,17 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   else if (kind === 'torch') grid.setTorch(anchor.i, anchor.j, 0);
   else if (kind === 'roof') grid.setRoof(anchor.i, anchor.j, 0);
   else if (kind === 'floor') grid.setFloor(anchor.i, anchor.j, 0);
+  else if (kind === 'furnace') grid.unblockTile(anchor.i, anchor.j);
   // Wall/door/torch cost 1 wood → 50% refund = 1. Roofs are free so they
-  // refund nothing. When buildings diverge further, the original
-  // `required`/`requiredKind` will need to live on the finished-structure
-  // entity (mirroring how BuildSite tracks them).
-  const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
-  for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+  // refund nothing. Furnaces cost 15 stone → refund 7. When buildings diverge
+  // further, the original `required`/`requiredKind` should live on the
+  // finished-structure entity (mirroring how BuildSite tracks them).
+  if (kind === 'furnace') {
+    for (let k = 0; k < 7; k++) addItemToTile(world, grid, 'stone', anchor.i, anchor.j);
+  } else {
+    const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
+    for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+  }
   world.despawn(entityId);
   board.complete(jobId);
 }
