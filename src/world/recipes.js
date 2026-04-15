@@ -31,7 +31,40 @@
  */
 
 /** @type {Record<string, Recipe>} */
-export const RECIPES = {};
+export const RECIPES = {
+  smelt_iron: {
+    id: 'smelt_iron',
+    label: 'Smelt iron',
+    ingredients: [
+      { kind: 'coal', count: 1 },
+      { kind: 'metal_ore', count: 5 },
+    ],
+    outputKind: 'iron',
+    outputCount: 5,
+    workTicks: 600,
+  },
+};
 
 /** @type {string[]} */
-export const RECIPE_ORDER = [];
+export const RECIPE_ORDER = ['smelt_iron'];
+
+/** @type {BillCountMode[]} */
+export const BILL_COUNT_MODES = ['forever', 'count', 'untilHave'];
+
+/** @param {BillCountMode} mode */
+export function nextCountMode(mode) {
+  const i = BILL_COUNT_MODES.indexOf(mode);
+  return BILL_COUNT_MODES[(i + 1) % BILL_COUNT_MODES.length];
+}
+
+/**
+ * Short, one-line status string summarizing a bill's progress in its current
+ * count mode. UI shows this next to the recipe label.
+ *
+ * @param {import('./recipes.js').Bill} bill
+ */
+export function billProgressLabel(bill) {
+  if (bill.countMode === 'forever') return '∞';
+  if (bill.countMode === 'count') return `${bill.done} / ${bill.target}`;
+  return `stock ≤ ${bill.target}`;
+}

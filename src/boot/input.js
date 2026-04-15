@@ -14,6 +14,8 @@ import { dispatch } from './hotkeys.js';
  * @property {number|null} primaryCow
  * @property {Set<number>} selectedCows
  * @property {Set<number>} selectedItems
+ * @property {Set<number>} selectedFurnaces
+ * @property {number|null} primaryFurnace
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Mesh} tileMesh
  * @property {number} [pausedSpeed]  last non-zero speed, restored when space unpauses

@@ -270,6 +270,72 @@ describe('furnace save/load roundtrip', () => {
     expect(tg2.isBlocked(2, 2)).toBe(true);
   });
 
+  it('preserves bills (list + nextBillId) across save/load', () => {
+    const tg = new TileGrid(4, 4);
+    const w1 = makeWorld();
+    w1.spawn({
+      Furnace: {
+        deconstructJobId: 0,
+        progress: 0,
+        stuff: 'stone',
+        workI: 2,
+        workJ: 3,
+        workTicksRemaining: 0,
+        activeBillId: 0,
+      },
+      FurnaceViz: {},
+      Bills: {
+        list: [
+          {
+            id: 1,
+            recipeId: 'smelt_iron',
+            suspended: false,
+            countMode: 'count',
+            target: 12,
+            done: 3,
+          },
+          {
+            id: 2,
+            recipeId: 'smelt_iron',
+            suspended: true,
+            countMode: 'untilHave',
+            target: 50,
+            done: 0,
+          },
+        ],
+        nextBillId: 3,
+      },
+      TileAnchor: { i: 2, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    const state = serializeState(tg, w1);
+    const migrated = loadState(JSON.parse(JSON.stringify(state)));
+    const tg2 = hydrateTileGrid(migrated);
+    const w2 = makeWorld();
+    hydrateFurnaces(w2, tg2, new JobBoard(), migrated);
+
+    /** @type {{ list: any[], nextBillId: number } | null} */
+    let billsOut = null;
+    for (const { components } of w2.query(['Furnace', 'Bills'])) {
+      billsOut = { list: components.Bills.list, nextBillId: components.Bills.nextBillId };
+    }
+    expect(billsOut).not.toBeNull();
+    expect(billsOut?.nextBillId).toBe(3);
+    expect(billsOut?.list).toHaveLength(2);
+    expect(billsOut?.list[0]).toMatchObject({
+      recipeId: 'smelt_iron',
+      countMode: 'count',
+      target: 12,
+      done: 3,
+    });
+    expect(billsOut?.list[1]).toMatchObject({
+      suspended: true,
+      countMode: 'untilHave',
+      target: 50,
+    });
+  });
+
   it('re-posts a deconstruct job when the saved furnace was marked', () => {
     const tg = new TileGrid(4, 4);
     const w1 = makeWorld();

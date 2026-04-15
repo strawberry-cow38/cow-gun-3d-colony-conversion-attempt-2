@@ -5,7 +5,14 @@
 
 import { tileToWorld } from './coords.js';
 
-export const ITEM_KINDS = /** @type {const} */ (['wood', 'stone', 'food', 'metal_ore', 'coal']);
+export const ITEM_KINDS = /** @type {const} */ ([
+  'wood',
+  'stone',
+  'food',
+  'metal_ore',
+  'coal',
+  'iron',
+]);
 
 /** @type {Record<string, number>} */
 export const MAX_STACK = {
@@ -14,6 +21,7 @@ export const MAX_STACK = {
   food: 20,
   metal_ore: 30,
   coal: 30,
+  iron: 30,
 };
 
 /** @type {Record<string, { label: string, description: string }>} */
@@ -36,7 +44,11 @@ export const ITEM_INFO = {
   },
   coal: {
     label: 'Coal',
-    description: 'Mined from coal seams. No use yet.',
+    description: 'Mined from coal seams. Fuel for the furnace.',
+  },
+  iron: {
+    label: 'Iron',
+    description: 'Smelted from metal ore in a furnace.',
   },
 };
 
@@ -53,6 +65,7 @@ export const KIND_COLOR = {
   food: 0xd66a3a,
   metal_ore: 0xb0a48a,
   coal: 0x2a2a2e,
+  iron: 0xc8cbd0,
 };
 
 /** @param {string} kind */

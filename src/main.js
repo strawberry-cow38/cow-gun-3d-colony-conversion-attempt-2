@@ -48,6 +48,8 @@ import { createFarmZoneOverlay } from './render/farmZoneOverlay.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createFloorInstancer } from './render/floorInstancer.js';
 import { createFurnaceInstancer } from './render/furnaceInstancer.js';
+import { createFurnacePanel } from './render/furnacePanel.js';
+import { FurnaceSelector } from './render/furnaceSelector.js';
 import { IgnoreRoofDesignator } from './render/ignoreRoofDesignator.js';
 import { createIgnoreRoofOverlay } from './render/ignoreRoofOverlay.js';
 import { createItemInstancer } from './render/itemInstancer.js';
@@ -355,6 +357,8 @@ const state = {
   primaryCow: null,
   selectedCows: new Set(),
   selectedItems: new Set(),
+  selectedFurnaces: new Set(),
+  primaryFurnace: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
 };
@@ -415,6 +419,8 @@ const selectCow = (id, additive) => {
     state.selectedCows.add(id);
     state.primaryCow = id;
     state.selectedItems.clear();
+    state.selectedFurnaces.clear();
+    state.primaryFurnace = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -443,6 +449,8 @@ const selectItem = (id, additive) => {
     state.primaryCow = null;
     state.selectedItems.clear();
     state.selectedItems.add(id);
+    state.selectedFurnaces.clear();
+    state.primaryFurnace = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -454,8 +462,50 @@ const selectItemsMany = (ids) => {
   state.selectedCows.clear();
   state.primaryCow = null;
   state.selectedItems.clear();
+  state.selectedFurnaces.clear();
+  state.primaryFurnace = null;
   for (const id of ids) state.selectedItems.add(id);
   if (ids.length > 0) audio.play('command');
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
+/**
+ * Furnace selection mirrors cows/items. Exclusive with them — a furnace click
+ * clears cow + item selection.
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectFurnace = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
+      state.selectedFurnaces.clear();
+      state.primaryFurnace = null;
+    }
+  } else if (additive) {
+    if (state.selectedFurnaces.has(id)) {
+      state.selectedFurnaces.delete(id);
+      if (state.primaryFurnace === id) {
+        state.primaryFurnace =
+          state.selectedFurnaces.size > 0
+            ? /** @type {number} */ (state.selectedFurnaces.values().next().value)
+            : null;
+      }
+    } else {
+      state.selectedFurnaces.add(id);
+      state.primaryFurnace = id;
+    }
+    audio.play('click');
+  } else {
+    state.selectedCows.clear();
+    state.primaryCow = null;
+    state.selectedItems.clear();
+    state.selectedFurnaces.clear();
+    state.selectedFurnaces.add(id);
+    state.primaryFurnace = id;
+    audio.play('click');
+  }
   itemSelectionViz.markDirty();
   updateHud();
 };
@@ -468,6 +518,15 @@ new ItemSelector(
   world,
   selectItem,
   selectItemsMany,
+);
+
+new FurnaceSelector(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  { W: gridW, H: gridH },
+  world,
+  selectFurnace,
 );
 
 new TilePicker(
@@ -850,6 +909,15 @@ const itemStackPanel = createItemStackPanel({
   },
 });
 
+const furnacePanel = createFurnacePanel({
+  world,
+  state,
+  onChange: () => {
+    furnaceInstancer.markDirty();
+    updateHud();
+  },
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -958,6 +1026,7 @@ const loop = new SimLoop({
     pruneStaleSelections();
     cowPortraitBar.update();
     itemStackPanel.update();
+    furnacePanel.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     itemSelectionViz.update(world, tileGrid, state.selectedItems);

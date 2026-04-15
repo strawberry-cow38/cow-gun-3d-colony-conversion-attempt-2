@@ -153,6 +153,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} progress
  * @property {number} workTicksRemaining
  * @property {number} activeBillId
+ * @property {import('./recipes.js').Bill[]} [bills]
+ * @property {number} [nextBillId]
  */
 
 /**
@@ -309,7 +311,7 @@ export function serializeState(tileGrid, world) {
   }
   /** @type {SerializedFurnace[]} */
   const furnaces = [];
-  for (const { components } of world.query(['Furnace', 'TileAnchor'])) {
+  for (const { components } of world.query(['Furnace', 'TileAnchor', 'Bills'])) {
     furnaces.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
@@ -320,6 +322,8 @@ export function serializeState(tileGrid, world) {
       progress: components.Furnace.progress ?? 0,
       workTicksRemaining: components.Furnace.workTicksRemaining ?? 0,
       activeBillId: components.Furnace.activeBillId ?? 0,
+      bills: components.Bills.list.map((b) => ({ ...b })),
+      nextBillId: components.Bills.nextBillId,
     });
   }
   return {
@@ -679,7 +683,10 @@ export function hydrateFurnaces(world, grid, board, state) {
         activeBillId: f.activeBillId ?? 0,
       },
       FurnaceViz: {},
-      Bills: { list: [], nextBillId: 1 },
+      Bills: {
+        list: (f.bills ?? []).map((b) => ({ ...b })),
+        nextBillId: f.nextBillId ?? 1,
+      },
       TileAnchor: { i: f.i, j: f.j },
       Position: { x: w.x, y: grid.getElevation(f.i, f.j), z: w.z },
     });

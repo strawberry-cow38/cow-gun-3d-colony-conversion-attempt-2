@@ -101,6 +101,15 @@ export function createHud(ctx) {
     for (const id of state.selectedItems) {
       if (!world.get(id, 'Item')) state.selectedItems.delete(id);
     }
+    for (const id of state.selectedFurnaces) {
+      if (!world.get(id, 'Furnace')) state.selectedFurnaces.delete(id);
+    }
+    if (state.primaryFurnace !== null && !state.selectedFurnaces.has(state.primaryFurnace)) {
+      state.primaryFurnace =
+        state.selectedFurnaces.size > 0
+          ? /** @type {number} */ (state.selectedFurnaces.values().next().value)
+          : null;
+    }
   }
 
   function updateHud() {
