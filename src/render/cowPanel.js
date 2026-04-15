@@ -4,9 +4,14 @@
  *
  * Age is computed from birthTick every update so the number ticks forward
  * live as the sim clock advances.
+ *
+ * Has a tab bar (Bio / Social). Bio shows demographics + traits; Social
+ * reads Opinions + each partner's Brain/Identity and lists relationships
+ * sorted by absolute opinion magnitude.
  */
 
 import { ageYears, formatSimBirthday, tickToSimDate } from '../sim/calendar.js';
+import { opinionLabel } from '../world/chitchat.js';
 import { nameFontFor, nameFontScaleFor, traitDef } from '../world/traits.js';
 import { writeJitteredName } from './handwriting.js';
 
@@ -123,16 +128,57 @@ export function createCowPanel(opts) {
     display: 'none',
   });
 
-  root.append(header, stats, traitsWrap, traitDetail);
+  const tabBar = document.createElement('div');
+  Object.assign(tabBar.style, {
+    display: 'flex',
+    gap: '4px',
+    margin: '6px 0 6px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
+  });
+  const bioTab = makeTabButton('Bio');
+  const socialTab = makeTabButton('Social');
+  tabBar.append(bioTab, socialTab);
+
+  const bioBody = document.createElement('div');
+  bioBody.append(stats, traitsWrap, traitDetail);
+
+  const socialBody = document.createElement('div');
+  Object.assign(socialBody.style, { fontSize: '12px', color: '#d8dfe6' });
+
+  root.append(header, tabBar, bioBody, socialBody);
   document.body.appendChild(root);
+
+  /** @type {'bio'|'social'} */
+  let activeTab = 'bio';
+  function renderTabState() {
+    const isBio = activeTab === 'bio';
+    bioBody.style.display = isBio ? 'block' : 'none';
+    socialBody.style.display = isBio ? 'none' : 'block';
+    setTabActive(bioTab, isBio);
+    setTabActive(socialTab, !isBio);
+  }
+  bioTab.addEventListener('click', () => {
+    activeTab = 'bio';
+    renderTabState();
+    last.socialKey = '';
+  });
+  socialTab.addEventListener('click', () => {
+    activeTab = 'social';
+    renderTabState();
+    last.socialKey = '';
+    update();
+  });
+  renderTabState();
 
   /**
    * `pinnedTrait` sticks the detail open across hovers so the tooltip isn't
-   * purely ephemeral on touch devices.
+   * purely ephemeral on touch devices. `socialKey` caches the last-rendered
+   * social list signature so switching tabs or bumping opinions doesn't
+   * rebuild the DOM every tick.
    *
-   * @type {{ key: string, pinnedTrait: string | null }}
+   * @type {{ key: string, pinnedTrait: string | null, socialKey: string, socialCow: number, socialChats: number }}
    */
-  const last = { key: '', pinnedTrait: null };
+  const last = { key: '', pinnedTrait: null, socialKey: '', socialCow: -1, socialChats: -1 };
 
   function hidePanel() {
     root.style.display = 'none';
@@ -183,6 +229,7 @@ export function createCowPanel(opts) {
     const birthYear = birthDate.getUTCFullYear();
     const traits = identity.traits;
     const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}`;
+    if (activeTab === 'social') renderSocial(id);
     if (key === last.key) {
       if (root.style.display === 'none') root.style.display = 'block';
       return;
@@ -232,7 +279,183 @@ export function createCowPanel(opts) {
     }
   }
 
+  /** @param {number} cowId */
+  function renderSocial(cowId) {
+    const op = world.get(cowId, 'Opinions');
+    if (!op) {
+      if (last.socialKey !== 'empty') {
+        last.socialKey = 'empty';
+        socialBody.replaceChildren(socialEmptyLine('no opinions yet'));
+      }
+      return;
+    }
+    // Fast path: same cow + chat counter means nothing has moved; skip the
+    // rebuild-signature work entirely. Also handles the render-every-frame
+    // case while the Social tab sits open on a stable colony.
+    if (last.socialCow === cowId && last.socialChats === op.chats) return;
+    last.socialCow = cowId;
+    last.socialChats = op.chats;
+    /** @type {{ partnerId: number, score: number, name: string, lastText: string, lastTick: number }[]} */
+    const entries = [];
+    for (const key of Object.keys(op.scores)) {
+      const partnerId = Number(key);
+      const partnerBrain = world.get(partnerId, 'Brain');
+      if (!partnerBrain) continue;
+      const rec = op.last?.[partnerId];
+      entries.push({
+        partnerId,
+        score: op.scores[key],
+        name: partnerBrain.name,
+        lastText: rec?.text ?? '',
+        lastTick: rec?.tick ?? 0,
+      });
+    }
+    entries.sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+    const sig = `${op.chats}|${entries.map((e) => `${e.partnerId}:${Math.round(e.score)}`).join(',')}`;
+    if (sig === last.socialKey) return;
+    last.socialKey = sig;
+
+    socialBody.replaceChildren();
+    const summary = document.createElement('div');
+    Object.assign(summary.style, { color: '#9ba6b1', marginBottom: '6px', fontSize: '11px' });
+    summary.textContent = `${op.chats} chat${op.chats === 1 ? '' : 's'} · ${entries.length} known`;
+    socialBody.appendChild(summary);
+    if (entries.length === 0) {
+      socialBody.appendChild(socialEmptyLine('has not met anyone yet'));
+      return;
+    }
+    for (const e of entries) socialBody.appendChild(socialRow(e));
+  }
+
   return { update, root };
+}
+
+/** @param {string} msg */
+function socialEmptyLine(msg) {
+  const d = document.createElement('div');
+  Object.assign(d.style, { fontSize: '11px', color: '#7a8590', fontStyle: 'italic' });
+  d.textContent = msg;
+  return d;
+}
+
+/**
+ * @param {{ score: number, name: string, lastText: string }} entry
+ */
+function socialRow(entry) {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    padding: '4px 0',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+  });
+
+  const headRow = document.createElement('div');
+  Object.assign(headRow.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: '6px',
+  });
+  const nameEl = document.createElement('span');
+  Object.assign(nameEl.style, {
+    fontWeight: '600',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  });
+  nameEl.textContent = entry.name;
+  const scoreEl = document.createElement('span');
+  Object.assign(scoreEl.style, {
+    fontSize: '11px',
+    color: opinionTone(entry.score),
+    flex: '0 0 auto',
+  });
+  scoreEl.textContent = `${Math.round(entry.score)} · ${opinionLabel(entry.score)}`;
+  headRow.append(nameEl, scoreEl);
+
+  const bar = document.createElement('div');
+  Object.assign(bar.style, {
+    position: 'relative',
+    height: '4px',
+    background: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: '2px',
+    overflow: 'hidden',
+  });
+  const fill = document.createElement('div');
+  const t = Math.max(-100, Math.min(100, entry.score)) / 100;
+  const width = Math.abs(t) * 50;
+  Object.assign(fill.style, {
+    position: 'absolute',
+    top: '0',
+    bottom: '0',
+    left: t >= 0 ? '50%' : `${50 - width}%`,
+    width: `${width}%`,
+    background: opinionTone(entry.score),
+  });
+  const mid = document.createElement('div');
+  Object.assign(mid.style, {
+    position: 'absolute',
+    top: '0',
+    bottom: '0',
+    left: '50%',
+    width: '1px',
+    background: 'rgba(255, 255, 255, 0.18)',
+  });
+  bar.append(fill, mid);
+
+  row.append(headRow, bar);
+  if (entry.lastText) {
+    const quote = document.createElement('div');
+    Object.assign(quote.style, {
+      fontSize: '11px',
+      color: '#9ba6b1',
+      fontStyle: 'italic',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    });
+    quote.textContent = entry.lastText;
+    row.appendChild(quote);
+  }
+  return row;
+}
+
+/** @param {number} score */
+function opinionTone(score) {
+  if (score >= 50) return '#7ad07a';
+  if (score >= 10) return '#b8d07a';
+  if (score > -10) return '#b5c0cc';
+  if (score > -50) return '#d0a97a';
+  return '#d07a7a';
+}
+
+/** @param {string} label */
+function makeTabButton(label) {
+  const btn = document.createElement('button');
+  Object.assign(btn.style, {
+    flex: '1 1 auto',
+    padding: '4px 6px',
+    background: 'transparent',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    color: '#9ba6b1',
+    font: 'inherit',
+    fontWeight: '600',
+    cursor: 'pointer',
+  });
+  btn.textContent = label;
+  return btn;
+}
+
+/**
+ * @param {HTMLButtonElement} btn
+ * @param {boolean} active
+ */
+function setTabActive(btn, active) {
+  btn.style.color = active ? '#e6e6e6' : '#9ba6b1';
+  btn.style.borderBottomColor = active ? '#e6e6e6' : 'transparent';
 }
 
 /** @param {string} name */

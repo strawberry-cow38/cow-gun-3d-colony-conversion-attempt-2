@@ -48,6 +48,13 @@ import { TileGrid } from './tileGrid.js';
  */
 
 /**
+ * @typedef SerializedOpinions
+ * @property {Record<string, number>} scores        keyed by partner's save-array index (stringified number)
+ * @property {Record<string, { text: string, tick: number }>} last
+ * @property {number} chats
+ */
+
+/**
  * @typedef SerializedCow
  * @property {string} name
  * @property {boolean} drafted
@@ -57,6 +64,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {{ steps: { i: number, j: number }[], index: number }} path
  * @property {{ items: { kind: string, count: number }[] }} inventory
  * @property {SerializedIdentity} identity
+ * @property {SerializedOpinions} [opinions]
  */
 
 /**
@@ -237,9 +245,17 @@ import { TileGrid } from './tileGrid.js';
  * @param {import('../ecs/world.js').World} world
  */
 export function serializeState(tileGrid, world) {
-  /** @type {SerializedCow[]} */
-  const cows = [];
-  for (const { components } of world.query([
+  // Opinion maps are keyed by entity id, which doesn't survive save→load —
+  // remap to save-array indices here, back to the new ids in hydrateCows.
+  // DEV-mode query proxies revoke between iterations, so the first pass
+  // snapshots the opinion data into plain objects before the proxy flips.
+  /**
+   * @type {{ id: number, serialized: SerializedCow, scores: Record<number, number>, last: Record<number, { text: string, tick: number }>, chats: number }[]}
+   */
+  const pending = [];
+  /** @type {Map<number, number>} */
+  const idToIndex = new Map();
+  for (const { id, components } of world.query([
     'Cow',
     'Position',
     'Hunger',
@@ -248,8 +264,10 @@ export function serializeState(tileGrid, world) {
     'Job',
     'Path',
     'Inventory',
+    'Opinions',
   ])) {
-    cows.push({
+    const op = components.Opinions;
+    const serialized = {
       name: components.Brain.name,
       drafted: components.Cow.drafted === true,
       position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
@@ -276,7 +294,36 @@ export function serializeState(tileGrid, world) {
         surname: components.Identity.surname,
         title: components.Identity.title,
       },
+      opinions: { scores: {}, last: {}, chats: 0 },
+    };
+    idToIndex.set(id, pending.length);
+    pending.push({
+      id,
+      serialized,
+      scores: { ...op.scores },
+      last: { ...op.last },
+      chats: op.chats ?? 0,
     });
+  }
+  /** @type {SerializedCow[]} */
+  const cows = [];
+  for (const entry of pending) {
+    /** @type {Record<string, number>} */
+    const opScores = {};
+    for (const key of Object.keys(entry.scores)) {
+      const k = Number(key);
+      const idx = idToIndex.get(k);
+      if (idx !== undefined) opScores[idx] = entry.scores[k];
+    }
+    /** @type {Record<string, { text: string, tick: number }>} */
+    const opLast = {};
+    for (const key of Object.keys(entry.last)) {
+      const k = Number(key);
+      const idx = idToIndex.get(k);
+      if (idx !== undefined) opLast[idx] = entry.last[k];
+    }
+    entry.serialized.opinions = { scores: opScores, last: opLast, chats: entry.chats };
+    cows.push(entry.serialized);
   }
   /** @type {SerializedTree[]} */
   const trees = [];
@@ -551,12 +598,14 @@ export function hydrateTileGrid(state) {
  */
 export function hydrateCows(world, state) {
   const cows = state.cows ?? [];
+  /** @type {number[]} */
+  const spawnedIds = [];
   for (const c of cows) {
     const job = c.job ?? { kind: 'none', state: 'idle', payload: {} };
     const path = c.path ?? { steps: [], index: 0 };
     const inv = c.inventory ?? { items: [] };
     const id = c.identity;
-    world.spawn({
+    const newId = world.spawn({
       Cow: { drafted: c.drafted === true },
       Position: { ...c.position },
       PrevPosition: { ...c.position },
@@ -577,8 +626,28 @@ export function hydrateCows(world, state) {
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
       Inventory: { items: (inv.items ?? []).map((s) => ({ kind: s.kind, count: s.count })) },
+      Opinions: { scores: {}, last: {}, chats: c.opinions?.chats ?? 0 },
+      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       CowViz: {},
     });
+    spawnedIds.push(newId);
+  }
+  // Second pass: rewrite opinion keys from save-array indices to the fresh
+  // entity ids allocated above. Skip indices that point to cows that didn't
+  // spawn (shouldn't happen, but stays defensive).
+  for (let i = 0; i < cows.length; i++) {
+    const op = cows[i].opinions;
+    if (!op) continue;
+    const target = world.get(spawnedIds[i], 'Opinions');
+    if (!target) continue;
+    for (const key of Object.keys(op.scores ?? {})) {
+      const otherId = spawnedIds[Number(key)];
+      if (otherId !== undefined) target.scores[otherId] = op.scores[key];
+    }
+    for (const key of Object.keys(op.last ?? {})) {
+      const otherId = spawnedIds[Number(key)];
+      if (otherId !== undefined) target.last[otherId] = op.last[key];
+    }
   }
 }
 

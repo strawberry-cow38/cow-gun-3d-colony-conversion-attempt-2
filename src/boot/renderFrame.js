@@ -86,6 +86,7 @@ export function createRenderFrame({
     cowInstancer,
     cowNameTags,
     cowThoughtBubbles,
+    cowChatBubbles,
     selectionViz,
     itemSelectionViz,
     treeInstancer,
@@ -164,6 +165,7 @@ export function createRenderFrame({
     cowInstancer.update(world, alpha, tSec, tileGrid, hiddenCowId);
     cowNameTags.update(world, camera, alpha);
     cowThoughtBubbles.update(world, camera, alpha);
+    cowChatBubbles.update(world, camera, alpha, simTick);
     draftBadge.update(world, tSec);
     treeInstancer.update(world, tileGrid);
     treeInstancer.updateMarkers(world, tileGrid, tSec);

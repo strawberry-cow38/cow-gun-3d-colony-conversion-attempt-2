@@ -10,6 +10,7 @@
 import { createAmbientParticles } from '../render/ambientParticles.js';
 import { createBoulderInstancer } from '../render/boulderInstancer.js';
 import { createBuildSiteInstancer } from '../render/buildSiteInstancer.js';
+import { createCowChatBubbles } from '../render/cowChatBubbles.js';
 import { createCowInstancer } from '../render/cowInstancer.js';
 import { createCowNameTags } from '../render/cowNameTags.js';
 import { createCowThoughtBubbles } from '../render/cowThoughtBubbles.js';
@@ -58,6 +59,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     cowInstancer: createCowInstancer(scene, 256),
     cowNameTags: createCowNameTags(scene),
     cowThoughtBubbles: createCowThoughtBubbles(scene),
+    cowChatBubbles: createCowChatBubbles(scene),
     selectionViz: createSelectionViz(scene),
     itemSelectionViz: createItemSelectionViz(scene),
     treeInstancer: createTreeInstancer(scene, 2048),

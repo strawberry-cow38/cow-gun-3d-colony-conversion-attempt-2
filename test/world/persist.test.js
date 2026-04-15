@@ -71,6 +71,8 @@ describe('cow save/load roundtrip', () => {
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
       Inventory: { items: [] },
+      Opinions: { scores: {}, last: {}, chats: 0 },
+      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       CowViz: {},
     });
 
@@ -125,6 +127,8 @@ describe('cow save/load roundtrip', () => {
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
       Inventory: { items: [] },
+      Opinions: { scores: {}, last: {}, chats: 0 },
+      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       CowViz: {},
     });
     w1.spawn({
@@ -144,6 +148,8 @@ describe('cow save/load roundtrip', () => {
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
       Inventory: { items: [] },
+      Opinions: { scores: {}, last: {}, chats: 0 },
+      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       CowViz: {},
     });
 

@@ -39,6 +39,22 @@
  * Job         { kind, state, payload } kind='none' = idle
  * Path        { steps, index }       current path; index >= steps.length = arrived
  *
+ * Opinions    { scores, last, chats }
+ *                                    Per-cow sparse map of this cow's feeling
+ *                                    toward every other cow they've met.
+ *                                    `scores[otherId]` clamps to [-100, +100];
+ *                                    `last[otherId] = { text, tick }` caches
+ *                                    the most recent interaction phrase for
+ *                                    the Social tab. `chats` is a lifetime
+ *                                    counter for fun stats.
+ * Chat        { text, partnerId, expiresAtTick }
+ *                                    Transient speech bubble driven by the
+ *                                    social system. The render-side chat-
+ *                                    bubble layer reads this and hides it
+ *                                    once `ctx.tick >= expiresAtTick`. Only
+ *                                    one active chat per cow at a time — the
+ *                                    system overwrites on new interactions.
+ *
  * Tree / TreeViz  { markedJobId, progress, kind, growth }
  *                                   markedJobId>0 means player designated it for
  *                                   chop; progress 0..1 drives chop visual
@@ -190,6 +206,22 @@ export function registerComponents(world) {
     index: 0,
   }));
   world.defineComponent('CowViz', () => ({}));
+  world.defineComponent('Opinions', () => ({
+    /** @type {Record<number, number>} opinion of other cow by entity id, clamped -100..+100 */
+    scores: {},
+    /** @type {Record<number, { text: string, tick: number }>} last chat recall per partner */
+    last: {},
+    /** @type {number} total chats this cow has participated in */
+    chats: 0,
+  }));
+  world.defineComponent('Chat', () => ({
+    /** @type {string} the bubble text, e.g. "babbled about the weather" */
+    text: '',
+    /** @type {number} partner cow entity id (0 = none) */
+    partnerId: 0,
+    /** @type {number} sim tick the bubble should hide at */
+    expiresAtTick: 0,
+  }));
   world.defineComponent('Tree', () => ({
     markedJobId: 0,
     progress: 0,

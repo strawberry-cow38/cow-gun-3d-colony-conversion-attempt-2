@@ -59,6 +59,7 @@ import { makeItemRescueSystem } from './systems/itemRescue.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { createRooms, makeRoomsSystem } from './systems/rooms.js';
+import { makeSocialSystem } from './systems/social.js';
 import {
   makeSaplingSpawnSystem,
   makeTreeGrowthSystem,
@@ -160,6 +161,7 @@ scheduler.add(makeItemRescueSystem(tileGrid, () => onWorldItemChange()));
 // once the renderer (constructed below) is in scope.
 let onRoomsRebuilt = () => {};
 scheduler.add(makeRoomsSystem({ rooms, onRebuilt: () => onRoomsRebuilt() }));
+scheduler.add(makeSocialSystem());
 
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialTrees(world, tileGrid, treeCount);

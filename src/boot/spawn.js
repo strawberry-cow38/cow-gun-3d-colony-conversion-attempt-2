@@ -72,6 +72,8 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },
     Inventory: { items: [] },
+    Opinions: { scores: {}, last: {}, chats: 0 },
+    Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
     CowViz: {},
   });
 }
