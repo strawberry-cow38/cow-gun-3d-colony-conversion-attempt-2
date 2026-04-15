@@ -1,37 +1,37 @@
 /**
- * Chop designation mode.
+ * Cut designation mode. Drag-rectangle UX like ChopDesignator/MineDesignator,
+ * but works against the generic `Cuttable` marker — so a single drag covers
+ * immature trees, immature crops, and any future wild foliage that opts in
+ * by attaching Cuttable at spawn.
  *
- * Activated from the build tab; LMB drag a rectangle of tiles to mark every
- * Tree inside the rect for chopping (posts a chop job, sets `tree.markedJobId`).
- * Shift+drag cancels existing chop jobs inside the rect. `Escape` exits.
+ * Cut is the catch-all "snip this off the map" verb: yields whatever the
+ * target is currently worth (sapling = 0 wood, ripe crop = 1 food, etc.).
+ * Chop wood is strict (mature trees only); cut is permissive.
  *
- * The drag interaction mirrors StockpileDesignator/BuildDesignator: mousedown/
- * move/up captured at the dom+window level so CowSelector/SelectionBox/
- * CowMoveCommand don't react while active. A live wire-rectangle preview
- * traces the current drag range.
+ * Shift+drag cancels existing cut jobs inside the rect. `Escape` exits.
  */
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
-import { TREE_MIN_YIELD_GROWTH } from '../world/trees.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
-const PREVIEW_COLOR_ADD = 0xffae4a;
+const PREVIEW_COLOR_ADD = 0x9fdc5a;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
-export class ChopDesignator {
+export class CutDesignator {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
    * @param {() => THREE.Mesh} getTileMesh
    * @param {import('../world/tileGrid.js').TileGrid} tileGrid
    * @param {{ markDirty: () => void }} treeInstancer
+   * @param {{ markDirty: () => void }} cropInstancer
    * @param {import('../ecs/world.js').World} world
    * @param {import('../jobs/board.js').JobBoard} board
    * @param {THREE.Scene} scene
-   * @param {() => void} onStateChanged  called whenever mode toggles or trees change
+   * @param {() => void} onStateChanged
    * @param {{ play: (kind: string) => void }} [audio]
    */
   constructor(
@@ -40,6 +40,7 @@ export class ChopDesignator {
     getTileMesh,
     tileGrid,
     treeInstancer,
+    cropInstancer,
     world,
     board,
     scene,
@@ -51,6 +52,7 @@ export class ChopDesignator {
     this.getTileMesh = getTileMesh;
     this.tileGrid = tileGrid;
     this.trees = treeInstancer;
+    this.crops = cropInstancer;
     this.world = world;
     this.board = board;
     this.onStateChanged = onStateChanged;
@@ -66,8 +68,8 @@ export class ChopDesignator {
 
     this.preview = buildPreview(scene);
     this.sizeLabel = createDragSizeLabel({
-      addVerb: 'chop',
-      cancelVerb: 'cancel chop',
+      addVerb: 'cut',
+      cancelVerb: 'cancel cut',
       addHex: PREVIEW_COLOR_ADD,
       removeHex: PREVIEW_COLOR_REMOVE,
     });
@@ -168,26 +170,23 @@ export class ChopDesignator {
     const j0 = Math.min(a.j, b.j);
     const j1 = Math.max(a.j, b.j);
     let any = false;
-    for (const { id, components } of this.world.query(['Tree', 'TileAnchor'])) {
+    for (const { id, components } of this.world.query(['Cuttable', 'TileAnchor'])) {
       const anchor = components.TileAnchor;
       if (anchor.i < i0 || anchor.i > i1) continue;
       if (anchor.j < j0 || anchor.j > j1) continue;
-      const tree = components.Tree;
+      const cuttable = components.Cuttable;
       if (removing) {
-        if (tree.markedJobId > 0) {
-          this.board.complete(tree.markedJobId);
-          tree.markedJobId = 0;
-          tree.progress = 0;
+        if (cuttable.markedJobId > 0) {
+          this.board.complete(cuttable.markedJobId);
+          cuttable.markedJobId = 0;
+          cuttable.progress = 0;
           any = true;
         }
       } else {
-        // Chop wood is strict: only trees that would yield at least 1 wood.
-        // Immature saplings go to the cut-plants designator instead.
-        if (tree.growth < TREE_MIN_YIELD_GROWTH) continue;
-        if (tree.markedJobId === 0) {
-          const job = this.board.post('chop', { treeId: id, i: anchor.i, j: anchor.j });
-          tree.markedJobId = job.id;
-          tree.progress = 0;
+        if (cuttable.markedJobId === 0) {
+          const job = this.board.post('cut', { entityId: id, i: anchor.i, j: anchor.j });
+          cuttable.markedJobId = job.id;
+          cuttable.progress = 0;
           any = true;
         }
       }
@@ -195,6 +194,7 @@ export class ChopDesignator {
     if (any) {
       this.audio?.play('command');
       this.trees.markDirty();
+      this.crops.markDirty();
       this.onStateChanged();
     }
   }

@@ -348,7 +348,7 @@ describe('migration runner', () => {
     };
     const out = runMigrations(v15);
     expect(out.version).toBe(CURRENT_VERSION);
-    expect(out.crops).toEqual([{ i: 1, j: 0, kind: 'corn', growthTicks: 42 }]);
+    expect(out.crops[0]).toMatchObject({ i: 1, j: 0, kind: 'corn', growthTicks: 42 });
   });
 
   it('adds forbidden: false to every v16 item through the v16→v17 bump', () => {
@@ -425,10 +425,22 @@ describe('migration runner', () => {
     };
     const out = runMigrations(v17);
     expect(out.version).toBe(CURRENT_VERSION);
-    expect(out.trees).toEqual([
-      { i: 0, j: 0, marked: false, progress: 0, kind: 'oak', growth: 1 },
-      { i: 1, j: 2, marked: true, progress: 0.4, kind: 'oak', growth: 1 },
-    ]);
+    expect(out.trees[0]).toMatchObject({
+      i: 0,
+      j: 0,
+      marked: false,
+      progress: 0,
+      kind: 'oak',
+      growth: 1,
+    });
+    expect(out.trees[1]).toMatchObject({
+      i: 1,
+      j: 2,
+      marked: true,
+      progress: 0.4,
+      kind: 'oak',
+      growth: 1,
+    });
   });
 
   it('adds an empty boulders list through the v18→v19 bump', () => {
@@ -463,6 +475,42 @@ describe('migration runner', () => {
     const out = runMigrations(v18);
     expect(out.version).toBe(CURRENT_VERSION);
     expect(out.boulders).toEqual([]);
+  });
+
+  it('adds cutMarked + cutProgress to trees and crops through the v19→v20 bump', () => {
+    const v19 = {
+      version: 19,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+        wall: [0],
+        door: [0],
+        torch: [0],
+        roof: [0],
+        ignoreRoof: [0],
+        floor: [0],
+        farmZone: [0],
+        tilled: [0],
+      },
+      cows: [],
+      trees: [{ i: 0, j: 0, marked: false, progress: 0, kind: 'oak', growth: 0.3 }],
+      items: [],
+      buildSites: [],
+      walls: [],
+      doors: [],
+      torches: [],
+      roofs: [],
+      floors: [],
+      crops: [{ i: 0, j: 0, kind: 'corn', growthTicks: 12 }],
+      boulders: [],
+    };
+    const out = runMigrations(v19);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(out.trees[0]).toMatchObject({ cutMarked: false, cutProgress: 0, growth: 0.3 });
+    expect(out.crops[0]).toMatchObject({ cutMarked: false, cutProgress: 0, growthTicks: 12 });
   });
 
   it('passes a CURRENT_VERSION save through unchanged', () => {

@@ -36,6 +36,8 @@ import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createCowThoughtBubbles } from './render/cowThoughtBubbles.js';
 import { createCropInstancer } from './render/cropInstancer.js';
+import { CutDesignator } from './render/cutDesignator.js';
+import { createCuttableMarkerInstancer } from './render/cuttableMarkerInstancer.js';
 import { DeconstructDesignator } from './render/deconstructDesignator.js';
 import { createDeconstructOverlay } from './render/deconstructOverlay.js';
 import { createDoorInstancer } from './render/doorInstancer.js';
@@ -243,6 +245,7 @@ const roofCollapseParticles = createRoofCollapseParticles(scene);
 const floorInstancer = createFloorInstancer(scene, gridW * gridH);
 const buildSiteInstancer = createBuildSiteInstancer(scene, 1024);
 const cropInstancer = createCropInstancer(scene, 1024);
+const cuttableMarkerInstancer = createCuttableMarkerInstancer(scene, 256);
 const itemInstancer = createItemInstancer(scene, 1024);
 const itemLabels = createItemLabels(scene);
 const stockpileOverlay = createStockpileOverlay(scene, gridW * gridH);
@@ -517,6 +520,24 @@ const chopDesignator = new ChopDesignator(
 );
 designators.push(chopDesignator);
 
+const cutDesignator = new CutDesignator(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  tileGrid,
+  treeInstancer,
+  cropInstancer,
+  world,
+  jobBoard,
+  scene,
+  () => {
+    deactivateOthers(cutDesignator);
+    updateHud();
+  },
+  audio,
+);
+designators.push(cutDesignator);
+
 const mineDesignator = new MineDesignator(
   canvas,
   camera,
@@ -777,6 +798,7 @@ const draftBadge = createDraftBadge(scene, 256);
 
 const buildTab = createBuildTab({
   chopDesignator,
+  cutDesignator,
   mineDesignator,
   stockpileDesignator,
   farmZoneDesignator,
@@ -896,6 +918,7 @@ const loop = new SimLoop({
     roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);
+    cuttableMarkerInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid);

@@ -15,6 +15,7 @@
 
 import { buildTicksForKind, findBuildStandTile } from '../jobs/build.js';
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
+import { CUT_TICKS } from '../jobs/cut.js';
 import { DECONSTRUCT_TICKS, findDeconstructStandTile } from '../jobs/deconstruct.js';
 import { HARVEST_TICKS } from '../jobs/harvest.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
@@ -25,7 +26,7 @@ import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
-import { cropKindFor } from '../world/crops.js';
+import { cropIsReady, cropKindFor } from '../world/crops.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -138,6 +139,7 @@ export function makeCowBrainSystem(deps) {
         if (cow.drafted) {
           if (
             job.kind === 'chop' ||
+            job.kind === 'cut' ||
             job.kind === 'mine' ||
             job.kind === 'haul' ||
             job.kind === 'eat' ||
@@ -268,6 +270,17 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (candidate && candidate.kind === 'cut' && board.claim(candidate.id, id)) {
+                job.kind = 'cut';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  entityId: candidate.payload.entityId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               } else if (candidate && candidate.kind === 'haul' && board.claim(candidate.id, id)) {
                 job.kind = 'haul';
                 job.state = 'pathing-to-item';
@@ -365,6 +378,8 @@ export function makeCowBrainSystem(deps) {
           runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'mine') {
           runMineJob(world, job, path, pos, grid, paths, walkable, board, deps);
+        } else if (job.kind === 'cut') {
+          runCutJob(world, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'build') {
           runBuildJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'deconstruct') {
@@ -618,6 +633,130 @@ function finishMine(world, grid, boulderId, jobId, board) {
     }
   }
   world.despawn(boulderId);
+  board.complete(jobId);
+}
+
+/**
+ * Cut job state machine. Like chop/mine but target is any Cuttable entity
+ * (Tree, Crop, or future wild foliage). Yield on finish depends on the
+ * target's kind component — see finishCut.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runCutJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+  const { entityId, jobId } = /** @type {{ entityId: number, jobId: number }} */ (job.payload);
+  const boardJob = board.get(jobId);
+  if (!world.get(entityId, 'Cuttable') || !boardJob || boardJob.completed) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    const cut = world.get(entityId, 'Cuttable');
+    if (cut) cut.progress = 0;
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const adj = findAdjacentWalkable(grid, walkable, job.payload.i, job.payload.j);
+    if (!adj) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const route = paths.find(start, adj);
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'cutting';
+      job.payload.ticksRemaining = CUT_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'cutting') {
+    const remaining = (job.payload.ticksRemaining ?? CUT_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    const cut = world.get(entityId, 'Cuttable');
+    if (cut) cut.progress = 1 - remaining / CUT_TICKS;
+    if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
+    if (remaining <= 0) {
+      finishCut(world, grid, entityId, jobId, board, pos, deps);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * Despawn the cuttable and drop its current-state yield.
+ *
+ *   Tree  → woodYieldFor(kind, growth). Sapling yields 0, mature yields full.
+ *   Crop  → 1 food if ready, else 0. Harvest is also 1 food, so cutting a
+ *           ripe crop is mechanically equivalent to harvesting it.
+ *   other → nothing (future wild foliage can wire in per-kind yield here).
+ *
+ * Tree tiles are grid-blocked (see spawnTree); crop tiles are not (see farm
+ * system). Only unblock if the target actually blocked its tile, so we don't
+ * double-unblock in the crop case.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} entityId
+ * @param {number} jobId
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {BrainDeps} deps
+ */
+function finishCut(world, grid, entityId, jobId, board, pos, deps) {
+  const anchor = world.get(entityId, 'TileAnchor');
+  const tree = world.get(entityId, 'Tree');
+  const crop = world.get(entityId, 'Crop');
+  let yieldedAnything = false;
+  if (anchor) {
+    if (tree) {
+      grid.unblockTile(anchor.i, anchor.j);
+      const n = woodYieldFor(tree.kind, tree.growth);
+      for (let k = 0; k < n; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+      if (n > 0) yieldedAnything = true;
+      deps.onChopComplete(pos);
+    } else if (crop) {
+      if (cropIsReady(crop.kind, crop.growthTicks)) {
+        addItemToTile(world, grid, 'food', anchor.i, anchor.j);
+        yieldedAnything = true;
+      }
+      deps.onHarvestComplete(pos);
+    }
+  }
+  if (yieldedAnything) deps.onItemChange();
+  world.despawn(entityId);
   board.complete(jobId);
 }
 
@@ -1138,6 +1277,7 @@ function runPlantJob(world, job, path, pos, grid, paths, board, deps) {
       world.spawn({
         Crop: { kind, growthTicks: 0 },
         CropViz: {},
+        Cuttable: { markedJobId: 0, progress: 0 },
         TileAnchor: { i, j },
         Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
       });

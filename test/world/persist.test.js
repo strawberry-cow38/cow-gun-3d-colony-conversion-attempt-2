@@ -147,12 +147,14 @@ describe('tree save/load roundtrip', () => {
     w1.spawn({
       Tree: { markedJobId: 0, progress: 0 },
       TreeViz: {},
+      Cuttable: { markedJobId: 0, progress: 0 },
       TileAnchor: { i: 1, j: 2 },
       Position: { x: 0, y: 0, z: 0 },
     });
     w1.spawn({
       Tree: { markedJobId: 7, progress: 0.3 },
       TreeViz: {},
+      Cuttable: { markedJobId: 0, progress: 0 },
       TileAnchor: { i: 3, j: 0 },
       Position: { x: 0, y: 0, z: 0 },
     });

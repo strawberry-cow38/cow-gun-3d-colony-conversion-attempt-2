@@ -50,6 +50,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} progress  0..1 chop progress at save time
  * @property {string} kind      species: birch/pine/oak/maple
  * @property {number} growth    0..1 sapling→mature progress
+ * @property {boolean} cutMarked  player marked it for cut-plants
+ * @property {number} cutProgress 0..1 cut progress at save time
  */
 
 /**
@@ -135,6 +137,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} j
  * @property {string} kind
  * @property {number} growthTicks
+ * @property {boolean} cutMarked
+ * @property {number} cutProgress
  */
 
 /**
@@ -172,7 +176,7 @@ export function serializeState(tileGrid, world) {
   }
   /** @type {SerializedTree[]} */
   const trees = [];
-  for (const { components } of world.query(['Tree', 'TileAnchor'])) {
+  for (const { components } of world.query(['Tree', 'TileAnchor', 'Cuttable'])) {
     trees.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
@@ -180,6 +184,8 @@ export function serializeState(tileGrid, world) {
       progress: components.Tree.progress,
       kind: components.Tree.kind,
       growth: components.Tree.growth,
+      cutMarked: components.Cuttable.markedJobId > 0,
+      cutProgress: components.Cuttable.progress,
     });
   }
   /** @type {SerializedBoulder[]} */
@@ -277,12 +283,14 @@ export function serializeState(tileGrid, world) {
   }
   /** @type {SerializedCrop[]} */
   const crops = [];
-  for (const { components } of world.query(['Crop', 'TileAnchor'])) {
+  for (const { components } of world.query(['Crop', 'TileAnchor', 'Cuttable'])) {
     crops.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
       kind: components.Crop.kind,
       growthTicks: components.Crop.growthTicks,
+      cutMarked: components.Cuttable.markedJobId > 0,
+      cutProgress: components.Cuttable.progress,
     });
   }
   return {
@@ -383,6 +391,7 @@ export function hydrateTrees(world, grid, board, state) {
     const id = world.spawn({
       Tree: { markedJobId: 0, progress: t.progress, kind: t.kind, growth: t.growth },
       TreeViz: {},
+      Cuttable: { markedJobId: 0, progress: t.cutProgress ?? 0 },
       TileAnchor: { i: t.i, j: t.j },
       Position: { x: w.x, y: grid.getElevation(t.i, t.j), z: w.z },
     });
@@ -390,6 +399,11 @@ export function hydrateTrees(world, grid, board, state) {
       const job = board.post('chop', { treeId: id, i: t.i, j: t.j });
       const tree = world.get(id, 'Tree');
       if (tree) tree.markedJobId = job.id;
+    }
+    if (t.cutMarked) {
+      const job = board.post('cut', { entityId: id, i: t.i, j: t.j });
+      const cut = world.get(id, 'Cuttable');
+      if (cut) cut.markedJobId = job.id;
     }
   }
 }
@@ -592,17 +606,23 @@ export function hydrateFloors(world, grid, board, state) {
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {{ crops?: SerializedCrop[] }} state
  */
-export function hydrateCrops(world, grid, state) {
+export function hydrateCrops(world, grid, board, state) {
   const crops = state.crops ?? [];
   for (const c of crops) {
     if (!grid.inBounds(c.i, c.j)) continue;
     const w = tileToWorld(c.i, c.j, grid.W, grid.H);
-    world.spawn({
+    const id = world.spawn({
       Crop: { kind: c.kind, growthTicks: c.growthTicks ?? 0 },
       CropViz: {},
+      Cuttable: { markedJobId: 0, progress: c.cutProgress ?? 0 },
       TileAnchor: { i: c.i, j: c.j },
       Position: { x: w.x, y: grid.getElevation(c.i, c.j), z: w.z },
     });
+    if (c.cutMarked) {
+      const job = board.post('cut', { entityId: id, i: c.i, j: c.j });
+      const cut = world.get(id, 'Cuttable');
+      if (cut) cut.markedJobId = job.id;
+    }
   }
 }
 

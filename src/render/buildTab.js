@@ -42,6 +42,7 @@ import { colorToCss } from './dragSizeLabel.js';
 /**
  * @typedef {Object} BuildTabOpts
  * @property {ToggleableDesignator} chopDesignator
+ * @property {ToggleableDesignator} cutDesignator
  * @property {ToggleableDesignator} mineDesignator
  * @property {ToggleableDesignator} stockpileDesignator
  * @property {ToggleableDesignator} farmZoneDesignator
@@ -66,9 +67,18 @@ export function createBuildTab(opts) {
       id: 'chop',
       label: 'Chop',
       icon: '🪓',
-      hotkeyHint: 'mark trees for felling',
+      hotkeyHint: 'mark mature trees for felling (≥50% grown)',
       activeColor: '#ffae4a',
       designator: opts.chopDesignator,
+    },
+    {
+      id: 'cut',
+      label: 'Cut',
+      icon: '✂️',
+      hotkeyHint:
+        'snip saplings, unripe crops, brush — yields whatever they\u2019re currently worth',
+      activeColor: '#9fdc5a',
+      designator: opts.cutDesignator,
     },
     {
       id: 'mine',

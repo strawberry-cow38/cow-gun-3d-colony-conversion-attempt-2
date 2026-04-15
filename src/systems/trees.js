@@ -46,6 +46,7 @@ function spawnTree(world, grid, i, j, opts = {}) {
   return world.spawn({
     Tree: { markedJobId: 0, progress: 0, kind, growth },
     TreeViz: {},
+    Cuttable: { markedJobId: 0, progress: 0 },
     TileAnchor: { i, j },
     Position: { x: w.x, y, z: w.z },
   });

@@ -63,6 +63,15 @@
  *              Visible stage is derived from growthTicks via cropStageFor().
  *              Board-level dedupe of plant/harvest jobs lives in the farm
  *              poster (by tile index) — no per-entity jobId tracking needed.
+ *
+ * Cuttable     { markedJobId, progress }
+ *              Generic "this plant-like entity can be cut down" marker. Sits
+ *              alongside Tree/Crop (and any future wild foliage) so the cut
+ *              designator can query one component to find every valid target.
+ *              Separate from Tree.markedJobId (which drives chop specifically),
+ *              because a cut job is a strict superset — cut applies to any
+ *              growth stage, and cut's yield depends on the target's own kind
+ *              (woodYieldFor for Tree, cropYieldFor for Crop).
  */
 
 /**
@@ -143,4 +152,5 @@ export function registerComponents(world) {
     growthTicks: 0,
   }));
   world.defineComponent('CropViz', () => ({}));
+  world.defineComponent('Cuttable', () => ({ markedJobId: 0, progress: 0 }));
 }

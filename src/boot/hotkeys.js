@@ -421,7 +421,7 @@ async function loadGame(ctx) {
     hydrateTorches(world, tileGrid, jobBoard, migrated);
     hydrateRoofs(world, tileGrid, jobBoard, migrated);
     hydrateFloors(world, tileGrid, jobBoard, migrated);
-    hydrateCrops(world, tileGrid, migrated);
+    hydrateCrops(world, tileGrid, jobBoard, migrated);
     ctx.rooms.rebuild();
     ctx.roomOverlay.markDirty();
     ctx.ignoreRoofOverlay.markDirty();
