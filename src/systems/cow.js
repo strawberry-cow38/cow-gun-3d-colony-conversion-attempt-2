@@ -28,7 +28,13 @@ import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropIsReady, cropKindFor } from '../world/crops.js';
 import { FACING_OFFSETS } from '../world/facing.js';
-import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
+import {
+  FOOD_NUTRITION,
+  HUNGER_EAT_THRESHOLD,
+  addItemToTile,
+  addItemsToTile,
+  inventoryAdd,
+} from '../world/items.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
@@ -159,7 +165,7 @@ export function makeCowBrainSystem(deps) {
             path.steps = [];
             path.index = 0;
           }
-          if (inv.itemKind !== null) {
+          if (inv.items.length > 0) {
             dropCarriedItem(world, grid, inv, pos);
             deps.onItemChange();
           }
@@ -189,7 +195,7 @@ export function makeCowBrainSystem(deps) {
         // Dropped out of haul unexpectedly while carrying? Drop the item on
         // the ground where we stand so it re-enters the haul pool.
         if (
-          inv.itemKind !== null &&
+          inv.items.length > 0 &&
           job.kind !== 'haul' &&
           job.kind !== 'deliver' &&
           job.kind !== 'supply'
@@ -211,7 +217,7 @@ export function makeCowBrainSystem(deps) {
           anyFood
         ) {
           if (job.payload?.jobId != null) board.release(job.payload.jobId);
-          if (inv.itemKind !== null) {
+          if (inv.items.length > 0) {
             dropCarriedItem(world, grid, inv, pos);
             deps.onItemChange();
           }
@@ -1434,7 +1440,7 @@ function tileHasCrop(world, i, j) {
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
  * @param {{ x: number, y: number, z: number }} pos
- * @param {{ itemKind: string | null }} inv
+ * @param {{ items: { kind: string, count: number }[] }} inv
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../sim/pathfinding.js').PathCache} paths
  * @param {import('../jobs/board.js').JobBoard} board
@@ -1459,7 +1465,7 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       ? !furnaceWorkSpotMatches(world, furnaceId, toI, toJ)
       : !toRelocation && !grid.isStockpile(toI, toJ);
   if (targetGone) {
-    if (inv.itemKind !== null) {
+    if (inv.items.length > 0) {
       dropCarriedItem(world, grid, inv, pos);
       deps.onItemChange();
     }
@@ -1542,8 +1548,10 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         job.payload = {};
         return;
       }
-      inv.itemKind = item.kind;
-      item.count -= 1;
+      // Grab as many units as fit in the remaining 60kg capacity.
+      // inventoryAdd clamps to capacity and returns the actual count taken.
+      const added = inventoryAdd(inv, item.kind, item.count);
+      item.count -= added;
       if (item.count <= 0) world.despawn(itemId);
       deps.onItemChange();
       job.state = 'pathing-to-drop';
@@ -1584,32 +1592,35 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     const remaining = (job.payload.ticksRemaining ?? DROP_TICKS) - 1;
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
-      // If another code path already cleared the inventory (e.g. emergency
-      // drop), skip spawning a phantom item.
-      if (inv.itemKind !== null) {
+      // Cows only ever carry a single kind per haul trip (picking-up fills
+      // one stack), so stack[0] is the whole payload.
+      const carried = inv.items[0];
+      if (carried && carried.count > 0) {
+        const kind = carried.kind;
+        const count = carried.count;
         if (toBuildSite) {
-          // Delivery: consume the carried unit into the BuildSite instead of
-          // spawning a loose item stack. If the site vanished under us while
-          // we were dropping, fall back to dumping the wood on the tile so it
-          // re-enters the haul pool.
+          // Delivery: feed units into the BuildSite up to its remaining need.
+          // Overflow (site nearly done) falls back to the tile so it re-enters
+          // the haul pool.
           const siteId = findBuildSiteAt(world, toI, toJ);
           const site = siteId !== null ? world.get(siteId, 'BuildSite') : null;
-          if (site && site.delivered < site.required) {
-            site.delivered += 1;
-            inv.itemKind = null;
+          if (site) {
+            const need = Math.max(0, site.required - site.delivered);
+            const deliver = Math.min(count, need);
+            site.delivered += deliver;
+            const leftover = count - deliver;
+            if (leftover > 0) addItemsToTile(world, grid, kind, leftover, toI, toJ);
           } else {
-            addItemToTile(world, grid, inv.itemKind, toI, toJ);
-            inv.itemKind = null;
+            addItemsToTile(world, grid, kind, count, toI, toJ);
           }
         } else if (toSupply) {
           // Drop forbidden so the haul poster doesn't immediately yank the
           // ingredient back to the stockpile before the furnace consumes it.
-          addItemToTile(world, grid, inv.itemKind, toI, toJ, { forbidden: true });
-          inv.itemKind = null;
+          addItemsToTile(world, grid, kind, count, toI, toJ, { forbidden: true });
         } else {
-          addItemToTile(world, grid, inv.itemKind, toI, toJ);
-          inv.itemKind = null;
+          addItemsToTile(world, grid, kind, count, toI, toJ);
         }
+        inv.items.length = 0;
         deps.onItemChange();
       }
       board.complete(jobId);
@@ -1779,19 +1790,21 @@ function hasAnyFood(world) {
 }
 
 /**
- * Spawn a ground Item at the cow's current tile based on its Inventory and
- * clear the inventory. Caller is responsible for calling deps.onItemChange().
+ * Spawn ground Items at the cow's current tile for everything in Inventory
+ * and clear it. Caller is responsible for calling deps.onItemChange().
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {{ itemKind: string | null }} inv
+ * @param {{ items: { kind: string, count: number }[] }} inv
  * @param {{ x: number, y: number, z: number }} pos
  */
 function dropCarriedItem(world, grid, inv, pos) {
-  if (inv.itemKind === null) return;
+  if (inv.items.length === 0) return;
   const { i, j } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-  addItemToTile(world, grid, inv.itemKind, i, j);
-  inv.itemKind = null;
+  for (const stack of inv.items) {
+    addItemsToTile(world, grid, stack.kind, stack.count, i, j);
+  }
+  inv.items.length = 0;
 }
 
 /**

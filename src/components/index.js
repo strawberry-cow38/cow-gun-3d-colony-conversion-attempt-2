@@ -38,7 +38,10 @@
  *                                   only touch it to relocate one blocking a
  *                                   wall blueprint.
  * ItemViz                            tag — item instancer renders these
- * Inventory    { itemKind: string|null } — one-slot carry for cows hauling items.
+ * Inventory    { items: { kind, count }[] } — multi-stack carry gated by a 60kg
+ *              mass budget (see items.js WEIGHT_PER_UNIT + COW_CARRY_KG). In
+ *              practice a haul cow carries a single kind per trip because
+ *              picking-up fills one stack before walking to drop.
  *
  * BuildSite    { kind, requiredKind, delivered, required, buildJobId, progress }
  *              A designated-but-unfinished wall. `delivered` counts wood stacks
@@ -131,8 +134,8 @@ export function registerComponents(world) {
   world.defineComponent('Item', () => ({ kind: 'wood', count: 1, capacity: 50, forbidden: false }));
   world.defineComponent('ItemViz', () => ({}));
   world.defineComponent('Inventory', () => ({
-    /** @type {string | null} */
-    itemKind: null,
+    /** @type {{ kind: string, count: number }[]} */
+    items: [],
   }));
   world.defineComponent('BuildSite', () => ({
     kind: 'wall',

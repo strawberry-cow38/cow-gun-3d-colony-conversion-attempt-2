@@ -58,6 +58,80 @@ export const FOOD_NUTRITION = 0.35;
 /** Cow starts looking for food when hunger drops below this. */
 export const HUNGER_EAT_THRESHOLD = 0.45;
 
+/**
+ * Realistic per-unit mass in kilograms. Drives carry capacity for cow
+ * inventory (a 60kg cow can haul ~12 wood logs or ~7 ore lumps in a single
+ * trip). Tune for game feel rather than physics — meat/food intentionally
+ * light so cows can carry a meal worth of food without filling their pack.
+ *
+ * @type {Record<string, number>}
+ */
+export const WEIGHT_PER_UNIT = {
+  wood: 5,
+  stone: 6,
+  food: 0.5,
+  metal_ore: 8,
+  coal: 3,
+  iron: 4,
+};
+
+/** Total mass a cow can haul in a single trip. */
+export const COW_CARRY_KG = 60;
+
+/** @param {string} kind */
+export function weightOf(kind) {
+  return WEIGHT_PER_UNIT[kind] ?? 1;
+}
+
+/** @param {{ items: { kind: string, count: number }[] }} inv */
+export function inventoryWeight(inv) {
+  let kg = 0;
+  for (const s of inv.items) kg += weightOf(s.kind) * s.count;
+  return kg;
+}
+
+/** @param {{ items: { kind: string, count: number }[] }} inv */
+export function inventoryFreeKg(inv) {
+  return Math.max(0, COW_CARRY_KG - inventoryWeight(inv));
+}
+
+/**
+ * Max units of `kind` the inventory can still accept, given remaining
+ * capacity. Always >= 0.
+ *
+ * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {string} kind
+ */
+export function unitsThatFit(inv, kind) {
+  const w = weightOf(kind);
+  if (w <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor(inventoryFreeKg(inv) / w));
+}
+
+/**
+ * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {string} kind
+ * @param {number} count
+ * @returns {number} units actually added (capped by remaining capacity)
+ */
+export function inventoryAdd(inv, kind, count) {
+  if (count <= 0) return 0;
+  // Single pass: find the existing same-kind stack AND tally total weight.
+  let kg = 0;
+  let existing = null;
+  for (const s of inv.items) {
+    kg += weightOf(s.kind) * s.count;
+    if (s.kind === kind) existing = s;
+  }
+  const w = weightOf(kind);
+  const fit = w > 0 ? Math.max(0, Math.floor((COW_CARRY_KG - kg) / w)) : count;
+  const add = Math.min(fit, count);
+  if (add <= 0) return 0;
+  if (existing) existing.count += add;
+  else inv.items.push({ kind, count: add });
+  return add;
+}
+
 /** @type {Record<string, number>} RGB hex per kind, used by itemInstancer + cow carry viz. */
 export const KIND_COLOR = {
   wood: 0x8a5a2b,
@@ -114,4 +188,51 @@ export function addItemToTile(world, grid, kind, i, j, opts) {
     TileAnchor: { i, j },
     Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
   });
+}
+
+/**
+ * Drop `count` units in one call. Tops up existing same-kind stacks first
+ * (forbidden flag must match), then spawns new stacks until everything is
+ * placed. Single query sweep instead of N calls to addItemToTile.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {string} kind
+ * @param {number} count
+ * @param {number} i @param {number} j
+ * @param {{ forbidden?: boolean }} [opts]
+ */
+export function addItemsToTile(world, grid, kind, count, i, j, opts) {
+  if (!grid.inBounds(i, j) || count <= 0) return;
+  const forbidden = opts?.forbidden === true;
+  const cap = maxStack(kind);
+  let remaining = count;
+  for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    if (remaining <= 0) break;
+    const a = components.TileAnchor;
+    const it = components.Item;
+    if (
+      a.i === i &&
+      a.j === j &&
+      it.kind === kind &&
+      it.count < cap &&
+      it.forbidden === forbidden
+    ) {
+      const room = cap - it.count;
+      const add = Math.min(room, remaining);
+      it.count += add;
+      remaining -= add;
+    }
+  }
+  while (remaining > 0) {
+    const c = Math.min(remaining, cap);
+    const w = tileToWorld(i, j, grid.W, grid.H);
+    world.spawn({
+      Item: { kind, count: c, capacity: cap, forbidden },
+      ItemViz: {},
+      TileAnchor: { i, j },
+      Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
+    });
+    remaining -= c;
+  }
 }

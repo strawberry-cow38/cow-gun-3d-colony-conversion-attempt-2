@@ -63,7 +63,7 @@ describe('cow save/load roundtrip', () => {
       Brain: { name: 'bessie' },
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
-      Inventory: { itemKind: null },
+      Inventory: { items: [] },
       CowViz: {},
     });
 
@@ -110,7 +110,7 @@ describe('cow save/load roundtrip', () => {
       Brain: { name: 'sarge' },
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
-      Inventory: { itemKind: null },
+      Inventory: { items: [] },
       CowViz: {},
     });
     w1.spawn({
@@ -122,7 +122,7 @@ describe('cow save/load roundtrip', () => {
       Brain: { name: 'civvy' },
       Job: { kind: 'none', state: 'idle', payload: {} },
       Path: { steps: [], index: 0 },
-      Inventory: { itemKind: null },
+      Inventory: { items: [] },
       CowViz: {},
     });
 

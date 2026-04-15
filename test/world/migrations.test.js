@@ -56,7 +56,7 @@ describe('migration runner', () => {
     const out = runMigrations(v3);
     expect(out.version).toBe(CURRENT_VERSION);
     expect(out.tileGrid.stockpile).toEqual([0, 0, 0, 0]);
-    expect(out.cows[0].inventory).toEqual({ itemKind: null });
+    expect(out.cows[0].inventory).toEqual({ items: [] });
   });
 
   it('upgrades a v5 save by adding count + capacity to each item', () => {
@@ -121,7 +121,7 @@ describe('migration runner', () => {
     expect(out.version).toBe(CURRENT_VERSION);
     expect(out.cows[0].drafted).toBe(false);
     expect(out.cows[0].name).toBe('bessie');
-    expect(out.cows[0].inventory).toEqual({ itemKind: null });
+    expect(out.cows[0].inventory).toEqual({ items: [] });
   });
 
   it('upgrades a v7 save by adding empty walls/buildSites + zero wall bitmap', () => {

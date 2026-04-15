@@ -137,7 +137,7 @@ export function createCowInstancer(scene, capacity = 256) {
       slotToEntity[i] = id;
       i++;
 
-      const carrying = components.Inventory.itemKind;
+      const carrying = components.Inventory.items[0]?.kind ?? null;
       if (carrying && c < capacity) {
         _euler.set(0, yaw, 0);
         _quat.setFromEuler(_euler);

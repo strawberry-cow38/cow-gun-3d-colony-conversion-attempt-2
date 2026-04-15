@@ -4,7 +4,7 @@
  */
 
 import { worldToTileClamp } from '../world/coords.js';
-import { addItemToTile } from '../world/items.js';
+import { addItemsToTile } from '../world/items.js';
 
 /**
  * Flip the `drafted` flag on each cow. Mixed selections all go to "drafted"
@@ -56,10 +56,12 @@ export function toggleDraft(world, cowIds, opts = {}) {
       // player-controlled cow is still clutching a log.
       const inv = world.get(id, 'Inventory');
       const pos = world.get(id, 'Position');
-      if (opts.grid && inv && pos && inv.itemKind !== null) {
+      if (opts.grid && inv && pos && inv.items.length > 0) {
         const { i, j } = worldToTileClamp(pos.x, pos.z, opts.grid.W, opts.grid.H);
-        addItemToTile(world, opts.grid, inv.itemKind, i, j);
-        inv.itemKind = null;
+        for (const stack of inv.items) {
+          addItemsToTile(world, opts.grid, stack.kind, stack.count, i, j);
+        }
+        inv.items.length = 0;
         dropped = true;
       }
     }

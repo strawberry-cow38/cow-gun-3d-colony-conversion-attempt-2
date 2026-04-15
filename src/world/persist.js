@@ -1,14 +1,14 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v21):
+ * Format (v22):
  * {
- *   version: 18,
+ *   version: 22,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
- *     inventory: { itemKind: string | null }
+ *     inventory: { items: { kind: string, count: number }[] }
  *   } ],
  *   trees: [ { i, j, marked: boolean, progress: number, kind: string, growth: number } ],
  *   items: [ { i, j, kind: string, count: number, capacity: number, forbidden: boolean } ],
@@ -40,7 +40,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} hunger
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
- * @property {{ itemKind: string | null }} inventory
+ * @property {{ items: { kind: string, count: number }[] }} inventory
  */
 
 /**
@@ -189,7 +189,9 @@ export function serializeState(tileGrid, world) {
         steps: components.Path.steps.map((s) => ({ i: s.i, j: s.j })),
         index: components.Path.index,
       },
-      inventory: { itemKind: components.Inventory.itemKind },
+      inventory: {
+        items: components.Inventory.items.map((s) => ({ kind: s.kind, count: s.count })),
+      },
     });
   }
   /** @type {SerializedTree[]} */
@@ -394,7 +396,7 @@ export function hydrateCows(world, state) {
   for (const c of cows) {
     const job = c.job ?? { kind: 'none', state: 'idle', payload: {} };
     const path = c.path ?? { steps: [], index: 0 };
-    const inv = c.inventory ?? { itemKind: null };
+    const inv = c.inventory ?? { items: [] };
     world.spawn({
       Cow: { drafted: c.drafted === true },
       Position: { ...c.position },
@@ -404,7 +406,7 @@ export function hydrateCows(world, state) {
       Brain: { name: c.name },
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
-      Inventory: { itemKind: inv.itemKind ?? null },
+      Inventory: { items: (inv.items ?? []).map((s) => ({ kind: s.kind, count: s.count })) },
       CowViz: {},
     });
   }

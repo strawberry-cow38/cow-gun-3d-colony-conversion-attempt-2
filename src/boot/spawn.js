@@ -64,7 +64,7 @@ export function spawnCowAt(world, grid, i, j) {
     Brain: { name: pickCowName() },
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },
-    Inventory: { itemKind: null },
+    Inventory: { items: [] },
     CowViz: {},
   });
 }
