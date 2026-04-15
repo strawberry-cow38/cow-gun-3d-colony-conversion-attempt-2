@@ -202,7 +202,9 @@ export class CowMoveCommand {
       // yet, or a stack in a fresh world. Offer an ad-hoc "Prioritize haul"
       // (posts a new bundled job on the spot), or a disabled hint when no
       // stockpile slot is available.
-      const alreadyHauling = jobs.some((j) => j.kind === 'haul' || j.kind === 'deliver');
+      const alreadyHauling = jobs.some(
+        (j) => j.kind === 'haul' || j.kind === 'deliver' || j.kind === 'supply',
+      );
       if (!alreadyHauling) {
         const haulable = findHaulableItemAtTile(this.world, this.tileGrid, tile.i, tile.j);
         if (haulable) {

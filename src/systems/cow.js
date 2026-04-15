@@ -313,22 +313,7 @@ export function makeCowBrainSystem(deps) {
               ) {
                 job.kind = candidate.kind;
                 job.state = 'pathing-to-item';
-                job.payload = {
-                  jobId: candidate.id,
-                  itemId: candidate.payload.itemId,
-                  count: candidate.payload.count,
-                  fromI: candidate.payload.fromI,
-                  fromJ: candidate.payload.fromJ,
-                  toI: candidate.payload.toI,
-                  toJ: candidate.payload.toJ,
-                  toBuildSite: candidate.payload.toBuildSite === true,
-                  toRelocation: candidate.payload.toRelocation === true,
-                  toSupply: candidate.payload.toSupply === true,
-                  furnaceId: candidate.payload.furnaceId,
-                  fromFurnaceId: candidate.payload.fromFurnaceId,
-                  kind: candidate.payload.kind,
-                  siteId: candidate.payload.siteId,
-                };
+                job.payload = { ...candidate.payload, jobId: candidate.id };
                 path.steps = [];
                 path.index = 0;
               } else if (candidate && candidate.kind === 'build' && board.claim(candidate.id, id)) {
@@ -1635,13 +1620,7 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         }
         const added = inventoryAdd(inv, kind, available);
         if (added > 0) stackRemove(furnace.outputs, kind, added);
-        // Release the source-stack claim: the cow has the cargo, it's no
-        // longer sitting in the furnace for another hauler to contest. The
-        // board record is the source of truth read by posters and the
-        // prioritize menu, so zero both the cow's local copy and the board's.
-        job.payload.count = 0;
-        const boardJob = board.get(jobId);
-        if (boardJob) boardJob.payload.count = 0;
+        releaseHaulClaim(job, board, jobId);
         deps.onItemChange();
         job.state = 'pathing-to-drop';
         return;
@@ -1673,15 +1652,7 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       const added = inventoryAdd(inv, item.kind, requested);
       item.count -= added;
       if (item.count <= 0 && typeof itemId === 'number') world.despawn(itemId);
-      // Release the source-stack claim post-pickup: the cow's cargo is off
-      // the stack and any remainder is free for the poster to post a fresh
-      // haul against, and for `findPrioritizableJobsAtTile` to hide this
-      // job (kicking a cow mid-carry would force her to drop everything).
-      // Zero both the cow's local payload copy and the board's record,
-      // since posters and the prioritize menu read from the board.
-      job.payload.count = 0;
-      const boardJob = board.get(jobId);
-      if (boardJob) boardJob.payload.count = 0;
+      releaseHaulClaim(job, board, jobId);
       deps.onItemChange();
       job.state = 'pathing-to-drop';
     }
@@ -1942,6 +1913,23 @@ function dropCarriedItem(world, grid, inv, pos) {
     addItemsToTile(world, grid, stack.kind, stack.count, i, j);
   }
   inv.items.length = 0;
+}
+
+/**
+ * Zero the source-stack claim post-pickup on both the cow's local payload and
+ * the board's record. The cow's Job.payload is built as a fresh object at
+ * claim time, so posters and the prioritize menu (which read from board.jobs)
+ * need the board's count nulled separately or they'll keep seeing the cow's
+ * full original claim and either re-target her job or skip a free remainder.
+ *
+ * @param {{ payload: Record<string, any> }} job
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {number} jobId
+ */
+function releaseHaulClaim(job, board, jobId) {
+  job.payload.count = 0;
+  const boardJob = board.get(jobId);
+  if (boardJob) boardJob.payload.count = 0;
 }
 
 /**
