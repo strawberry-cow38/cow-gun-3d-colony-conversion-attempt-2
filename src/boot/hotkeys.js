@@ -443,6 +443,7 @@ async function loadGame(ctx) {
     ctx.roofInstancer.markDirty();
     ctx.floorInstancer.markDirty();
     ctx.flowerInstancer?.markDirty();
+    ctx.ambientParticles?.markFlowersDirty();
     treeInstancer.markDirty();
     boulderInstancer.markDirty();
     itemInstancer.markDirty();

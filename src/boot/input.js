@@ -50,6 +50,7 @@ import { dispatch } from './hotkeys.js';
  * @property {{ markDirty: () => void }} roofInstancer
  * @property {{ markDirty: () => void }} floorInstancer
  * @property {{ markDirty: () => void } | null} [flowerInstancer]
+ * @property {{ markFlowersDirty: () => void } | null} [ambientParticles]
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH

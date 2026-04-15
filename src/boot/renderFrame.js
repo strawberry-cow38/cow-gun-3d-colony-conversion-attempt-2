@@ -82,6 +82,7 @@ export function createRenderFrame({
   pruneStaleSelections,
 }) {
   const {
+    ambientParticles,
     cowInstancer,
     cowNameTags,
     cowThoughtBubbles,
@@ -174,6 +175,7 @@ export function createRenderFrame({
     roofInstancer.update(world, tileGrid);
     floorInstancer.update(world, tileGrid);
     flowerInstancer.update(tileGrid);
+    ambientParticles.update(world, rdt, timeOfDay.getSunLightPercent());
     furnaceInstancer.update(world, tileGrid);
     furnaceInstancer.updateGlow(tSec);
     furnaceEffects.update(world, tileGrid, rdt, tSec, camera);

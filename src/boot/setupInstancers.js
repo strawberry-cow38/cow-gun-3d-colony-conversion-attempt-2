@@ -7,6 +7,7 @@
  * instead of being hardcoded twice.
  */
 
+import { createAmbientParticles } from '../render/ambientParticles.js';
 import { createBoulderInstancer } from '../render/boulderInstancer.js';
 import { createBuildSiteInstancer } from '../render/buildSiteInstancer.js';
 import { createCowInstancer } from '../render/cowInstancer.js';
@@ -47,11 +48,13 @@ import { createWallInstancer } from '../render/wallInstancer.js';
  *   audio: ReturnType<typeof import('../audio/audio.js').createAudio>,
  *   gridW: number,
  *   gridH: number,
+ *   tileGrid: import('../world/tileGrid.js').TileGrid,
  * }} opts
  */
-export function setupInstancers({ scene, audio, gridW, gridH }) {
+export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
   const tiles = gridW * gridH;
   return {
+    ambientParticles: createAmbientParticles(scene, tileGrid),
     cowInstancer: createCowInstancer(scene, 256),
     cowNameTags: createCowNameTags(scene),
     cowThoughtBubbles: createCowThoughtBubbles(scene),

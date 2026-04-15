@@ -38,6 +38,7 @@ export function setupWorldCallbacks({
   instancers,
 }) {
   const {
+    ambientParticles,
     treeInstancer,
     boulderInstancer,
     wallInstancer,
@@ -104,6 +105,7 @@ export function setupWorldCallbacks({
     onWorldTillComplete(pos) {
       tilledOverlay.markDirty();
       flowerInstancer.markDirty();
+      ambientParticles.markFlowersDirty();
       audio.playAt('chop', pos);
     },
     /** @param {{x:number,y:number,z:number}} pos */
@@ -126,6 +128,7 @@ export function setupWorldCallbacks({
       roofInstancer.markDirty();
       floorInstancer.markDirty();
       flowerInstancer.markDirty();
+      ambientParticles.markFlowersDirty();
       furnaceInstancer.markDirty();
       easelInstancer.markDirty();
       buildSiteInstancer.markDirty();

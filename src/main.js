@@ -213,7 +213,7 @@ rts.minX = -halfGridX;
 rts.maxX = halfGridX;
 rts.minZ = -halfGridZ;
 rts.maxZ = halfGridZ;
-const instancers = setupInstancers({ scene, audio, gridW, gridH });
+const instancers = setupInstancers({ scene, audio, gridW, gridH, tileGrid });
 const {
   cowInstancer,
   cowNameTags,
