@@ -129,6 +129,29 @@ export function makeItemRescueSystem(grid, onRelocated) {
             const chunk = Math.min(spill.toMove, target.room);
             if (target.existing) {
               target.existing.item.count += chunk;
+              spill.sourceItem.count -= chunk;
+            } else if (chunk === spill.sourceItem.count) {
+              // Whole-entity relocation: move the existing entity so per-entity
+              // components (e.g. Painting metadata) survive. Spawning a new
+              // bare Item would drop those and the player would lose their art.
+              // Count stays the same since the entity itself migrates.
+              const sourceAnchor = world.get(spill.sourceId, 'TileAnchor');
+              const sourcePos = world.get(spill.sourceId, 'Position');
+              if (sourceAnchor && sourcePos) {
+                const w = tileToWorld(target.ni, target.nj, grid.W, grid.H);
+                sourceAnchor.i = target.ni;
+                sourceAnchor.j = target.nj;
+                sourcePos.x = w.x;
+                sourcePos.y = grid.getElevation(target.ni, target.nj);
+                sourcePos.z = w.z;
+                const nidx = grid.idx(target.ni, target.nj);
+                let nlist = byTile.get(nidx);
+                if (!nlist) {
+                  nlist = [];
+                  byTile.set(nidx, nlist);
+                }
+                nlist.push({ id: spill.sourceId, item: spill.sourceItem, anchor: sourceAnchor });
+              }
             } else {
               const w = tileToWorld(target.ni, target.nj, grid.W, grid.H);
               const newId = world.spawn({
@@ -153,8 +176,8 @@ export function makeItemRescueSystem(grid, onRelocated) {
                 item: world.get(newId, 'Item'),
                 anchor: world.get(newId, 'TileAnchor'),
               });
+              spill.sourceItem.count -= chunk;
             }
-            spill.sourceItem.count -= chunk;
             spill.toMove -= chunk;
             any = true;
           }

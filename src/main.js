@@ -28,6 +28,7 @@ import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createEaselPanel, createFurnacePanel } from './render/furnacePanel.js';
 import { StationSelector } from './render/stationSelector.js';
 import { ItemSelector } from './render/itemSelector.js';
+import { WallArtSelector } from './render/wallArtSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
@@ -521,6 +522,19 @@ new ItemSelector(
   selectItem,
   selectItemsMany,
 );
+
+// Click-on-painting → queue uninstall. Raycasts the WallArt mesh directly so
+// players don't have to enable the uninstall build tool first. Capture-phase
+// listener wins against the tile picker when the click lands on the painting.
+new WallArtSelector({
+  canvas,
+  camera,
+  instancer: wallArtInstancer,
+  tileGrid,
+  world,
+  jobBoard,
+  audio,
+});
 
 new TilePicker(
   canvas,

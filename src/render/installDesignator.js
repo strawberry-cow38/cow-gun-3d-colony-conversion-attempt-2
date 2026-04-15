@@ -17,10 +17,15 @@
 import * as THREE from 'three';
 import { defaultWalkable } from '../sim/pathfinding.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
-import { FACING_OFFSETS, FACING_SPAN_OFFSETS } from '../world/facing.js';
+import { FACING_OFFSETS, FACING_SPAN_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { createWallArtGhost } from './wallArtInstancer.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
+const MOUNT_Y = WALL_HEIGHT * 0.55;
+const PROUD_OFFSET = 0.15 * UNITS_PER_METER;
+const BASE_WIDTH_PER_TILE = TILE_SIZE * 0.82;
 const _ndc = new THREE.Vector2();
+const _euler = new THREE.Euler();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_VALID = 0xffd860;
 const PREVIEW_COLOR_INVALID = 0xff6a4a;
@@ -60,7 +65,7 @@ export class InstallDesignator {
     this.hoverTile = null;
     this.raycaster = new THREE.Raycaster();
 
-    this.spanPreview = buildSpanPreview(scene);
+    this.ghost = createWallArtGhost(scene);
     this.workSpotPreview = buildTilePreview(scene);
 
     canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
@@ -197,30 +202,44 @@ export class InstallDesignator {
     }
     const plan = this.#validatePlacement(this.hoverTile);
     const color = plan ? PREVIEW_COLOR_VALID : PREVIEW_COLOR_INVALID;
-    const step = FACING_SPAN_OFFSETS[this.currentFacing];
-    const offset = FACING_OFFSETS[this.currentFacing];
-    // Outline the wall span the painting will mount on, not the floor tile
-    // the user clicked — the click target is the viewer spot (hover tile).
-    const wallFirst = {
-      i: this.hoverTile.i - offset.di,
-      j: this.hoverTile.j - offset.dj,
-    };
-    const wallLast = {
-      i: wallFirst.i + step.di * (this.size - 1),
-      j: wallFirst.j + step.dj * (this.size - 1),
-    };
-    renderSpanPreview(this.spanPreview, this.tileGrid, wallFirst, wallLast, color);
+    const face = this.currentFacing;
+    const step = FACING_SPAN_OFFSETS[face];
+    const offset = FACING_OFFSETS[face];
+    const anchorI = this.hoverTile.i - offset.di;
+    const anchorJ = this.hoverTile.j - offset.dj;
+    // Mirror wallArtInstancer's placement math so the ghost sits exactly
+    // where the finished painting will be — proud of the wall face, at
+    // eye-ish height, oriented by the current facing.
+    const midI = anchorI + step.di * ((this.size - 1) * 0.5);
+    const midJ = anchorJ + step.dj * ((this.size - 1) * 0.5);
+    const w = tileToWorld(midI, midJ, this.tileGrid.W, this.tileGrid.H);
+    const pushOut = TILE_SIZE * 0.5 + PROUD_OFFSET;
+    const baseY = this.tileGrid.inBounds(anchorI, anchorJ)
+      ? this.tileGrid.getElevation(anchorI, anchorJ)
+      : 0;
+    this.ghost.group.position.set(
+      w.x + offset.di * pushOut,
+      baseY + MOUNT_Y,
+      w.z + offset.dj * pushOut,
+    );
+    _euler.set(0, FACING_YAWS[face] ?? 0, 0);
+    this.ghost.group.quaternion.setFromEuler(_euler);
+    const width = BASE_WIDTH_PER_TILE * this.size;
+    const heightScale = 1 + (this.size - 1) * 0.15;
+    this.ghost.group.scale.set(width, heightScale, 1);
+    this.ghost.frameMat.color.setHex(color);
+    this.ghost.group.visible = true;
     renderTilePreview(
       this.workSpotPreview,
       this.tileGrid,
       this.hoverTile.i,
       this.hoverTile.j,
-      WORK_SPOT_COLOR,
+      plan ? WORK_SPOT_COLOR : PREVIEW_COLOR_INVALID,
     );
   }
 
   #hidePreview() {
-    this.spanPreview.line.visible = false;
+    this.ghost.group.visible = false;
     this.workSpotPreview.line.visible = false;
   }
 
@@ -243,18 +262,6 @@ export class InstallDesignator {
 }
 
 /** @param {THREE.Scene} scene */
-function buildSpanPreview(scene) {
-  const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(5 * 3);
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: PREVIEW_COLOR_VALID }));
-  line.frustumCulled = false;
-  line.visible = false;
-  scene.add(line);
-  return { geo, positions, line };
-}
-
-/** @param {THREE.Scene} scene */
 function buildTilePreview(scene) {
   const geo = new THREE.BufferGeometry();
   const positions = new Float32Array(5 * 3);
@@ -264,48 +271,6 @@ function buildTilePreview(scene) {
   line.visible = false;
   scene.add(line);
   return { geo, positions, line };
-}
-
-/**
- * @param {{ geo: THREE.BufferGeometry, positions: Float32Array, line: THREE.Line }} preview
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {{ i: number, j: number }} a
- * @param {{ i: number, j: number }} b
- * @param {number} color
- */
-function renderSpanPreview(preview, grid, a, b, color) {
-  const i0 = Math.min(a.i, b.i);
-  const i1 = Math.max(a.i, b.i);
-  const j0 = Math.min(a.j, b.j);
-  const j1 = Math.max(a.j, b.j);
-  const nw = tileToWorld(i0, j0, grid.W, grid.H);
-  const se = tileToWorld(i1, j1, grid.W, grid.H);
-  const x0 = nw.x - TILE_SIZE * 0.5;
-  const x1 = se.x + TILE_SIZE * 0.5;
-  const z0 = nw.z - TILE_SIZE * 0.5;
-  const z1 = se.z + TILE_SIZE * 0.5;
-  // Preview sits above wall-top because the span covers wall tiles — a
-  // ground-level line would be occluded by the wall mesh from every RTS
-  // camera angle that isn't straight-down.
-  let y = grid.inBounds(i0, j0) ? grid.getElevation(i0, j0) : 0;
-  for (let j = j0; j <= j1; j++) {
-    for (let i = i0; i <= i1; i++) {
-      if (!grid.inBounds(i, j)) continue;
-      const e = grid.getElevation(i, j);
-      if (e > y) y = e;
-    }
-  }
-  y += WALL_HEIGHT + PREVIEW_CLEARANCE;
-  const p = preview.positions;
-  p[0] = x0; p[1] = y; p[2] = z0;
-  p[3] = x1; p[4] = y; p[5] = z0;
-  p[6] = x1; p[7] = y; p[8] = z1;
-  p[9] = x0; p[10] = y; p[11] = z1;
-  p[12] = x0; p[13] = y; p[14] = z0;
-  preview.geo.attributes.position.needsUpdate = true;
-  /** @type {THREE.LineBasicMaterial} */
-  (preview.line.material).color.setHex(color);
-  preview.line.visible = true;
 }
 
 /**

@@ -60,6 +60,8 @@ export function createWallArtInstancer(scene, capacity = 32) {
   scene.add(canvasMesh);
 
   let dirty = true;
+  /** @type {number[]} instance slot → WallArt entity id (for click-picking). */
+  const slotToEntity = [];
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -68,7 +70,8 @@ export function createWallArtInstancer(scene, capacity = 32) {
   function update(world, grid) {
     if (!dirty) return;
     let count = 0;
-    for (const { components } of world.query(['WallArt', 'TileAnchor', 'WallArtViz'])) {
+    slotToEntity.length = 0;
+    for (const { id, components } of world.query(['WallArt', 'TileAnchor', 'WallArtViz'])) {
       if (count >= capacity) break;
       const a = components.TileAnchor;
       const art = components.WallArt;
@@ -103,6 +106,7 @@ export function createWallArtInstancer(scene, capacity = 32) {
       const hex = palette[2] ?? palette[palette.length - 1] ?? '#e6d4a8';
       _color.set(hex);
       canvasMesh.setColorAt(count, _color);
+      slotToEntity[count] = id;
       count++;
     }
     frameMesh.count = count;
@@ -117,5 +121,53 @@ export function createWallArtInstancer(scene, capacity = 32) {
     dirty = true;
   }
 
-  return { frameMesh, canvasMesh, update, markDirty };
+  /** @param {number} instanceId */
+  function entityFromInstanceId(instanceId) {
+    return slotToEntity[instanceId] ?? null;
+  }
+
+  return { frameMesh, canvasMesh, update, markDirty, entityFromInstanceId };
+}
+
+/**
+ * Translucent frame+canvas group used by the install designator as a ghost
+ * preview. Positioned/oriented by the designator to match where the painting
+ * would land on the wall — same midI/midJ + pushOut + FACING_YAWS math as the
+ * instancer's per-frame update, so what you see is what you get.
+ *
+ * @param {THREE.Scene} scene
+ * @param {number} [maxSize]  preview is scaled in-place, so geometry is built
+ *   at size=1 and scaled up; maxSize just clamps the box proportions used for
+ *   raycast bookkeeping (unused right now but kept for parity with instancer).
+ */
+export function createWallArtGhost(scene, maxSize = 4) {
+  void maxSize;
+  const group = new THREE.Group();
+  group.visible = false;
+  group.frustumCulled = false;
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: FRAME_COLOR,
+    transparent: true,
+    opacity: 0.38,
+    depthWrite: false,
+    roughness: 0.9,
+  });
+  const canvasMat = new THREE.MeshStandardMaterial({
+    color: 0xffe9b8,
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false,
+    roughness: 0.75,
+  });
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(1, BASE_HEIGHT, FRAME_THICKNESS),
+    frameMat,
+  );
+  const canvas = new THREE.Mesh(
+    new THREE.BoxGeometry(1, BASE_HEIGHT * 0.86, FRAME_THICKNESS * 1.1),
+    canvasMat,
+  );
+  group.add(frame, canvas);
+  scene.add(group);
+  return { group, frame, canvas, frameMat, canvasMat };
 }
