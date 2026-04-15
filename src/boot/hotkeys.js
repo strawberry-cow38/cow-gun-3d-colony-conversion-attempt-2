@@ -442,6 +442,7 @@ async function loadGame(ctx) {
     ctx.ignoreRoofOverlay.markDirty();
     ctx.roofInstancer.markDirty();
     ctx.floorInstancer.markDirty();
+    ctx.flowerInstancer?.markDirty();
     treeInstancer.markDirty();
     boulderInstancer.markDirty();
     itemInstancer.markDirty();

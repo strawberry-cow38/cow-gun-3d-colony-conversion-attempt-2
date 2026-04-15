@@ -95,6 +95,7 @@ export function createRenderFrame({
     roofInstancer,
     roofCollapseParticles,
     floorInstancer,
+    flowerInstancer,
     furnaceInstancer,
     furnaceEffects,
     furnaceProgressBars,
@@ -172,6 +173,7 @@ export function createRenderFrame({
     torchInstancer.update(world, tileGrid, tSec, camera);
     roofInstancer.update(world, tileGrid);
     floorInstancer.update(world, tileGrid);
+    flowerInstancer.update(tileGrid);
     furnaceInstancer.update(world, tileGrid);
     furnaceInstancer.updateGlow(tSec);
     furnaceEffects.update(world, tileGrid, rdt, tSec, camera);

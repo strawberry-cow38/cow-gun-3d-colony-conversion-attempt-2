@@ -38,6 +38,11 @@
  *              Independent of farmZone so an un-zoned tilled tile still
  *              renders as soil (e.g. after un-zoning a planted patch).
  *              Serialized.
+ * - flower:    uint8; 0 = none, 1..N = flower kind (see world/flowers.js).
+ *              Pure decoration — rolled at terrain-gen on a fraction of grass
+ *              tiles, rendered as an instanced billboard. Skipped at render
+ *              time if the tile has gained a wall/floor/tilled/farmZone since
+ *              gen. Serialized.
  */
 
 export const BIOME = Object.freeze({
@@ -68,6 +73,7 @@ export class TileGrid {
     this.light = new Uint8Array(W * H);
     this.farmZone = new Uint8Array(W * H);
     this.tilled = new Uint8Array(W * H);
+    this.flower = new Uint8Array(W * H);
     // Derived counters + torch index — maintained in the setters so lighting
     // can skip its full-grid sweep. Call `recomputeCounts()` after any bulk
     // write that bypasses the setters (e.g. save load).
@@ -288,15 +294,22 @@ export class TileGrid {
     const bands = 8;
     for (let j = 0; j < this.H; j++) {
       for (let i = 0; i < this.W; i++) {
+        const k = this.idx(i, j);
         const fx = i / this.W;
         const fz = j / this.H;
         const n =
           bands * Math.sin(fx * 6.28) * Math.cos(fz * 6.28) +
           bands * 0.4 * Math.sin(fx * 18 + fz * 11);
-        if (n > bands * 0.6) this.biome[this.idx(i, j)] = BIOME.STONE;
-        else if (n < -bands * 0.4) this.biome[this.idx(i, j)] = BIOME.SAND;
-        else if (Math.random() < 0.05) this.biome[this.idx(i, j)] = BIOME.DIRT;
-        else this.biome[this.idx(i, j)] = BIOME.GRASS;
+        if (n > bands * 0.6) this.biome[k] = BIOME.STONE;
+        else if (n < -bands * 0.4) this.biome[k] = BIOME.SAND;
+        else if (Math.random() < 0.05) this.biome[k] = BIOME.DIRT;
+        else {
+          this.biome[k] = BIOME.GRASS;
+          // Flower kinds 1..5, ~2% of grass. Spatial correlation would look
+          // prettier but salt-and-pepper is fine at this density and saves a
+          // pass.
+          if (Math.random() < 0.02) this.flower[k] = 1 + Math.floor(Math.random() * 5);
+        }
       }
     }
   }

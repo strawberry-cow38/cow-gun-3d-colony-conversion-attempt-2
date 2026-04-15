@@ -19,6 +19,7 @@ import { createDoorInstancer } from '../render/doorInstancer.js';
 import { createEaselInstancer } from '../render/easelInstancer.js';
 import { createFarmZoneOverlay } from '../render/farmZoneOverlay.js';
 import { createFloorInstancer } from '../render/floorInstancer.js';
+import { createFlowerInstancer } from '../render/flowerInstancer.js';
 import { createFurnaceEffects } from '../render/furnaceEffects.js';
 import { createFurnaceInstancer } from '../render/furnaceInstancer.js';
 import { createFurnaceProgressBars } from '../render/furnaceProgressBars.js';
@@ -64,6 +65,7 @@ export function setupInstancers({ scene, audio, gridW, gridH }) {
     roofInstancer: createRoofInstancer(scene, tiles),
     roofCollapseParticles: createRoofCollapseParticles(scene),
     floorInstancer: createFloorInstancer(scene, tiles),
+    flowerInstancer: createFlowerInstancer(scene, 2048),
     furnaceInstancer: createFurnaceInstancer(scene, 256),
     furnaceEffects: createFurnaceEffects(scene),
     furnaceProgressBars: createFurnaceProgressBars(scene),

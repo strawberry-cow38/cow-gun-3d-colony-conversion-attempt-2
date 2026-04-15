@@ -49,6 +49,7 @@ import { dispatch } from './hotkeys.js';
  * @property {{ markDirty: () => void }} ignoreRoofOverlay
  * @property {{ markDirty: () => void }} roofInstancer
  * @property {{ markDirty: () => void }} floorInstancer
+ * @property {{ markDirty: () => void } | null} [flowerInstancer]
  * @property {number} treeCount
  * @property {number} gridW
  * @property {number} gridH

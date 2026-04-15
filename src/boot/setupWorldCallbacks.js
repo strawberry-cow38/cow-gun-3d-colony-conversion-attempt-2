@@ -43,6 +43,7 @@ export function setupWorldCallbacks({
     wallInstancer,
     roofInstancer,
     floorInstancer,
+    flowerInstancer,
     furnaceInstancer,
     easelInstancer,
     paintingInstancer,
@@ -102,6 +103,7 @@ export function setupWorldCallbacks({
     /** @param {{x:number,y:number,z:number}} pos */
     onWorldTillComplete(pos) {
       tilledOverlay.markDirty();
+      flowerInstancer.markDirty();
       audio.playAt('chop', pos);
     },
     /** @param {{x:number,y:number,z:number}} pos */
@@ -123,6 +125,7 @@ export function setupWorldCallbacks({
       wallInstancer.markDirty();
       roofInstancer.markDirty();
       floorInstancer.markDirty();
+      flowerInstancer.markDirty();
       furnaceInstancer.markDirty();
       easelInstancer.markDirty();
       buildSiteInstancer.markDirty();
