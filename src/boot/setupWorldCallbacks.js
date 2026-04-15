@@ -13,6 +13,7 @@
 
 import { runAutoRoof } from '../systems/autoRoof.js';
 import { runRoofCollapse } from '../systems/roofCollapse.js';
+import { worldToTile } from '../world/coords.js';
 
 /**
  * @param {{
@@ -53,19 +54,34 @@ export function setupWorldCallbacks({
     roofCollapseParticles,
   } = instancers;
 
+  /**
+   * Evict only the cached paths that actually touched the changed tile (or its
+   * 3x3 corner-cut neighborhood). A full `pathCache.clear()` used to nuke all
+   * ~2048 entries on every chop/mine/wall, stuttering cows mid-route for
+   * unrelated map changes. `worldToTile` already clamps OOB to (-1, -1); bail
+   * in that case rather than invalidating a bogus tile.
+   *
+   * @param {{x:number,y:number,z:number}} pos
+   */
+  const invalidatePathCacheAt = (pos) => {
+    const { i, j } = worldToTile(pos.x, pos.z, tileGrid.W, tileGrid.H);
+    if (i < 0) return;
+    pathCache.invalidateTile(i, j);
+  };
+
   return {
     /** @param {{x:number,y:number,z:number}} pos */
     onWorldChopComplete(pos) {
       treeInstancer.markDirty();
       itemInstancer.markDirty();
-      pathCache.clear();
+      invalidatePathCacheAt(pos);
       audio.playAt('chop', pos);
     },
     /** @param {{x:number,y:number,z:number}} pos */
     onWorldMineComplete(pos) {
       boulderInstancer.markDirty();
       itemInstancer.markDirty();
-      pathCache.clear();
+      invalidatePathCacheAt(pos);
       audio.playAt('chop', pos);
     },
     /** @param {{x:number,y:number,z:number}} pos */
@@ -113,7 +129,7 @@ export function setupWorldCallbacks({
       // topology rebuild for them — that keeps the stutter off when the player
       // drops a row of torches or floors.
       if (kind === 'wall' || kind === 'door' || kind === 'furnace') {
-        pathCache.clear();
+        invalidatePathCacheAt(pos);
         scheduler.dirty.mark('topology');
       }
       audio.playAt('hammer', pos);
@@ -123,12 +139,15 @@ export function setupWorldCallbacks({
       // Collapse any roofs that lost their support chain (a wall got demolished
       // out from under them). Fires BEFORE auto-roof so the auto-roofer doesn't
       // immediately re-queue blueprints for tiles that are about to be torn down.
+      // Note: roof collapse doesn't touch walkability (roofs are a purely
+      // visual/room-enclosure layer), so no path-cache invalidation here —
+      // the wall deconstruct that triggered this cascade already invalidated
+      // its own tile via onWorldBuildComplete(kind='wall').
       const { collapsed, supported } = runRoofCollapse(world, tileGrid);
       for (const pos of collapsed) {
         roofCollapseParticles.burst(pos.x, pos.y, pos.z);
         audio.playAt('chop', pos);
       }
-      if (collapsed.length > 0) pathCache.clear();
       // Hand the freshly-computed supported set to the renderer so it doesn't
       // BFS again on its own dirty pulse. Mark dirty unconditionally — a
       // topology change could have colored a standing roof differently even if

@@ -5,9 +5,10 @@
  * Diagonal moves require both adjacent cardinals to be walkable (no corner-cutting
  * through diagonal walls) — important once we add solid tiles.
  *
- * `PathCache` memoizes (start,goal) → path. Invalidate the entire cache when
- * walkability changes by calling `clear()`. The job system or terrain editor
- * should fire a 'pathfind' dirty tag and a small system can call `clear()`.
+ * `PathCache` memoizes (start,goal) → path. Prefer `invalidateTile(i, j)` on
+ * localized walkability changes (a single chop/mine/wall) so we only evict
+ * paths actually affected. `clear()` is still available for catastrophic
+ * invalidation (full regen, load).
  */
 
 import { TileGrid } from '../world/tileGrid.js';
@@ -158,8 +159,11 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
 /**
  * Memoizes findPath results keyed by (start,goal), capped LRU so a long
  * session with lots of distinct wanders doesn't grow the cache forever.
- * Walkability changes invalidate the whole cache via `clear()` — fine-grained
- * invalidation comes later.
+ *
+ * Walkability changes should flow through `invalidateTile(i, j)`, which uses a
+ * reverse index (tile → set of cache keys touching it) to evict only affected
+ * entries. One chop used to nuke all 2048 cached paths via `clear()`; now it
+ * evicts only the handful that actually stepped near the changed tile.
  */
 export class PathCache {
   /**
@@ -173,6 +177,13 @@ export class PathCache {
     this.capacity = opts.capacity ?? 2048;
     /** @type {Map<string, { i: number, j: number }[] | null>} */
     this.cache = new Map();
+    /**
+     * Reverse index: flat tile idx → set of cache keys whose path steps on
+     * this tile. Null paths are indexed by their start+goal tiles so that
+     * unblocking near either endpoint flushes the stale "no route" entry.
+     * @type {Map<number, Set<string>>}
+     */
+    this.tileIndex = new Map();
     this.hits = 0;
     this.misses = 0;
   }
@@ -201,15 +212,109 @@ export class PathCache {
     this.misses++;
     const p = findPath(this.grid, start, goal, this.walkable);
     this.cache.set(key, p);
+    this.#indexEntry(key, p, start, goal);
     if (this.cache.size > this.capacity) {
       const oldest = this.cache.keys().next().value;
-      if (oldest !== undefined) this.cache.delete(oldest);
+      if (oldest !== undefined) this.#evictKey(oldest);
     }
     return p;
   }
 
+  /**
+   * Evict every cached path that steps on or through a tile in the 3x3
+   * neighborhood of (i, j). 3x3 covers both direct-step cases AND diagonal
+   * corner-cut cases (a diagonal (a,b)→(a+1,b+1) relies on (a+1,b) and
+   * (a,b+1) being walkable — so any of those neighbors changing walkability
+   * could invalidate the diagonal, even if the path never stepped on the
+   * changed tile itself).
+   *
+   * @param {number} i @param {number} j
+   */
+  invalidateTile(i, j) {
+    const W = this.grid.W;
+    const H = this.grid.H;
+    const minI = Math.max(0, i - 1);
+    const maxI = Math.min(W - 1, i + 1);
+    const minJ = Math.max(0, j - 1);
+    const maxJ = Math.min(H - 1, j + 1);
+    for (let nj = minJ; nj <= maxJ; nj++) {
+      for (let ni = minI; ni <= maxI; ni++) {
+        const tileIdx = nj * W + ni;
+        const set = this.tileIndex.get(tileIdx);
+        if (!set) continue;
+        // Snapshot before mutating — #evictKey deindexes and would otherwise
+        // mutate the set mid-iteration.
+        for (const key of Array.from(set)) this.#evictKey(key);
+      }
+    }
+  }
+
   clear() {
     this.cache.clear();
+    this.tileIndex.clear();
+  }
+
+  /**
+   * @param {string} key
+   * @param {{ i: number, j: number }[] | null} path
+   * @param {{ i: number, j: number }} start
+   * @param {{ i: number, j: number }} goal
+   */
+  #indexEntry(key, path, start, goal) {
+    const W = this.grid.W;
+    if (path === null) {
+      this.#addToIndex(start.j * W + start.i, key);
+      if (goal.i !== start.i || goal.j !== start.j) {
+        this.#addToIndex(goal.j * W + goal.i, key);
+      }
+      return;
+    }
+    for (const { i, j } of path) this.#addToIndex(j * W + i, key);
+  }
+
+  /** @param {number} tileIdx @param {string} key */
+  #addToIndex(tileIdx, key) {
+    let set = this.tileIndex.get(tileIdx);
+    if (!set) {
+      set = new Set();
+      this.tileIndex.set(tileIdx, set);
+    }
+    set.add(key);
+  }
+
+  /** @param {string} key */
+  #evictKey(key) {
+    const path = this.cache.get(key);
+    if (path === undefined) return;
+    this.cache.delete(key);
+    this.#deindexEntry(key, path);
+  }
+
+  /**
+   * @param {string} key
+   * @param {{ i: number, j: number }[] | null} path
+   */
+  #deindexEntry(key, path) {
+    const W = this.grid.W;
+    if (path === null) {
+      // Recover start/goal from the key — null-path entries never carry their
+      // own path array, so the key is the only source of tile coords.
+      const [s, g] = key.split('|');
+      const [si, sj] = s.split(',');
+      const [gi, gj] = g.split(',');
+      this.#removeFromIndex(Number(sj) * W + Number(si), key);
+      this.#removeFromIndex(Number(gj) * W + Number(gi), key);
+      return;
+    }
+    for (const { i, j } of path) this.#removeFromIndex(j * W + i, key);
+  }
+
+  /** @param {number} tileIdx @param {string} key */
+  #removeFromIndex(tileIdx, key) {
+    const set = this.tileIndex.get(tileIdx);
+    if (!set) return;
+    set.delete(key);
+    if (set.size === 0) this.tileIndex.delete(tileIdx);
   }
 }
 
