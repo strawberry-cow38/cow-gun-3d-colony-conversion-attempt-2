@@ -18,6 +18,14 @@ const repoRoot = path.resolve(here, '..', '..');
 const main = fs.readFileSync(path.join(repoRoot, 'src/main.js'), 'utf8');
 const input = fs.readFileSync(path.join(repoRoot, 'src/boot/input.js'), 'utf8');
 const hotkeys = fs.readFileSync(path.join(repoRoot, 'src/boot/hotkeys.js'), 'utf8');
+// Listener-owning classes may be constructed from any boot/setup*.js helper
+// that main.js calls exactly once. Concat all boot-time source so the "once"
+// check covers the whole boot module graph, not just main.js.
+const bootSetupFiles = fs
+  .readdirSync(path.join(repoRoot, 'src/boot'))
+  .filter((f) => f.startsWith('setup') && f.endsWith('.js'))
+  .map((f) => fs.readFileSync(path.join(repoRoot, 'src/boot', f), 'utf8'));
+const bootSource = [main, ...bootSetupFiles].join('\n');
 
 /**
  * Every class below owns `window` or `document` listeners that never
@@ -38,8 +46,8 @@ const LISTENER_OWNERS = [
 
 describe('listener-owning classes are constructed exactly once', () => {
   for (const name of LISTENER_OWNERS) {
-    it(`${name} appears exactly once as \`new ${name}\` in main.js`, () => {
-      const hits = main.match(new RegExp(`\\bnew\\s+${name}\\b`, 'g')) ?? [];
+    it(`${name} appears exactly once as \`new ${name}\` across boot sources`, () => {
+      const hits = bootSource.match(new RegExp(`\\bnew\\s+${name}\\b`, 'g')) ?? [];
       expect(hits.length).toBe(1);
     });
   }
