@@ -13,16 +13,17 @@ import { pickCowSurname } from './cowNames.js';
 import { rollTraits } from './traits.js';
 
 /** @typedef {'male' | 'female' | 'nonbinary'} Gender */
-/** @typedef {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.'} Title */
+/** @typedef {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.' | 'Col.'} Title */
 
 const ADULT_MIN_AGE = 20;
 const ADULT_MAX_AGE = 60;
 
-const TITLE_DR_CHANCE = 0.07;
 const TITLE_PROF_CHANCE = 0.03;
+const TITLE_DR_CHANCE = 0.07;
+const TITLE_COL_CHANCE = 0.02;
 
 /**
- * Roll a title. Academic titles (Dr. / Prof.) are rare and override gender;
+ * Roll a title. Rare prestige titles (Prof. / Dr. / Col.) override gender;
  * otherwise pick the gendered honorific. Mx. covers nonbinary (reserved for
  * future robot colonists).
  *
@@ -31,8 +32,13 @@ const TITLE_PROF_CHANCE = 0.03;
  */
 function rollTitle(gender) {
   const r = Math.random();
-  if (r < TITLE_PROF_CHANCE) return 'Prof.';
-  if (r < TITLE_PROF_CHANCE + TITLE_DR_CHANCE) return 'Dr.';
+  let cum = 0;
+  cum += TITLE_PROF_CHANCE;
+  if (r < cum) return 'Prof.';
+  cum += TITLE_DR_CHANCE;
+  if (r < cum) return 'Dr.';
+  cum += TITLE_COL_CHANCE;
+  if (r < cum) return 'Col.';
   if (gender === 'male') return 'Mr.';
   if (gender === 'female') return Math.random() < 0.5 ? 'Mrs.' : 'Ms.';
   return 'Mx.';

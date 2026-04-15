@@ -168,7 +168,7 @@ export function registerComponents(world) {
     name: 'cow',
     firstName: 'cow',
     surname: '',
-    /** @type {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.'} */
+    /** @type {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.' | 'Col.'} */
     title: 'Mx.',
     /** @type {'male' | 'female' | 'nonbinary'} */
     gender: 'female',

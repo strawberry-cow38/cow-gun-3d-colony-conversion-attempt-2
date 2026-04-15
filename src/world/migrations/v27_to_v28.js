@@ -48,6 +48,7 @@ function rollTitle(gender) {
   const r = Math.random();
   if (r < 0.03) return 'Prof.';
   if (r < 0.1) return 'Dr.';
+  if (r < 0.12) return 'Col.';
   if (gender === 'male') return 'Mr.';
   if (gender === 'female') return Math.random() < 0.5 ? 'Mrs.' : 'Ms.';
   return 'Mx.';

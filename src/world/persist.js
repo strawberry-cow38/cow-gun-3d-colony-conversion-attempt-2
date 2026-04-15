@@ -44,7 +44,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {string[]} traits
  * @property {string} firstName
  * @property {string} surname
- * @property {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.'} title
+ * @property {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.' | 'Col.'} title
  */
 
 /**

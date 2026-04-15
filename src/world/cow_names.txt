@@ -25,7 +25,6 @@ Tarragonloaf
 Cherryjean
 Butterheath
 Stormybell
-General Dumpling
 Smokeyspot
 Nutmegpop
 Lady Sugar
@@ -52,11 +51,9 @@ Auntie Starlight
 Cardamomlina
 Nutmeghorn
 Auntie Daisy
-Doctor Cuddles
 Poppydale
 Primroselee
 Lady Mable
-Sir Biscuit
 Frostylina
 Queen Buttercream
 Cinnylynn
@@ -70,7 +67,6 @@ Dumplinglee
 Breezydrop
 Bessiemoor
 Moopatch
-Admiral Marigold
 Miss Twinkle
 Auntie Nibbles
 Buttercuphaven
@@ -84,15 +80,12 @@ Cowboy Marigold
 Moowood
 Claralou
 Cloverbell
-Admiral Bovi
 Doodles
 Baron Honeybuns
 Wiggleheath
 Snickerspatch
-Professor Dumpling
 Cherrylee
 Rainykin
-Dame Moo
 Elsiehoof
 Dahliabeth
 Cherrylou
@@ -105,7 +98,6 @@ Auntie Marigold
 Bessiebella
 Birchbrook
 Pearlcloud
-Professor Wiggles
 Cloudyshire
 Rainyette
 Basilbeth
@@ -130,7 +122,6 @@ Rosemaryling
 Bellemuffin
 Basilkin
 Butterhollow
-Reverend Cuddle
 Cindyloaf
 Mistyleigh
 Myrtlelou
@@ -161,7 +152,6 @@ Opalbelle
 Fluffybury
 Meadowcloud
 Rainy
-General Sprinkle
 Butterrose
 Lady Noodle
 Cupcakekins
@@ -189,16 +179,11 @@ Biscuitfield
 Cilantromoor
 Marigoldmuffin
 Claramay
-Doctor Starlight
-Admiral Daisy
 Oreganoberry
 Clarashire
 Dexter
-Sir Mozzarella
 Bessieette
 Meadowloaf
-Sir Hazel
-Doctor Elsie
 Berryspot
 Pearlpuff
 Biscuitpuff
@@ -226,8 +211,6 @@ Cowboy Snuggles
 Cilantrosnout
 Hollyface
 Peachfield
-Sir Sprinkles
-Reverend Elsie
 Sugarspot
 Zinnialing
 Cuddlecake
@@ -265,7 +248,6 @@ Lady Cuddles
 Wigglejo
 Lilyita
 Buttercuppop
-Sir Willow
 Cloverdale
 Boviloaf
 Juniperjo
@@ -279,13 +261,11 @@ Meadowwood
 Farmer Puddle
 Curryhollow
 Mablemuffin
-Reverend Snickers
 Rosemarycloud
 Oreganosen
 Auntie Willow
 Mistyfield
 Jasminetuft
-Doctor Bovi
 Lilysnout
 Currybud
 Dumplingloaf
@@ -307,7 +287,6 @@ Primrosecloud
 Claramuffin
 Parsleycroft
 Lilycake
-Colonel Sweetie
 Oreganodrop
 Bessiepuff
 Hollycake
@@ -323,7 +302,6 @@ Berrypatch
 Berryhoof
 Myrtlepop
 Jasmineanne
-Sir Marigold
 Elsieface
 Cottonlina
 Roseface
@@ -371,7 +349,6 @@ Stormyhorn
 Butterloaf
 Butterbud
 Aspentail
-Reverend Penny
 Heatherpop
 Claracloud
 Smokeybelle
@@ -386,7 +363,6 @@ Peonyford
 Boviella
 Milkywhisker
 Cardamomberry
-Sir Crumpet
 Uncle Snickers
 Moo Petal
 Dumplingling
@@ -396,7 +372,6 @@ Maplehoof
 Mablelee
 Petalsen
 Tulipkins
-Doctor Giggles
 Jasminebud
 Ferntuft
 Wigglestar
@@ -459,7 +434,6 @@ Cottondale
 Daisyington
 Biscuitina
 Cindylina
-Doctor Belle
 Pansyblossom
 Hazelhaven
 Willaita
@@ -468,7 +442,6 @@ Bovibeth
 Biscuitbrook
 Lilypuff
 Nibblekin
-Dame Petal
 Sesamehorn
 Irisrose
 Zinniaford
@@ -488,21 +461,16 @@ Hollyshire
 Willowbeth
 Firpuff
 Sugarsnout
-Reverend Biscuit
 Biscuitjean
 Bumblecloud
 Meadowblossom
 Frostycloud
-Dame Heather
-Sir Moonbeam
 Fernhorn
 Biscuitcroft
 Daisydale
 Baron Magnolia
 Cardamomhoof
-Admiral Cuddle
 Opalhollow
-Colonel Bumble
 Nutmegtail
 Breezymuffin
 Mapleford
@@ -514,7 +482,6 @@ Oreganoella
 Fudgesen
 Opaljean
 Primrosecroft
-Dame Daisy
 Sugarleigh
 Aspenmoor
 Laurelbella
@@ -526,7 +493,6 @@ Fuzzyleigh
 Fernlee
 Pennyloaf
 Dustyface
-Admiral Puddle
 Wigglefield
 Snickerssen
 Cilantrofield
@@ -548,7 +514,6 @@ Chiveleigh
 Jadeboo
 Lord Milky
 Honeyford
-Professor Mozzarella
 Hazelsen
 Jumblekins
 Butterkin
@@ -563,10 +528,8 @@ Granny Butter
 Cardamomkins
 Buttercuplynn
 Snowyleigh
-Professor Bumble
 Moolahpop
 Cloudykins
-Professor Crumpet
 Cocoarose
 Aspenmae
 Olivepuff
@@ -583,11 +546,9 @@ Clovermay
 Myrtlecloud
 Opalcake
 Fudgewood
-Doctor Toffee
 Bumbleface
 Hazelrose
 Cindybury
-Sir Snuggles
 Hibiscuspatch
 Queen Bubbles
 Jasminewhisker
@@ -600,10 +561,8 @@ Tulipcroft
 Poppysnout
 Breezysen
 Mochabella
-Doctor Mable
 Heatherita
 Rainyita
-Dame Sugar
 Petallee
 Breezykins
 Cardamompatch
@@ -714,7 +673,6 @@ Magnoliawhisker
 Cilantroling
 Juniperface
 Rosemaryburry
-Sir Clementine
 Buttercupface
 Firkins
 Butterhorn
@@ -725,7 +683,6 @@ Sunnywhisker
 Pepperlee
 Lord Hazel
 Fircloud
-Mister Fudge
 Rainycake
 Hazelbury
 Cilantroette
@@ -782,7 +739,6 @@ Wisteriahorn
 Dustypop
 Cindymay
 Parsleybud
-Captain Bubbles
 Wiggles
 Dusty
 Mablebell
@@ -804,7 +760,6 @@ Birchburry
 Clarabeth
 Dustymoor
 Zinniabella
-Doctor Heather
 Mooseybrook
 Myrtleberry
 Cupcakeford
@@ -826,7 +781,6 @@ Moo Puddle
 Sunnyfield
 Willaford
 Cinnymuffin
-Professor Wiggle
 Snugglelee
 Tumblemuffin
 Oliveworthy
@@ -898,12 +852,10 @@ Honeylou
 Myrtlelina
 Mistydale
 Clarason
-Mister Twinkle
 Claraboo
 Dustyhorn
 Pestoella
 Cilantroglen
-Colonel Penny
 Dahliaella
 Tuliploaf
 Giggleling
@@ -947,7 +899,6 @@ Cuddlebury
 Juniperlee
 Pearlmay
 Fluffybud
-Mister Willow
 Cindylee
 Dustyspot
 Peonypop
@@ -961,11 +912,9 @@ Prince Butter
 Opalleigh
 Peachling
 Jadeanne
-Reverend Heather
 Bovituft
 Cindylynn
 Pansylee
-Sir Moosey
 Milkylina
 Oreganopuff
 Cloverson
@@ -973,7 +922,6 @@ Daisypop
 Milkylou
 Claraleigh
 Gingerpatch
-Dame Biscuit
 Cardamombrook
 Cedarpop
 Cocoaette
@@ -993,7 +941,6 @@ Saffronfield
 Willahorn
 Colby
 Marigoldworthy
-Reverend Mable
 Emmalee
 Snugglelina
 Sugarlina
