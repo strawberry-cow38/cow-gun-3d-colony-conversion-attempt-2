@@ -142,6 +142,7 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'cut' ||
             job.kind === 'mine' ||
             job.kind === 'haul' ||
+            job.kind === 'deliver' ||
             job.kind === 'eat' ||
             job.kind === 'build' ||
             job.kind === 'deconstruct' ||
@@ -185,7 +186,7 @@ export function makeCowBrainSystem(deps) {
 
         // Dropped out of haul unexpectedly while carrying? Drop the item on
         // the ground where we stand so it re-enters the haul pool.
-        if (inv.itemKind !== null && job.kind !== 'haul') {
+        if (inv.itemKind !== null && job.kind !== 'haul' && job.kind !== 'deliver') {
           dropCarriedItem(world, grid, inv, pos);
           deps.onItemChange();
         }
@@ -281,8 +282,12 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
-              } else if (candidate && candidate.kind === 'haul' && board.claim(candidate.id, id)) {
-                job.kind = 'haul';
+              } else if (
+                candidate &&
+                (candidate.kind === 'haul' || candidate.kind === 'deliver') &&
+                board.claim(candidate.id, id)
+              ) {
+                job.kind = candidate.kind;
                 job.state = 'pathing-to-item';
                 job.payload = {
                   jobId: candidate.id,
@@ -390,7 +395,7 @@ export function makeCowBrainSystem(deps) {
           runPlantJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'harvest') {
           runHarvestJob(world, job, path, pos, grid, paths, board, deps);
-        } else if (job.kind === 'haul') {
+        } else if (job.kind === 'haul' || job.kind === 'deliver') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
           runEatJob(world, job, path, pos, hunger, grid, paths, deps);

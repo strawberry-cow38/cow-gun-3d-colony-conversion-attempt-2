@@ -84,7 +84,7 @@ export function toggleForbiddenOnStacks(world, ids, board) {
   if (target) {
     for (const job of board.jobs) {
       if (job.completed) continue;
-      if (job.kind !== 'haul') continue;
+      if (job.kind !== 'haul' && job.kind !== 'deliver') continue;
       if (idSet.has(job.payload.itemId)) board.complete(job.id);
     }
   }

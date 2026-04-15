@@ -17,11 +17,11 @@ export function thoughtFor(job) {
     if (state === 'chopping') return 'chopping';
     return 'to tree';
   }
-  if (kind === 'haul') {
+  if (kind === 'haul' || kind === 'deliver') {
     if (state === 'walking-to-item' || state === 'pathing-to-item') return 'picking up';
     if (state === 'picking-up') return 'lifting';
     if (state === 'dropping') return 'dropping';
-    return 'hauling';
+    return kind === 'deliver' ? 'delivering' : 'hauling';
   }
   if (kind === 'move') return 'moving';
   if (kind === 'wander') {

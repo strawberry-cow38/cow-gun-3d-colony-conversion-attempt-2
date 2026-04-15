@@ -133,6 +133,39 @@ describe('haul poster: stack consolidation', () => {
     expect(board.jobs).toHaveLength(0);
   });
 
+  it('posts a `deliver` (tier 2) job when a BuildSite is short on materials — not a plain haul', () => {
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(3, 3, 1);
+    const world = makeWorld();
+    spawnItem(world, 0, 0, 'wood', 1, 50);
+    // Site needs 1, has 0 delivered → Pass 0a should post a deliver.
+    world.spawn({
+      BuildSite: {
+        kind: 'wall',
+        stuff: 'wood',
+        requiredKind: 'wood',
+        required: 1,
+        delivered: 0,
+        buildJobId: 0,
+        progress: 0,
+      },
+      BuildSiteViz: {},
+      TileAnchor: { i: 2, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    const delivers = board.jobs.filter((j) => j.kind === 'deliver');
+    const hauls = board.jobs.filter((j) => j.kind === 'haul');
+    expect(delivers).toHaveLength(1);
+    expect(delivers[0].tier).toBe(2);
+    expect(delivers[0].payload.toBuildSite).toBe(true);
+    // The same wood can't be double-claimed for stockpile hauling.
+    expect(hauls).toHaveLength(0);
+  });
+
   it('does not merge across different kinds', () => {
     const grid = new TileGrid(4, 4);
     grid.setStockpile(0, 0, 1);

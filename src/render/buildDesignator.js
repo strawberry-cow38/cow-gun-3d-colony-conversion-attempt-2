@@ -592,8 +592,7 @@ export function releaseBuildSite(world, board, tileGrid, site, i, j) {
     });
   }
   for (const job of board.jobs) {
-    if (job.completed || job.kind !== 'haul') continue;
-    if (job.payload.toBuildSite !== true) continue;
+    if (job.completed || job.kind !== 'deliver') continue;
     if (job.payload.toI === i && job.payload.toJ === j) board.complete(job.id);
   }
 }

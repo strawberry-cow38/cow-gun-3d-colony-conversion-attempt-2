@@ -1,16 +1,18 @@
 /**
- * Haul job plumbing.
+ * Haul job plumbing. Two kinds share the same pickup→drop state machine but
+ * live at different tiers so the brain ranks them correctly:
  *
- * Posts a `haul` job for each loose Item unit that isn't already on a stockpile
- * tile and isn't already claimed by an open haul job. Each job reserves one
- * unit's worth of slot at a specific stockpile tile, so two cows can't race to
- * deposit on the same slot.
+ *   `deliver` (tier 2, player-designated) — carry an item to a BuildSite so
+ *     construction can proceed. Ranks alongside chop/mine/build, ahead of
+ *     generic hauls, so cows don't gut the stockpile instead of walling up
+ *     the base.
+ *   `haul` (tier 3, autonomous) — loose→stockpile, stockpile consolidation,
+ *     and blueprint-clear relocations. Anything that isn't building.
  *
- * Items are stacks: one entity = one stack of N units. Haul jobs pick up 1
- * unit at a time; the source item stays alive until its count hits zero.
+ * Items are stacks: one entity = one stack of N units. Jobs pick up 1 unit at
+ * a time; the source item stays alive until its count hits zero.
  *
- * Payload:
- *   { itemId, kind, fromI, fromJ, toI, toJ }
+ * Payload: { itemId, kind, fromI, fromJ, toI, toJ, toBuildSite?, toRelocation?, siteId? }
  *
  * PICKUP_TICKS / DROP_TICKS give the cow a brief pause when interacting so the
  * motion reads as a real action instead of a teleport.
@@ -54,7 +56,8 @@ export function computeStockpileSlots(world, grid, board) {
     s.count = components.Item.count;
   }
   for (const j of board.jobs) {
-    if (j.completed || j.kind !== 'haul') continue;
+    if (j.completed) continue;
+    if (j.kind !== 'haul' && j.kind !== 'deliver') continue;
     const idx = grid.idx(j.payload.toI, j.payload.toJ);
     const s = out.get(idx);
     if (!s) continue;
@@ -78,7 +81,8 @@ export function buildHaulTargetedCounts(world, board) {
   /** @type {Map<number, number>} */
   const counts = new Map();
   for (const j of board.jobs) {
-    if (j.completed || j.kind !== 'haul') continue;
+    if (j.completed) continue;
+    if (j.kind !== 'haul' && j.kind !== 'deliver') continue;
     const id = j.payload.itemId;
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
@@ -225,8 +229,7 @@ export function buildSiteInFlight(board, grid) {
   /** @type {Map<number, number>} */
   const out = new Map();
   for (const j of board.jobs) {
-    if (j.completed || j.kind !== 'haul') continue;
-    if (j.payload.toBuildSite !== true) continue;
+    if (j.completed || j.kind !== 'deliver') continue;
     const idx = grid.idx(j.payload.toI, j.payload.toJ);
     out.set(idx, (out.get(idx) ?? 0) + 1);
   }
@@ -358,7 +361,7 @@ export function makeHaulPostingSystem(board, grid) {
             a.j,
           );
           if (!src) break;
-          board.post('haul', {
+          board.post('deliver', {
             itemId: src.id,
             kind: site.requiredKind,
             fromI: src.i,
