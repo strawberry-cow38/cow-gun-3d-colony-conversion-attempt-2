@@ -86,8 +86,11 @@ export function createTreeInstancer(scene, capacity = 2048) {
 
   const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
 
+  // Canopy geos are anchored at their own base (y=0) so update() can position
+  // the canopy's base exactly at the (kind-scaled) trunk top without the
+  // translate being stretched by instance scaleY.
   const canopyConeGeo = new THREE.ConeGeometry(CANOPY_RADIUS, CANOPY_HEIGHT, 7, 1);
-  canopyConeGeo.translate(0, TRUNK_HEIGHT + CANOPY_HEIGHT * 0.5, 0);
+  canopyConeGeo.translate(0, CANOPY_HEIGHT * 0.5, 0);
   const canopyConeMesh = new THREE.InstancedMesh(canopyConeGeo, canopyMat, capacity);
   canopyConeMesh.count = 0;
   canopyConeMesh.frustumCulled = false;
@@ -96,7 +99,7 @@ export function createTreeInstancer(scene, capacity = 2048) {
   scene.add(canopyConeMesh);
 
   const canopySphereGeo = new THREE.SphereGeometry(SPHERE_CANOPY_RADIUS, 8, 6);
-  canopySphereGeo.translate(0, TRUNK_HEIGHT + SPHERE_CANOPY_RADIUS, 0);
+  canopySphereGeo.translate(0, SPHERE_CANOPY_RADIUS, 0);
   const canopySphereMesh = new THREE.InstancedMesh(canopySphereGeo, canopyMat, capacity);
   canopySphereMesh.count = 0;
   canopySphereMesh.frustumCulled = false;
@@ -162,6 +165,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
       _matrix.compose(_position, _quat, _trunkScale);
       trunkMesh.setMatrixAt(iTrunk, _matrix);
       trunkMesh.setColorAt(iTrunk, draw.trunk);
+      const canopyY = y + TRUNK_HEIGHT * draw.trunkScale[1] * g;
+      _position.set(w.x, canopyY, w.z);
       _canopyScale.set(draw.canopyScale[0] * g, draw.canopyScale[1] * g, draw.canopyScale[2] * g);
       _matrix.compose(_position, _quat, _canopyScale);
       if (draw.canopyShape === 'sphere') {
