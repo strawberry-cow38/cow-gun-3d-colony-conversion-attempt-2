@@ -61,6 +61,13 @@ export function createFurnacePanel(opts) {
   Object.assign(title.style, { fontWeight: '700', fontSize: '13px', marginBottom: '6px' });
   title.textContent = 'Furnace';
 
+  const storedLine = document.createElement('div');
+  Object.assign(storedLine.style, {
+    fontSize: '11px',
+    color: '#b5c0cc',
+    marginBottom: '6px',
+  });
+
   const billsWrap = document.createElement('div');
   Object.assign(billsWrap.style, { display: 'flex', flexDirection: 'column', gap: '4px' });
 
@@ -84,10 +91,11 @@ export function createFurnacePanel(opts) {
     openRecipePicker(addBtn);
   });
 
-  root.append(title, billsWrap, addBtn);
+  root.append(title, storedLine, billsWrap, addBtn);
   document.body.appendChild(root);
 
   let lastKey = '';
+  let lastStoredKey = '';
   /** Fill div per bill-id for the currently-selected furnace, updated in-place each frame. */
   /** @type {Map<number, HTMLDivElement>} */
   const progressFills = new Map();
@@ -105,7 +113,9 @@ export function createFurnacePanel(opts) {
       const key = `multi:${n}`;
       if (key === lastKey) return;
       lastKey = key;
+      lastStoredKey = '';
       title.textContent = `${n} furnaces selected`;
+      storedLine.style.display = 'none';
       billsWrap.replaceChildren();
       const hint = document.createElement('div');
       hint.textContent = 'Select one furnace to edit bills.';
@@ -121,7 +131,9 @@ export function createFurnacePanel(opts) {
     if (!bills) {
       if (lastKey === 'unknown') return;
       lastKey = 'unknown';
+      lastStoredKey = '';
       title.textContent = 'Furnace';
+      storedLine.style.display = 'none';
       billsWrap.replaceChildren();
       progressFills.clear();
       return;
@@ -161,6 +173,24 @@ export function createFurnacePanel(opts) {
       if (fill && recipe && recipe.workTicks > 0) {
         const p = Math.max(0, Math.min(1, 1 - furnace.workTicksRemaining / recipe.workTicks));
         fill.style.width = `${(p * 100).toFixed(1)}%`;
+      }
+    }
+
+    // Stored contents update independently of the bills-rebuild key so cow
+    // deposits don't thrash the bill rows.
+    if (furnace) {
+      const storedKey = furnace.stored.map((s) => `${s.kind}:${s.count}`).join(',');
+      if (storedKey !== lastStoredKey) {
+        lastStoredKey = storedKey;
+        if (furnace.stored.length === 0) {
+          storedLine.textContent = 'Stored: empty';
+        } else {
+          const parts = furnace.stored.map(
+            (s) => `${s.count} ${ITEM_INFO[s.kind]?.label ?? s.kind}`,
+          );
+          storedLine.textContent = `Stored: ${parts.join(', ')}`;
+        }
+        storedLine.style.display = '';
       }
     }
   }

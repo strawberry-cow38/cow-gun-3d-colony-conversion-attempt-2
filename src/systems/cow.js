@@ -1615,12 +1615,17 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         return;
       }
       // Cap pickup so cows don't overshoot. Build sites: only take what's
-      // still needed (leftover would have to re-haul anyway). Elsewhere:
-      // grab as many units as fit in the remaining 60kg capacity.
+      // still needed (leftover would have to re-haul anyway). Supply jobs
+      // are posted 1-per-missing-unit, so the cow only grabs one per job
+      // (over-pickup would dump leftover into furnace.stored and trigger
+      // the expel ping-pong we've seen before). Elsewhere: grab as many
+      // units as fit in the remaining 60kg capacity.
       let requested = item.count;
       if (toBuildSite && typeof siteId === 'number') {
         const site = world.get(siteId, 'BuildSite');
         if (site) requested = Math.min(requested, Math.max(0, site.required - site.delivered));
+      } else if (toSupply) {
+        requested = Math.min(requested, 1);
       }
       const added = inventoryAdd(inv, item.kind, requested);
       item.count -= added;

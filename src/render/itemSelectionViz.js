@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { writeSquareOutline } from './selectionGeom.js';
 
 const SELECT_COLOR = 0xffe14a;
 const FORBID_COLOR = 0xff3a3a;
@@ -70,7 +71,14 @@ export function createItemSelectionViz(scene) {
       const y = grid.getElevation(a.i, a.j);
 
       if (selectedItems.has(id) && sel < SELECT_CAPACITY) {
-        writeSquare(selectPositions, sel * 8 * 3, sw.x, y + SELECT_Y_OFFSET, sw.z, SELECT_RADIUS);
+        writeSquareOutline(
+          selectPositions,
+          sel * 8 * 3,
+          sw.x,
+          y + SELECT_Y_OFFSET,
+          sw.z,
+          SELECT_RADIUS,
+        );
         sel++;
       }
       if (item.forbidden === true && fob < FORBID_CAPACITY) {
@@ -94,46 +102,6 @@ export function createItemSelectionViz(scene) {
   }
 
   return { update, markDirty };
-}
-
-/**
- * @param {Float32Array} out @param {number} off
- * @param {number} x @param {number} y @param {number} z @param {number} r
- */
-function writeSquare(out, off, x, y, z, r) {
-  const x0 = x - r;
-  const x1 = x + r;
-  const z0 = z - r;
-  const z1 = z + r;
-  let p = off;
-  // N edge
-  out[p++] = x0;
-  out[p++] = y;
-  out[p++] = z0;
-  out[p++] = x1;
-  out[p++] = y;
-  out[p++] = z0;
-  // E edge
-  out[p++] = x1;
-  out[p++] = y;
-  out[p++] = z0;
-  out[p++] = x1;
-  out[p++] = y;
-  out[p++] = z1;
-  // S edge
-  out[p++] = x1;
-  out[p++] = y;
-  out[p++] = z1;
-  out[p++] = x0;
-  out[p++] = y;
-  out[p++] = z1;
-  // W edge
-  out[p++] = x0;
-  out[p++] = y;
-  out[p++] = z1;
-  out[p++] = x0;
-  out[p++] = y;
-  out[p++] = z0;
 }
 
 /**
