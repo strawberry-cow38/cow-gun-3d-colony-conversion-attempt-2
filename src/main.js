@@ -25,8 +25,8 @@ import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
-import { createFurnacePanel } from './render/furnacePanel.js';
-import { FurnaceSelector } from './render/furnaceSelector.js';
+import { createEaselPanel, createFurnacePanel } from './render/furnacePanel.js';
+import { StationSelector } from './render/stationSelector.js';
 import { ItemSelector } from './render/itemSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
@@ -287,6 +287,8 @@ const state = {
   selectedItems: new Set(),
   selectedFurnaces: new Set(),
   primaryFurnace: null,
+  selectedEasels: new Set(),
+  primaryEasel: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
 };
@@ -349,6 +351,8 @@ const selectCow = (id, additive) => {
     state.selectedItems.clear();
     state.selectedFurnaces.clear();
     state.primaryFurnace = null;
+    state.selectedEasels.clear();
+    state.primaryEasel = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -379,6 +383,8 @@ const selectItem = (id, additive) => {
     state.selectedItems.add(id);
     state.selectedFurnaces.clear();
     state.primaryFurnace = null;
+    state.selectedEasels.clear();
+    state.primaryEasel = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -392,6 +398,8 @@ const selectItemsMany = (ids) => {
   state.selectedItems.clear();
   state.selectedFurnaces.clear();
   state.primaryFurnace = null;
+  state.selectedEasels.clear();
+  state.primaryEasel = null;
   for (const id of ids) state.selectedItems.add(id);
   if (ids.length > 0) audio.play('command');
   itemSelectionViz.markDirty();
@@ -432,23 +440,75 @@ const selectFurnace = (id, additive) => {
     state.selectedFurnaces.clear();
     state.selectedFurnaces.add(id);
     state.primaryFurnace = id;
+    state.selectedEasels.clear();
+    state.primaryEasel = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
   updateHud();
 };
 
-// FurnaceSelector registered BEFORE ItemSelector so a click on a furnace
-// tile wins even when an item stack sits on the same tile. Uses tile-based
-// picking (same as ItemSelector) so clicks anywhere within the furnace's
-// footprint resolve to the furnace entity.
-new FurnaceSelector(
+/**
+ * Easel selection mirrors furnace selection — mutex with cows/items/furnaces.
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectEasel = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
+      state.selectedEasels.clear();
+      state.primaryEasel = null;
+    }
+  } else if (additive) {
+    if (state.selectedEasels.has(id)) {
+      state.selectedEasels.delete(id);
+      if (state.primaryEasel === id) {
+        state.primaryEasel =
+          state.selectedEasels.size > 0
+            ? /** @type {number} */ (state.selectedEasels.values().next().value)
+            : null;
+      }
+    } else {
+      state.selectedEasels.add(id);
+      state.primaryEasel = id;
+    }
+    audio.play('click');
+  } else {
+    state.selectedCows.clear();
+    state.primaryCow = null;
+    state.selectedItems.clear();
+    state.selectedFurnaces.clear();
+    state.primaryFurnace = null;
+    state.selectedEasels.clear();
+    state.selectedEasels.add(id);
+    state.primaryEasel = id;
+    audio.play('click');
+  }
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
+// Station selectors fire in capture-phase BEFORE ItemSelector so a click on
+// a station tile wins even when an item stack sits on the same tile. Tile-
+// based picking resolves clicks anywhere within the station's footprint.
+new StationSelector(
   canvas,
   camera,
   () => state.tileMesh,
   { W: gridW, H: gridH },
   world,
+  'Furnace',
   selectFurnace,
+);
+new StationSelector(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  { W: gridW, H: gridH },
+  world,
+  'Easel',
+  selectEasel,
 );
 
 new ItemSelector(
@@ -566,6 +626,15 @@ const furnacePanel = createFurnacePanel({
   },
 });
 
+const easelPanel = createEaselPanel({
+  world,
+  state,
+  onChange: () => {
+    easelInstancer.markDirty();
+    updateHud();
+  },
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -610,6 +679,7 @@ const { render, getFps } = createRenderFrame({
   cowPortraitBar,
   itemStackPanel,
   furnacePanel,
+  easelPanel,
   buildTab,
   clockEl,
   getSpeed: () => loop.speed,

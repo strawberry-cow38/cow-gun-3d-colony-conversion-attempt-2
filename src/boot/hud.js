@@ -110,6 +110,15 @@ export function createHud(ctx) {
           ? /** @type {number} */ (state.selectedFurnaces.values().next().value)
           : null;
     }
+    for (const id of state.selectedEasels) {
+      if (!world.get(id, 'Easel')) state.selectedEasels.delete(id);
+    }
+    if (state.primaryEasel !== null && !state.selectedEasels.has(state.primaryEasel)) {
+      state.primaryEasel =
+        state.selectedEasels.size > 0
+          ? /** @type {number} */ (state.selectedEasels.values().next().value)
+          : null;
+    }
   }
 
   function updateHud() {

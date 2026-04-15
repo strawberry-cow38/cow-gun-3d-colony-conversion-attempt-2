@@ -39,6 +39,7 @@ function speedIcon(speed) {
  *   cowPortraitBar: { update: () => void },
  *   itemStackPanel: { update: () => void },
  *   furnacePanel: { update: () => void },
+ *   easelPanel: { update: () => void },
  *   buildTab: { update: () => void },
  *   clockEl: HTMLElement,
  *   getSpeed: () => number,
@@ -67,6 +68,7 @@ export function createRenderFrame({
   cowPortraitBar,
   itemStackPanel,
   furnacePanel,
+  easelPanel,
   buildTab,
   clockEl,
   getSpeed,
@@ -186,6 +188,7 @@ export function createRenderFrame({
     cowPortraitBar.update();
     itemStackPanel.update();
     furnacePanel.update();
+    easelPanel.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     itemSelectionViz.update(world, tileGrid, state.selectedItems);

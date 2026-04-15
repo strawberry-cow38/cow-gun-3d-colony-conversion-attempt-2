@@ -1,11 +1,11 @@
 /**
- * Click-to-select a furnace. Tile-based picking — raycast the tile mesh to
- * resolve (i, j), then check whether a furnace sits on that tile. This mirrors
- * ItemSelector's approach and, crucially, survives item stacks rendering in
- * front of (or on top of) the furnace body: whichever way the pixel reads,
- * the underlying tile is still the furnace's, so the furnace wins.
+ * Click-to-select a station entity (furnace or easel). Tile-based picking —
+ * raycasts the tile mesh to resolve (i, j), then checks whether an entity of
+ * the given component kind sits on that tile. Mirrors ItemSelector's approach
+ * and survives item stacks rendering on top of the station: the underlying
+ * tile is still the station's, so the station wins.
  *
- * Registered in capture-phase BEFORE ItemSelector. On a furnace tile we
+ * Register in capture-phase BEFORE ItemSelector. On a station tile we
  * stopImmediatePropagation so items sharing that tile don't steal focus;
  * on any other tile we fall through and the item picker handles it.
  *
@@ -17,21 +17,23 @@ import { worldToTile } from '../world/coords.js';
 
 const _ndc = new THREE.Vector2();
 
-export class FurnaceSelector {
+export class StationSelector {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
    * @param {() => THREE.Mesh} getTileMesh
    * @param {{ W: number, H: number }} grid
    * @param {import('../ecs/world.js').World} world
+   * @param {'Furnace' | 'Easel'} compName
    * @param {(id: number | null, additive: boolean) => void} onSelect
    */
-  constructor(dom, camera, getTileMesh, grid, world, onSelect) {
+  constructor(dom, camera, getTileMesh, grid, world, compName, onSelect) {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
     this.grid = grid;
     this.world = world;
+    this.compName = compName;
     this.onSelect = onSelect;
     this.raycaster = new THREE.Raycaster();
     dom.addEventListener('click', (e) => this.#handleClick(e), { capture: true });
@@ -49,15 +51,15 @@ export class FurnaceSelector {
     const p = hits[0].point;
     const t = worldToTile(p.x, p.z, this.grid.W, this.grid.H);
     if (t.i < 0) return;
-    const id = this.#furnaceAt(t.i, t.j);
+    const id = this.#stationAt(t.i, t.j);
     if (id === null) return;
     this.onSelect(id, e.shiftKey);
     e.stopImmediatePropagation();
   }
 
   /** @param {number} i @param {number} j */
-  #furnaceAt(i, j) {
-    for (const { id, components } of this.world.query(['Furnace', 'TileAnchor'])) {
+  #stationAt(i, j) {
+    for (const { id, components } of this.world.query([this.compName, 'TileAnchor'])) {
       const a = components.TileAnchor;
       if (a.i === i && a.j === j) return id;
     }

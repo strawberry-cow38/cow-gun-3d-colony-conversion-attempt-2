@@ -1,17 +1,13 @@
 /**
- * Fixed-position card for the currently selected furnace. Shows its bill list
- * with per-row controls: suspend toggle, count-mode cycle, target ± spinner,
- * reorder ▲▼, and delete. "Add Bill" opens a popup of registered recipes.
+ * Fixed-position bill editor for the currently selected station (furnace or
+ * easel). Both stations share the same Bills component + recipe machinery, so
+ * the panel is parameterized by `kind` and renders either.
  *
- * Multi-select is intentionally unsupported — with more than one furnace
- * selected the panel collapses to a single "select one furnace" hint so the
- * player doesn't accidentally batch-edit bills. That also matches master's
- * request to hide the editor on multi-select.
+ * Multi-select collapses to a "select one" hint; selection is mutex with
+ * cows/items so only one panel is ever visible.
  *
  * The panel reads and mutates Bills.list directly. No event bus; callers pass
- * an `onChange` hook for anything that needs to re-render (the furnace glow is
- * already driven by a cached `slot.active` via markDirty, so starting/stopping
- * a bill in Phase 3 will need to call furnaceInstancer.markDirty too).
+ * an `onChange` hook for anything that needs to re-render.
  */
 
 import { ITEM_INFO } from '../world/items.js';
@@ -24,19 +20,51 @@ import {
 } from '../world/recipes.js';
 import { computeStockByKind } from '../world/stock.js';
 
+/** @typedef {'furnace' | 'easel'} StationKind */
+
 /**
- * @typedef {Object} FurnacePanelOpts
+ * Kind-specific lookups. Isolated here so the panel body can stay generic.
+ *
+ * @type {Record<StationKind, {
+ *   title: string,
+ *   comp: 'Furnace' | 'Easel',
+ *   selectedKey: 'selectedFurnaces' | 'selectedEasels',
+ *   primaryKey: 'primaryFurnace' | 'primaryEasel',
+ *   accent: string,
+ * }>}
+ */
+const KIND_META = {
+  furnace: {
+    title: 'Furnace',
+    comp: 'Furnace',
+    selectedKey: 'selectedFurnaces',
+    primaryKey: 'primaryFurnace',
+    accent: 'rgba(255, 140, 80, 0.35)',
+  },
+  easel: {
+    title: 'Easel',
+    comp: 'Easel',
+    selectedKey: 'selectedEasels',
+    primaryKey: 'primaryEasel',
+    accent: 'rgba(216, 178, 106, 0.45)',
+  },
+};
+
+/**
+ * @typedef {Object} StationPanelOpts
  * @property {import('../ecs/world.js').World} world
  * @property {import('../boot/input.js').BootState} state
  * @property {() => void} onChange
+ * @property {StationKind} [kind]
  */
 
-/** @param {FurnacePanelOpts} opts */
+/** @param {StationPanelOpts} opts */
 export function createFurnacePanel(opts) {
-  const { world, state, onChange } = opts;
+  const { world, state, onChange, kind = 'furnace' } = opts;
+  const meta = KIND_META[kind];
 
   const root = document.createElement('div');
-  root.id = 'furnace-panel';
+  root.id = `${kind}-panel`;
   Object.assign(root.style, {
     position: 'fixed',
     right: '8px',
@@ -44,7 +72,7 @@ export function createFurnacePanel(opts) {
     width: '280px',
     padding: '8px 10px',
     background: 'rgba(14, 18, 24, 0.9)',
-    border: '1px solid rgba(255, 140, 80, 0.35)',
+    border: `1px solid ${meta.accent}`,
     borderRadius: '4px',
     color: '#e6e6e6',
     font: "12px/1.35 system-ui, -apple-system, 'Segoe UI', sans-serif",
@@ -53,14 +81,12 @@ export function createFurnacePanel(opts) {
     userSelect: 'none',
     display: 'none',
   });
-  // Swallow clicks so they don't fall through to canvas handlers (selectors
-  // + designators would otherwise clear selection or fire a placement).
   root.addEventListener('click', (e) => e.stopPropagation());
   root.addEventListener('mousedown', (e) => e.stopPropagation());
 
   const title = document.createElement('div');
   Object.assign(title.style, { fontWeight: '700', fontSize: '13px', marginBottom: '6px' });
-  title.textContent = 'Furnace';
+  title.textContent = meta.title;
 
   const storedLine = document.createElement('div');
   Object.assign(storedLine.style, {
@@ -98,19 +124,15 @@ export function createFurnacePanel(opts) {
   let lastKey = '';
   let lastStoredKey = '';
   let lastStockSig = '';
-  // computeStockByKind scans every Item/Inventory/Furnace entity — too heavy
-  // to run every render frame. Throttle to ~4 Hz; item counts change on sim
-  // ticks (not frames) so a quarter-second UI lag is invisible.
   let stockRefreshCountdown = 0;
-  /** Fill div per bill-id for the currently-selected furnace, updated in-place each frame. */
   /** @type {Map<number, HTMLDivElement>} */
   const progressFills = new Map();
-  /** Progress label <span> per bill-id, updated when stock changes (untilHave mode). */
   /** @type {Map<number, HTMLSpanElement>} */
   const progressSpans = new Map();
 
   function update() {
-    const n = state.selectedFurnaces.size;
+    const selected = /** @type {Set<number>} */ (state[meta.selectedKey]);
+    const n = selected.size;
     if (n === 0) {
       if (root.style.display !== 'none') root.style.display = 'none';
       lastKey = '';
@@ -123,47 +145,42 @@ export function createFurnacePanel(opts) {
       if (key === lastKey) return;
       lastKey = key;
       lastStoredKey = '';
-      title.textContent = `${n} furnaces selected`;
+      title.textContent = `${n} ${meta.title.toLowerCase()}s selected`;
       storedLine.style.display = 'none';
       billsWrap.replaceChildren();
       const hint = document.createElement('div');
-      hint.textContent = 'Select one furnace to edit bills.';
+      hint.textContent = `Select one ${meta.title.toLowerCase()} to edit bills.`;
       hint.style.color = '#b5c0cc';
       billsWrap.append(hint);
       addBtn.style.display = 'none';
       return;
     }
 
-    const id = /** @type {number} */ (state.primaryFurnace);
+    const id = /** @type {number} */ (state[meta.primaryKey]);
     const bills = world.get(id, 'Bills');
-    const furnace = world.get(id, 'Furnace');
+    const station = world.get(id, meta.comp);
     if (!bills) {
       if (lastKey === 'unknown') return;
       lastKey = 'unknown';
       lastStoredKey = '';
       lastStockSig = '';
-      title.textContent = 'Furnace';
+      title.textContent = meta.title;
       storedLine.style.display = 'none';
       billsWrap.replaceChildren();
       progressFills.clear();
       progressSpans.clear();
       return;
     }
-    // Key fingerprints everything the panel renders. Bill rows cost a DOM
-    // rebuild, so this guard matters — every frame otherwise replaceChildren's.
-    // `activeBillId` is in the key so starting/stopping a craft swaps the bar
-    // in/out; `workTicksRemaining` is NOT — the fill width is updated in
-    // place below so a rebuild isn't needed every tick.
     const billsKey = bills.list
       .map((b) => `${b.id}:${b.suspended ? 'S' : 'R'}:${b.countMode}:${b.target}:${b.done}`)
       .join('|');
-    const activeId = furnace?.activeBillId ?? 0;
+    const activeId = station?.activeBillId ?? 0;
     const key = `one:${id}:${bills.nextBillId}:${activeId}:${billsKey}`;
     if (key !== lastKey) {
       lastKey = key;
       lastStockSig = '';
       addBtn.style.display = '';
-      title.textContent = 'Furnace · Bills';
+      title.textContent = `${meta.title} · Bills`;
       billsWrap.replaceChildren();
       progressFills.clear();
       progressSpans.clear();
@@ -179,20 +196,16 @@ export function createFurnacePanel(opts) {
         billsWrap.append(renderBillRow(bills, bill, index, activeId));
       });
     }
-    if (furnace && activeId > 0) {
+    if (station && activeId > 0) {
       const fill = progressFills.get(activeId);
       const activeBill = bills.list.find((b) => b.id === activeId);
       const recipe = activeBill ? RECIPES[activeBill.recipeId] : null;
       if (fill && recipe && recipe.workTicks > 0) {
-        const p = Math.max(0, Math.min(1, 1 - furnace.workTicksRemaining / recipe.workTicks));
+        const p = Math.max(0, Math.min(1, 1 - station.workTicksRemaining / recipe.workTicks));
         fill.style.width = `${(p * 100).toFixed(1)}%`;
       }
     }
 
-    // untilHave progress spans refresh on stock change. `excludeActiveCrafts`
-    // keeps the displayed number reflecting only what's physically in storage
-    // — the active craft's about-to-be-produced units show as the progress
-    // bar instead, so counting them here would double-display.
     const hasUntilHave = bills.list.some((b) => b.countMode === 'untilHave');
     if (hasUntilHave) {
       if (stockRefreshCountdown <= 0) {
@@ -222,12 +235,12 @@ export function createFurnacePanel(opts) {
       }
     }
 
-    // Stored contents update independently of the bills-rebuild key so cow
-    // deposits don't thrash the bill rows. Outputs (finished products waiting
-    // for a haul-out) share the row — master wanted one view of "what's at
-    // the furnace right now" regardless of which stage it's in.
-    if (furnace) {
-      const combined = [...furnace.stored, ...furnace.outputs];
+    // Furnaces show stored + outputs (one "what's on the station" view);
+    // easels have no output buffer — the finished painting spawns as its own
+    // entity, so we show `stored` alone.
+    if (station) {
+      const combined =
+        kind === 'furnace' ? [...station.stored, ...station.outputs] : [...station.stored];
       const storedKey = combined.map((s) => `${s.kind}:${s.count}`).join(',');
       if (storedKey !== lastStoredKey) {
         lastStoredKey = storedKey;
@@ -453,13 +466,14 @@ export function createFurnacePanel(opts) {
 
   /** @param {HTMLElement} anchor */
   function openRecipePicker(anchor) {
-    const existing = document.getElementById('furnace-recipe-picker');
+    const pickerId = `${kind}-recipe-picker`;
+    const existing = document.getElementById(pickerId);
     if (existing) {
       existing.remove();
       return;
     }
     const popup = document.createElement('div');
-    popup.id = 'furnace-recipe-picker';
+    popup.id = pickerId;
     const r = anchor.getBoundingClientRect();
     Object.assign(popup.style, {
       position: 'fixed',
@@ -475,7 +489,7 @@ export function createFurnacePanel(opts) {
       flexDirection: 'column',
       gap: '2px',
     });
-    for (const recipeId of STATION_RECIPES.furnace ?? []) {
+    for (const recipeId of STATION_RECIPES[kind] ?? []) {
       const rec = RECIPES[recipeId];
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -505,15 +519,12 @@ export function createFurnacePanel(opts) {
     };
     const dismiss = (/** @type {MouseEvent} */ e) => {
       const t = /** @type {Node} */ (e.target);
-      // Clicks inside the popup pick a recipe. Clicks on the Add button
-      // re-toggle — let the button handler run and decide to close.
       if (popup.contains(t) || anchor.contains(t)) return;
       teardown();
     };
     const keyDismiss = (/** @type {KeyboardEvent} */ e) => {
       if (e.key === 'Escape') teardown();
     };
-    // Defer binding so the opening click doesn't immediately dismiss.
     setTimeout(() => {
       window.addEventListener('mousedown', dismiss, true);
       window.addEventListener('keydown', keyDismiss);
@@ -522,7 +533,7 @@ export function createFurnacePanel(opts) {
 
   /** @param {string} recipeId */
   function addBill(recipeId) {
-    const id = state.primaryFurnace;
+    const id = /** @type {number | null} */ (state[meta.primaryKey]);
     if (id === null) return;
     const bills = world.get(id, 'Bills');
     if (!bills) return;
@@ -539,4 +550,9 @@ export function createFurnacePanel(opts) {
   }
 
   return { update, root };
+}
+
+/** @param {StationPanelOpts} opts */
+export function createEaselPanel(opts) {
+  return createFurnacePanel({ ...opts, kind: 'easel' });
 }
