@@ -35,7 +35,7 @@ const TRAIT_DEFS = {
     description: 'Scrawls their name in a hurried, jagged hand. Leaves crumbs everywhere.',
     chipColor: '#d48a4a',
     nameFont: "'Rock Salt', 'Bradley Hand', 'Comic Sans MS', cursive",
-    nameFontScale: 0.5,
+    nameFontScale: 0.75,
     conflicts: ['snobby'],
   },
   snobby: {
