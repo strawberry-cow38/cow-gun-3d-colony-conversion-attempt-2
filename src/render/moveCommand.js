@@ -16,7 +16,13 @@
 
 import * as THREE from 'three';
 import { jobVerbForPrioritize } from '../jobs/atTile.js';
-import { findPrioritizableJobsAtTile, prioritizeJob } from '../jobs/prioritize.js';
+import {
+  findHaulableItemAtTile,
+  findPrioritizableJobsAtTile,
+  postAndPrioritizeHaul,
+  prioritizeJob,
+  stockpileSlotAvailable,
+} from '../jobs/prioritize.js';
 import {
   TILE_SIZE,
   UNITS_PER_METER,
@@ -191,34 +197,48 @@ export class CowMoveCommand {
           },
         });
       }
-      // Haulable stack with no haul job posted → the poster couldn't find a
-      // stockpile slot (no stockpile built, or all same-kind piles full).
-      // Tell the player why nothing's happening instead of silently showing
-      // just "Move here".
-      if (!jobs.some((j) => j.kind === 'haul' || j.kind === 'deliver')) {
-        if (this.#tileHasHaulableStack(tile.i, tile.j)) {
-          items.push({ label: 'No stockpile available to haul to', disabled: true });
+      // No haul job on the board yet but the tile has a haulable stack — the
+      // player's trying to prioritize a remainder the poster hasn't scanned
+      // yet, or a stack in a fresh world. Offer an ad-hoc "Prioritize haul"
+      // (posts a new bundled job on the spot), or a disabled hint when no
+      // stockpile slot is available.
+      const alreadyHauling = jobs.some((j) => j.kind === 'haul' || j.kind === 'deliver');
+      if (!alreadyHauling) {
+        const haulable = findHaulableItemAtTile(this.world, this.tileGrid, tile.i, tile.j);
+        if (haulable) {
+          if (
+            stockpileSlotAvailable(
+              this.world,
+              this.tileGrid,
+              this.board,
+              haulable.kind,
+              tile.i,
+              tile.j,
+            )
+          ) {
+            items.push({
+              label: 'Prioritize haul',
+              onPick: () => {
+                const posted = postAndPrioritizeHaul(
+                  this.world,
+                  this.tileGrid,
+                  this.board,
+                  cowId,
+                  tile.i,
+                  tile.j,
+                );
+                if (posted) this.audio?.play('command');
+                else this.audio?.play('deny');
+              },
+            });
+          } else {
+            items.push({ label: 'No stockpile available to haul to', disabled: true });
+          }
         }
       }
     }
+    this.audio?.play('click');
     this.contextMenu.show(e.clientX, e.clientY, items);
-  }
-
-  /**
-   * True when (i, j) hosts an Item entity that the haul poster would try to
-   * move: loose (not on a stockpile tile), unforbidden.
-   *
-   * @param {number} i @param {number} j
-   */
-  #tileHasHaulableStack(i, j) {
-    if (this.tileGrid.isStockpile(i, j)) return false;
-    for (const { components } of this.world.query(['Item', 'TileAnchor'])) {
-      const a = components.TileAnchor;
-      if (a.i !== i || a.j !== j) continue;
-      if (components.Item.forbidden) continue;
-      return true;
-    }
-    return false;
   }
 
   /** @param {MouseEvent} e */

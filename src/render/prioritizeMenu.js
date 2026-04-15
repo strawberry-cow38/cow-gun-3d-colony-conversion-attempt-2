@@ -76,11 +76,16 @@ export function createPrioritizeMenu() {
         row.addEventListener('mouseleave', () => {
           row.style.background = '';
         });
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
+        const activate = (/** @type {Event} */ ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
           hide();
           item.onPick?.();
-        });
+        };
+        row.addEventListener('click', activate);
+        // Right-click also picks — matches the Rimworld habit of keeping the
+        // RMB held from the original open-menu click through the selection.
+        row.addEventListener('contextmenu', activate);
       }
       root.appendChild(row);
     }

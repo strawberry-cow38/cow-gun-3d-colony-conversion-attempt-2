@@ -1634,6 +1634,9 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         }
         const added = inventoryAdd(inv, kind, available);
         if (added > 0) stackRemove(furnace.outputs, kind, added);
+        // Release the source-stack claim: the cow has the cargo, it's no
+        // longer sitting in the furnace for another hauler to contest.
+        job.payload.count = 0;
         deps.onItemChange();
         job.state = 'pathing-to-drop';
         return;
@@ -1665,6 +1668,11 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       const added = inventoryAdd(inv, item.kind, requested);
       item.count -= added;
       if (item.count <= 0 && typeof itemId === 'number') world.despawn(itemId);
+      // Release the source-stack claim post-pickup: the cow's cargo is off
+      // the stack and any remainder is free for the poster to post a fresh
+      // haul against, and for `findPrioritizableJobsAtTile` to hide this
+      // job (kicking a cow mid-carry would force her to drop everything).
+      job.payload.count = 0;
       deps.onItemChange();
       job.state = 'pathing-to-drop';
     }

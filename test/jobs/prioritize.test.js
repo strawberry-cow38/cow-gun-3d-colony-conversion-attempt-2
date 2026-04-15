@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { registerComponents } from '../../src/components/index.js';
 import { World } from '../../src/ecs/world.js';
 import { JobBoard } from '../../src/jobs/board.js';
-import { findPrioritizableJobsAtTile, prioritizeJob } from '../../src/jobs/prioritize.js';
+import {
+  findHaulableItemAtTile,
+  findPrioritizableJobsAtTile,
+  postAndPrioritizeHaul,
+  prioritizeJob,
+  stockpileSlotAvailable,
+} from '../../src/jobs/prioritize.js';
+import { TileGrid } from '../../src/world/tileGrid.js';
 
 function makeWorld() {
   const w = new World();
@@ -51,6 +58,90 @@ describe('findPrioritizableJobsAtTile', () => {
     b.post('eat', { i: 5, j: 5 });
     b.post('move', { i: 5, j: 5 });
     expect(findPrioritizableJobsAtTile(b, 5, 5)).toEqual([]);
+  });
+
+  it('skips post-pickup haul jobs (payload.count === 0)', () => {
+    const b = new JobBoard();
+    // Post-pickup: cow is already carrying the cargo. Prioritizing this would
+    // force her to drop mid-trip, so the menu must not offer it.
+    b.post('haul', { fromI: 2, fromJ: 3, toI: 9, toJ: 9, itemId: 42, count: 0 });
+    expect(findPrioritizableJobsAtTile(b, 2, 3)).toEqual([]);
+  });
+});
+
+function spawnItem(world, i, j, kind, count) {
+  return world.spawn({
+    Item: { kind, count, capacity: 50, forbidden: false },
+    ItemViz: {},
+    TileAnchor: { i, j },
+    Position: { x: 0, y: 0, z: 0 },
+  });
+}
+
+describe('findHaulableItemAtTile', () => {
+  it('returns loose unforbidden stacks', () => {
+    const w = makeWorld();
+    const grid = new TileGrid(4, 4);
+    spawnItem(w, 1, 1, 'wood', 5);
+    const r = findHaulableItemAtTile(w, grid, 1, 1);
+    expect(r?.kind).toBe('wood');
+    expect(r?.count).toBe(5);
+  });
+
+  it('ignores stockpile stacks (already in place)', () => {
+    const w = makeWorld();
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(1, 1, 1);
+    spawnItem(w, 1, 1, 'wood', 5);
+    expect(findHaulableItemAtTile(w, grid, 1, 1)).toBeNull();
+  });
+});
+
+describe('postAndPrioritizeHaul', () => {
+  it('posts a bundled haul and assigns it to the cow', () => {
+    const w = makeWorld();
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(3, 3, 1);
+    const cow = spawnCow(w);
+    spawnItem(w, 1, 1, 'wood', 8);
+    const b = new JobBoard();
+
+    const job = postAndPrioritizeHaul(w, grid, b, cow, 1, 1);
+    expect(job).not.toBeNull();
+    expect(job?.kind).toBe('haul');
+    expect(job?.payload.count).toBe(8);
+    expect(job?.claimedBy).toBe(cow);
+    expect(w.get(cow, 'Job').kind).toBe('haul');
+  });
+
+  it('returns null when no stockpile slot is available', () => {
+    const w = makeWorld();
+    const grid = new TileGrid(4, 4); // no stockpile
+    const cow = spawnCow(w);
+    spawnItem(w, 1, 1, 'wood', 8);
+    const b = new JobBoard();
+
+    expect(postAndPrioritizeHaul(w, grid, b, cow, 1, 1)).toBeNull();
+    expect(b.jobs).toHaveLength(0);
+  });
+});
+
+describe('stockpileSlotAvailable', () => {
+  it('true when a matching/empty slot exists', () => {
+    const w = makeWorld();
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(3, 3, 1);
+    const b = new JobBoard();
+    expect(stockpileSlotAvailable(w, grid, b, 'wood', 1, 1)).toBe(true);
+  });
+
+  it('false when all slots are full', () => {
+    const w = makeWorld();
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(3, 3, 1);
+    spawnItem(w, 3, 3, 'wood', 50); // wood maxStack = 50
+    const b = new JobBoard();
+    expect(stockpileSlotAvailable(w, grid, b, 'wood', 1, 1)).toBe(false);
   });
 });
 
