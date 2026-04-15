@@ -1,14 +1,14 @@
 /**
  * Install-painting designator. Activated from the item stack panel's Install
- * button when a single painting stack is selected. Click a wall tile to queue
- * an install job; the cow fetches the painting and mounts it to that wall
- * face.
+ * button when a single painting stack is selected. Click the floor tile where
+ * a viewer would stand — the designator infers the wall one step inward (along
+ * the face normal) and queues an install job on that wall.
  *
- * For multi-tile paintings (`size > 1`) the placement spans `size` consecutive
- * wall tiles perpendicular to the chosen face — R cycles the face so the same
- * hover tile can be interpreted as "leftmost of a west-facing row" vs "topmost
- * of a north-facing column". Every spanned tile must be a built wall with a
- * walkable tile on the face side (so a cow can stand there to view it).
+ * For multi-tile paintings (`size > 1`) the wall anchor extends `size` tiles
+ * along the face-perpendicular direction. R cycles the face so the same hover
+ * tile can be interpreted as "viewer for a south-facing wall" vs "viewer for
+ * an east-facing wall" — useful at inside corners. Each tile in the span must
+ * be a built wall with a walkable viewer tile on the face side.
  *
  * Esc exits. This designator is mutually exclusive with the build-tab tools
  * via the shared `notifyChanged` walker in setupDesignators.js.
@@ -19,6 +19,7 @@ import { defaultWalkable } from '../sim/pathfinding.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_SPAN_OFFSETS } from '../world/facing.js';
 
+const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_VALID = 0xffd860;
@@ -154,6 +155,10 @@ export class InstallDesignator {
   }
 
   /**
+   * The hovered tile is the viewer spot (where a cow stands to see the
+   * painting). The wall is one tile inward from there — we derive it by
+   * subtracting the face normal, then extend the span along the wall.
+   *
    * @param {{ i: number, j: number }} tile
    * @returns {{ face: number, anchorI: number, anchorJ: number, workI: number, workJ: number } | null}
    */
@@ -162,26 +167,26 @@ export class InstallDesignator {
     const face = this.currentFacing;
     const step = FACING_SPAN_OFFSETS[face];
     const offset = FACING_OFFSETS[face];
-    /** @type {{ i: number, j: number } | null} */
-    let workSpot = null;
+    if (!grid.inBounds(tile.i, tile.j)) return null;
+    if (!defaultWalkable(grid, tile.i, tile.j)) return null;
+    const anchorI = tile.i - offset.di;
+    const anchorJ = tile.j - offset.dj;
     for (let k = 0; k < this.size; k++) {
-      const wi = tile.i + step.di * k;
-      const wj = tile.j + step.dj * k;
+      const wi = anchorI + step.di * k;
+      const wj = anchorJ + step.dj * k;
       if (!grid.inBounds(wi, wj)) return null;
       if (!grid.isWall(wi, wj)) return null;
       const vi = wi + offset.di;
       const vj = wj + offset.dj;
       if (!grid.inBounds(vi, vj)) return null;
       if (!defaultWalkable(grid, vi, vj)) return null;
-      if (!workSpot) workSpot = { i: vi, j: vj };
     }
-    if (!workSpot) return null;
     return {
       face,
-      anchorI: tile.i,
-      anchorJ: tile.j,
-      workI: workSpot.i,
-      workJ: workSpot.j,
+      anchorI,
+      anchorJ,
+      workI: tile.i,
+      workJ: tile.j,
     };
   }
 
@@ -193,17 +198,25 @@ export class InstallDesignator {
     const plan = this.#validatePlacement(this.hoverTile);
     const color = plan ? PREVIEW_COLOR_VALID : PREVIEW_COLOR_INVALID;
     const step = FACING_SPAN_OFFSETS[this.currentFacing];
-    const first = this.hoverTile;
-    const last = {
-      i: first.i + step.di * (this.size - 1),
-      j: first.j + step.dj * (this.size - 1),
+    const offset = FACING_OFFSETS[this.currentFacing];
+    // Outline the wall span the painting will mount on, not the floor tile
+    // the user clicked — the click target is the viewer spot (hover tile).
+    const wallFirst = {
+      i: this.hoverTile.i - offset.di,
+      j: this.hoverTile.j - offset.dj,
     };
-    renderSpanPreview(this.spanPreview, this.tileGrid, first, last, color);
-    if (plan) {
-      renderTilePreview(this.workSpotPreview, this.tileGrid, plan.workI, plan.workJ, WORK_SPOT_COLOR);
-    } else {
-      this.workSpotPreview.line.visible = false;
-    }
+    const wallLast = {
+      i: wallFirst.i + step.di * (this.size - 1),
+      j: wallFirst.j + step.dj * (this.size - 1),
+    };
+    renderSpanPreview(this.spanPreview, this.tileGrid, wallFirst, wallLast, color);
+    renderTilePreview(
+      this.workSpotPreview,
+      this.tileGrid,
+      this.hoverTile.i,
+      this.hoverTile.j,
+      WORK_SPOT_COLOR,
+    );
   }
 
   #hidePreview() {
@@ -271,8 +284,9 @@ function renderSpanPreview(preview, grid, a, b, color) {
   const x1 = se.x + TILE_SIZE * 0.5;
   const z0 = nw.z - TILE_SIZE * 0.5;
   const z1 = se.z + TILE_SIZE * 0.5;
-  // Preview sits a hair above the highest elevation in the span so it
-  // doesn't sink into the wall mesh underneath.
+  // Preview sits above wall-top because the span covers wall tiles — a
+  // ground-level line would be occluded by the wall mesh from every RTS
+  // camera angle that isn't straight-down.
   let y = grid.inBounds(i0, j0) ? grid.getElevation(i0, j0) : 0;
   for (let j = j0; j <= j1; j++) {
     for (let i = i0; i <= i1; i++) {
@@ -281,7 +295,7 @@ function renderSpanPreview(preview, grid, a, b, color) {
       if (e > y) y = e;
     }
   }
-  y += PREVIEW_CLEARANCE;
+  y += WALL_HEIGHT + PREVIEW_CLEARANCE;
   const p = preview.positions;
   p[0] = x0; p[1] = y; p[2] = z0;
   p[3] = x1; p[4] = y; p[5] = z0;

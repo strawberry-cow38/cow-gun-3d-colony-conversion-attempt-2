@@ -1,22 +1,24 @@
 /**
- * Uninstall-painting designator. Toggleable build-tab tool. Click any wall
- * tile that a WallArt is anchored on (including span tiles for size>1) to
- * queue an uninstall job. The cow pries the painting off the wall and drops
- * a storable Item+Painting at an adjacent walkable tile.
+ * Uninstall-painting designator. Toggleable build-tab tool. Click the floor
+ * tile where a viewer would stand (one step out from the wall along the
+ * painting's face normal) — the designator finds the WallArt whose span
+ * fronts that viewer tile and queues an uninstall job. The cow pries the
+ * painting off the wall and drops a storable Item+Painting at that tile.
  *
  * Mutually exclusive with the other build-tab designators via the shared
  * `notifyChanged` walker in setupDesignators.js.
  */
 
 import * as THREE from 'three';
-import { defaultWalkable } from '../sim/pathfinding.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_SPAN_OFFSETS } from '../world/facing.js';
 
+const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_VALID = 0xff8fd0;
 const PREVIEW_COLOR_INVALID = 0xff6a4a;
+const WORK_SPOT_COLOR = 0x7cffb0;
 
 export class UninstallDesignator {
   /**
@@ -47,6 +49,7 @@ export class UninstallDesignator {
     this.raycaster = new THREE.Raycaster();
 
     this.spanPreview = buildSpanPreview(scene);
+    this.workSpotPreview = buildTilePreview(scene);
 
     canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -99,62 +102,40 @@ export class UninstallDesignator {
     if (!tile) return;
     e.stopImmediatePropagation();
     e.preventDefault();
-    const hit = this.#findWallArtAt(tile);
+    const hit = this.#findWallArtViewedFrom(tile);
     if (!hit) return;
     const { wallArtId, art } = hit;
     if (art.uninstallJobId > 0) return;
-    const workSpot = this.#findWorkSpot(hit);
-    if (!workSpot) return;
     const job = this.board.post('uninstall', {
       wallArtId,
-      workI: workSpot.i,
-      workJ: workSpot.j,
+      workI: tile.i,
+      workJ: tile.j,
     });
     art.uninstallJobId = job.id;
     this.audio?.play('command');
   }
 
   /**
-   * Find a WallArt whose span covers `tile`. Returns the entity + anchor +
-   * facing metadata needed to compute the workspot.
+   * Find a WallArt whose span has the hovered tile as one of its viewer
+   * spots — i.e. some span tile `w` satisfies `w + face_normal == tile`.
    *
    * @param {{ i: number, j: number }} tile
    */
-  #findWallArtAt(tile) {
+  #findWallArtViewedFrom(tile) {
     for (const { id, components } of this.world.query(['WallArt', 'TileAnchor'])) {
       const art = components.WallArt;
       const anchor = components.TileAnchor;
       const size = Math.max(1, art.size | 0);
       const face = art.face | 0;
       const step = FACING_SPAN_OFFSETS[face] ?? FACING_SPAN_OFFSETS[0];
+      const offset = FACING_OFFSETS[face] ?? FACING_OFFSETS[0];
       for (let k = 0; k < size; k++) {
-        const wi = anchor.i + step.di * k;
-        const wj = anchor.j + step.dj * k;
-        if (wi === tile.i && wj === tile.j) {
+        const vi = anchor.i + step.di * k + offset.di;
+        const vj = anchor.j + step.dj * k + offset.dj;
+        if (vi === tile.i && vj === tile.j) {
           return { wallArtId: id, art, anchor, face, size };
         }
       }
-    }
-    return null;
-  }
-
-  /**
-   * Pick the first walkable tile on the painting's face side across the span.
-   *
-   * @param {{ anchor: { i: number, j: number }, face: number, size: number }} hit
-   */
-  #findWorkSpot(hit) {
-    const grid = this.tileGrid;
-    const step = FACING_SPAN_OFFSETS[hit.face] ?? FACING_SPAN_OFFSETS[0];
-    const offset = FACING_OFFSETS[hit.face] ?? FACING_OFFSETS[0];
-    for (let k = 0; k < hit.size; k++) {
-      const wi = hit.anchor.i + step.di * k;
-      const wj = hit.anchor.j + step.dj * k;
-      const vi = wi + offset.di;
-      const vj = wj + offset.dj;
-      if (!grid.inBounds(vi, vj)) continue;
-      if (!defaultWalkable(grid, vi, vj)) continue;
-      return { i: vi, j: vj };
     }
     return null;
   }
@@ -164,7 +145,7 @@ export class UninstallDesignator {
       this.#hidePreview();
       return;
     }
-    const hit = this.#findWallArtAt(this.hoverTile);
+    const hit = this.#findWallArtViewedFrom(this.hoverTile);
     if (!hit) {
       this.#hidePreview();
       return;
@@ -178,10 +159,18 @@ export class UninstallDesignator {
       j: hit.anchor.j + step.dj * (hit.size - 1),
     };
     renderSpanPreview(this.spanPreview, this.tileGrid, first, last, color);
+    renderTilePreview(
+      this.workSpotPreview,
+      this.tileGrid,
+      this.hoverTile.i,
+      this.hoverTile.j,
+      WORK_SPOT_COLOR,
+    );
   }
 
   #hidePreview() {
     this.spanPreview.line.visible = false;
+    this.workSpotPreview.line.visible = false;
   }
 
   /**
@@ -214,6 +203,18 @@ function buildSpanPreview(scene) {
   return { geo, positions, line };
 }
 
+/** @param {THREE.Scene} scene */
+function buildTilePreview(scene) {
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(5 * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: WORK_SPOT_COLOR }));
+  line.frustumCulled = false;
+  line.visible = false;
+  scene.add(line);
+  return { geo, positions, line };
+}
+
 /**
  * @param {{ geo: THREE.BufferGeometry, positions: Float32Array, line: THREE.Line }} preview
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -232,6 +233,8 @@ function renderSpanPreview(preview, grid, a, b, color) {
   const x1 = se.x + TILE_SIZE * 0.5;
   const z0 = nw.z - TILE_SIZE * 0.5;
   const z1 = se.z + TILE_SIZE * 0.5;
+  // Outline sits above wall-top so it isn't occluded by the wall mesh at
+  // normal RTS camera angles — matches install preview.
   let y = grid.inBounds(i0, j0) ? grid.getElevation(i0, j0) : 0;
   for (let j = j0; j <= j1; j++) {
     for (let i = i0; i <= i1; i++) {
@@ -240,7 +243,31 @@ function renderSpanPreview(preview, grid, a, b, color) {
       if (e > y) y = e;
     }
   }
-  y += PREVIEW_CLEARANCE;
+  y += WALL_HEIGHT + PREVIEW_CLEARANCE;
+  const p = preview.positions;
+  p[0] = x0; p[1] = y; p[2] = z0;
+  p[3] = x1; p[4] = y; p[5] = z0;
+  p[6] = x1; p[7] = y; p[8] = z1;
+  p[9] = x0; p[10] = y; p[11] = z1;
+  p[12] = x0; p[13] = y; p[14] = z0;
+  preview.geo.attributes.position.needsUpdate = true;
+  /** @type {THREE.LineBasicMaterial} */
+  (preview.line.material).color.setHex(color);
+  preview.line.visible = true;
+}
+
+/**
+ * @param {{ geo: THREE.BufferGeometry, positions: Float32Array, line: THREE.Line }} preview
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j @param {number} color
+ */
+function renderTilePreview(preview, grid, i, j, color) {
+  const w = tileToWorld(i, j, grid.W, grid.H);
+  const x0 = w.x - TILE_SIZE * 0.5;
+  const x1 = w.x + TILE_SIZE * 0.5;
+  const z0 = w.z - TILE_SIZE * 0.5;
+  const z1 = w.z + TILE_SIZE * 0.5;
+  const y = grid.getElevation(i, j) + PREVIEW_CLEARANCE;
   const p = preview.positions;
   p[0] = x0; p[1] = y; p[2] = z0;
   p[3] = x1; p[4] = y; p[5] = z0;
