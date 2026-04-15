@@ -316,6 +316,7 @@ export function makeCowBrainSystem(deps) {
                 job.payload = {
                   jobId: candidate.id,
                   itemId: candidate.payload.itemId,
+                  count: candidate.payload.count,
                   fromI: candidate.payload.fromI,
                   fromJ: candidate.payload.fromJ,
                   toI: candidate.payload.toI,
@@ -1635,8 +1636,12 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         const added = inventoryAdd(inv, kind, available);
         if (added > 0) stackRemove(furnace.outputs, kind, added);
         // Release the source-stack claim: the cow has the cargo, it's no
-        // longer sitting in the furnace for another hauler to contest.
+        // longer sitting in the furnace for another hauler to contest. The
+        // board record is the source of truth read by posters and the
+        // prioritize menu, so zero both the cow's local copy and the board's.
         job.payload.count = 0;
+        const boardJob = board.get(jobId);
+        if (boardJob) boardJob.payload.count = 0;
         deps.onItemChange();
         job.state = 'pathing-to-drop';
         return;
@@ -1672,7 +1677,11 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       // the stack and any remainder is free for the poster to post a fresh
       // haul against, and for `findPrioritizableJobsAtTile` to hide this
       // job (kicking a cow mid-carry would force her to drop everything).
+      // Zero both the cow's local payload copy and the board's record,
+      // since posters and the prioritize menu read from the board.
       job.payload.count = 0;
+      const boardJob = board.get(jobId);
+      if (boardJob) boardJob.payload.count = 0;
       deps.onItemChange();
       job.state = 'pathing-to-drop';
     }

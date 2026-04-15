@@ -124,6 +124,46 @@ describe('postAndPrioritizeHaul', () => {
     expect(postAndPrioritizeHaul(w, grid, b, cow, 1, 1)).toBeNull();
     expect(b.jobs).toHaveLength(0);
   });
+
+  it('targets the remainder, not cow A in-flight, after source claim release', () => {
+    // Regression: cow A carries 12/50 with payload.count=0 on the board.
+    // Cow B right-clicks the 38-unit remainder. The menu must post a FRESH
+    // job for B — not steal A's in-flight haul and make her drop her cargo.
+    const w = makeWorld();
+    const grid = new TileGrid(8, 8);
+    grid.setStockpile(7, 7, 1);
+    const cowA = spawnCow(w);
+    const cowB = spawnCow(w);
+    const item = spawnItem(w, 1, 1, 'wood', 38); // post-pickup remainder
+    const b = new JobBoard();
+
+    // Simulate cow A mid-trip: source claim released (count=0), carrying 12.
+    const aJob = b.post('haul', {
+      itemId: item,
+      kind: 'wood',
+      count: 0,
+      fromI: 1,
+      fromJ: 1,
+      toI: 7,
+      toJ: 7,
+    });
+    b.claim(aJob.id, cowA);
+    const aCowJob = w.get(cowA, 'Job');
+    aCowJob.kind = 'haul';
+    aCowJob.state = 'walking-to-drop';
+    aCowJob.payload = { jobId: aJob.id, itemId: item, count: 0, toI: 7, toJ: 7 };
+    w.get(cowA, 'Inventory').items = [{ kind: 'wood', count: 12 }];
+
+    const posted = postAndPrioritizeHaul(w, grid, b, cowB, 1, 1);
+    expect(posted).not.toBeNull();
+    expect(posted?.id).not.toBe(aJob.id);
+    expect(posted?.claimedBy).toBe(cowB);
+
+    // Cow A untouched — still hauling, still carrying.
+    expect(aJob.claimedBy).toBe(cowA);
+    expect(w.get(cowA, 'Job').kind).toBe('haul');
+    expect(w.get(cowA, 'Inventory').items).toEqual([{ kind: 'wood', count: 12 }]);
+  });
 });
 
 describe('stockpileSlotAvailable', () => {
