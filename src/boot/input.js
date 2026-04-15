@@ -22,6 +22,7 @@ import { dispatch } from './hotkeys.js';
  * @property {import('three').Mesh} tileMesh
  * @property {number} [pausedSpeed]  last non-zero speed, restored when space unpauses
  * @property {boolean} [roofsVisible] defaults true; V toggles
+ * @property {number} [tickOffset]   debug-scrubbed ticks added to sim clock (T/Shift+T)
  *
  * @typedef {Object} InputCtx
  * @property {import('../ecs/world.js').World} world

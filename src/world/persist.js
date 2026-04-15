@@ -36,6 +36,14 @@ import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { TileGrid } from './tileGrid.js';
 
 /**
+ * @typedef SerializedIdentity
+ * @property {'male' | 'female' | 'nonbinary'} gender
+ * @property {number} birthTick
+ * @property {number} heightCm
+ * @property {string} hairColor
+ */
+
+/**
  * @typedef SerializedCow
  * @property {string} name
  * @property {boolean} drafted
@@ -44,6 +52,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
  * @property {{ items: { kind: string, count: number }[] }} inventory
+ * @property {SerializedIdentity} identity
  */
 
 /**
@@ -231,6 +240,7 @@ export function serializeState(tileGrid, world) {
     'Position',
     'Hunger',
     'Brain',
+    'Identity',
     'Job',
     'Path',
     'Inventory',
@@ -251,6 +261,12 @@ export function serializeState(tileGrid, world) {
       },
       inventory: {
         items: components.Inventory.items.map((s) => ({ kind: s.kind, count: s.count })),
+      },
+      identity: {
+        gender: components.Identity.gender,
+        birthTick: components.Identity.birthTick,
+        heightCm: components.Identity.heightCm,
+        hairColor: components.Identity.hairColor,
       },
     });
   }
@@ -529,6 +545,7 @@ export function hydrateCows(world, state) {
     const job = c.job ?? { kind: 'none', state: 'idle', payload: {} };
     const path = c.path ?? { steps: [], index: 0 };
     const inv = c.inventory ?? { items: [] };
+    const id = c.identity;
     world.spawn({
       Cow: { drafted: c.drafted === true },
       Position: { ...c.position },
@@ -536,6 +553,13 @@ export function hydrateCows(world, state) {
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: c.hunger },
       Brain: { name: c.name },
+      Identity: {
+        name: c.name,
+        gender: id.gender,
+        birthTick: id.birthTick,
+        heightCm: id.heightCm,
+        hairColor: id.hairColor,
+      },
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
       Inventory: { items: (inv.items ?? []).map((s) => ({ kind: s.kind, count: s.count })) },

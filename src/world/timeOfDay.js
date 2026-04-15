@@ -3,17 +3,14 @@
  * sunrise, 0.5 = noon, 0.75 = sunset. Modulates the directional sun,
  * hemisphere fill, and sky shader uniforms from four keyframe palettes.
  *
- * Palettes are wired in the order sky→hemi→sun→shader-uniforms; weather
- * modules (src/world/weather.js) tweak the resulting intensities via
- * `setOverrideTint` instead of owning their own lights.
+ * t is driven by the sim tick via `setT` — caller computes the fraction from
+ * the calendar so speed multipliers accelerate the sun alongside everything
+ * else. Weather (src/world/weather.js) tweaks intensities via `setOvercast`
+ * instead of owning its own lights.
  */
 
 import * as THREE from 'three';
 
-// 24 real minutes per sim day — slow enough to feel natural but short enough
-// that a session sees multiple dawns. Debug T/Shift+T scrubs if you're
-// hunting a specific palette.
-export const DAY_LENGTH_SEC = 1440;
 export const HOURS_PER_DAY = 24;
 
 const SKY_UNIFORM_KEYS = /** @type {const} */ ([
@@ -223,15 +220,9 @@ export function createTimeOfDay(opts) {
     }
   }
 
-  /** @param {number} dtSec */
-  function update(dtSec) {
-    t = (t + dtSec / DAY_LENGTH_SEC) % 1;
-    apply();
-  }
-
-  /** @param {number} hours */
-  function offsetHours(hours) {
-    t = (((t + hours / HOURS_PER_DAY) % 1) + 1) % 1;
+  /** @param {number} nextT normalized day fraction 0..1 */
+  function setT(nextT) {
+    t = ((nextT % 1) + 1) % 1;
     apply();
   }
 
@@ -259,8 +250,7 @@ export function createTimeOfDay(opts) {
 
   apply();
   return {
-    update,
-    offsetHours,
+    setT,
     setOvercast,
     getHHMM,
     getSunLightPercent,

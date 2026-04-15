@@ -8,6 +8,8 @@
  * around. `getFps` is exposed for the HUD.
  */
 
+import { dayFractionOfTick, formatSimDate, formatSimTime, tickToSimDate } from '../sim/calendar.js';
+
 /** @param {number} speed */
 function speedIcon(speed) {
   if (speed === 0) return '⏸';
@@ -37,12 +39,14 @@ function speedIcon(speed) {
  *   stressInstancer: ReturnType<typeof import('../render/stressInstancer.js').createStressInstancer> | null,
  *   instancers: ReturnType<typeof import('./setupInstancers.js').setupInstancers>,
  *   cowPortraitBar: { update: () => void },
+ *   cowPanel: { update: () => void },
  *   itemStackPanel: { update: () => void },
  *   furnacePanel: { update: () => void },
  *   easelPanel: { update: () => void },
  *   buildTab: { update: () => void },
  *   clockEl: HTMLElement,
  *   getSpeed: () => number,
+ *   getTick: () => number,
  *   updateHud: () => void,
  *   pruneStaleSelections: () => void,
  * }} opts
@@ -66,12 +70,14 @@ export function createRenderFrame({
   stressInstancer,
   instancers,
   cowPortraitBar,
+  cowPanel,
   itemStackPanel,
   furnacePanel,
   easelPanel,
   buildTab,
   clockEl,
   getSpeed,
+  getTick,
   updateHud,
   pruneStaleSelections,
 }) {
@@ -146,7 +152,8 @@ export function createRenderFrame({
       rts.update(rdt);
     }
     audio.update();
-    timeOfDay.update(rdt);
+    const simTick = getTick() + (state.tickOffset ?? 0);
+    timeOfDay.setT(dayFractionOfTick(simTick));
     weather.update(rdt, camera.position);
     cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
@@ -188,13 +195,15 @@ export function createRenderFrame({
     pickTileOverlay.update(tileGrid, state.lastPick);
     pruneStaleSelections();
     cowPortraitBar.update();
+    cowPanel.update();
     itemStackPanel.update();
     furnacePanel.update();
     easelPanel.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     itemSelectionViz.update(world, tileGrid, state.selectedItems);
-    clockEl.textContent = `${timeOfDay.getHHMM()} ${speedIcon(getSpeed())}`;
+    const simDate = tickToSimDate(simTick);
+    clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}`;
     // Anchor the sky sphere to the camera so no amount of zoom-out or pan
     // can put the camera outside the sky — the purple scene.background stays
     // hidden regardless of camera distance from the world origin.

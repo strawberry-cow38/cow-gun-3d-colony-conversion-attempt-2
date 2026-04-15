@@ -6,6 +6,7 @@
 
 import { tileToWorld } from '../world/coords.js';
 import { pickCowName } from '../world/cowNames.js';
+import { rollCowIdentity } from '../world/identity.js';
 
 /**
  * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
@@ -43,25 +44,30 @@ export function nearestFreeTile(grid, i, j) {
 
 /**
  * Spawn one cow on the nearest free tile to (i, j). No-op if the request is
- * out of bounds or the whole map is blocked.
+ * out of bounds or the whole map is blocked. `currentTick` seeds the random
+ * birthday so ages are sensible relative to the sim clock at spawn time.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} i @param {number} j
+ * @param {number} [currentTick] sim tick at spawn, for age back-dating
  */
-export function spawnCowAt(world, grid, i, j) {
+export function spawnCowAt(world, grid, i, j, currentTick = 0) {
   if (!grid.inBounds(i, j)) return;
   const placed = nearestFreeTile(grid, i, j);
   if (!placed) return;
   const w = tileToWorld(placed.i, placed.j, grid.W, grid.H);
   const y = grid.getElevation(placed.i, placed.j);
+  const name = pickCowName();
+  const id = rollCowIdentity(currentTick);
   world.spawn({
     Cow: { drafted: false },
     Position: { x: w.x, y, z: w.z },
     PrevPosition: { x: w.x, y, z: w.z },
     Velocity: { x: 0, y: 0, z: 0 },
     Hunger: { value: 1 },
-    Brain: { name: pickCowName() },
+    Brain: { name },
+    Identity: { name, ...id },
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },
     Inventory: { items: [] },
@@ -76,11 +82,12 @@ export function spawnCowAt(world, grid, i, j) {
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} count
+ * @param {number} [currentTick]
  */
-export function spawnInitialCows(world, grid, count) {
+export function spawnInitialCows(world, grid, count, currentTick = 0) {
   for (let n = 0; n < count; n++) {
     const i = Math.floor(grid.W / 2 + (Math.random() * 6 - 3));
     const j = Math.floor(grid.H / 2 + (Math.random() * 6 - 3));
-    spawnCowAt(world, grid, i, j);
+    spawnCowAt(world, grid, i, j, currentTick);
   }
 }

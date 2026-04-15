@@ -12,6 +12,7 @@
  */
 
 import { buildTileMesh } from '../render/tileMesh.js';
+import { TICKS_PER_SIM_HOUR } from '../sim/calendar.js';
 import { spawnInitialTrees } from '../systems/trees.js';
 import { addItemToTile } from '../world/items.js';
 import { CURRENT_VERSION } from '../world/migrations/index.js';
@@ -265,7 +266,7 @@ export const HOTKEYS = [
         i: Math.floor(ctx.gridW / 2),
         j: Math.floor(ctx.gridH / 2),
       };
-      spawnCowAt(ctx.world, ctx.tileGrid, tile.i, tile.j);
+      spawnCowAt(ctx.world, ctx.tileGrid, tile.i, tile.j, ctx.loop.tick);
       ctx.audio.play('spawn');
       ctx.updateHud();
     },
@@ -295,11 +296,14 @@ export const HOTKEYS = [
     match: (e, ctx) => ctx.state.debugEnabled && e.code === 'KeyL',
     run: (ctx) => loadGame(ctx),
   },
-  // T / Shift+T — scrub time of day ±2 hours.
+  // T / Shift+T — scrub sim clock ±2 hours. Drives timeOfDay + calendar +
+  // cow ageing via the shared tick stream, so the sun and the date advance
+  // together.
   {
     match: (e, ctx) => ctx.state.debugEnabled && e.code === 'KeyT',
     run: (ctx, e) => {
-      ctx.timeOfDay.offsetHours(e.shiftKey ? -2 : 2);
+      const delta = (e.shiftKey ? -2 : 2) * TICKS_PER_SIM_HOUR;
+      ctx.state.tickOffset = (ctx.state.tickOffset ?? 0) + delta;
       ctx.audio.play('cycle');
       ctx.updateHud();
     },

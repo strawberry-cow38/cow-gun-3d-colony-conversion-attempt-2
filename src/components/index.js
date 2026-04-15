@@ -15,6 +15,17 @@
  *                                    compared against JobBoard.version so a new
  *                                    posting wakes idle cows. Default true on
  *                                    spawn/hydrate so fresh cows evaluate once.
+ *                                    `name` is authoritative — Identity mirrors
+ *                                    it so colonist UI has one record to read.
+ * Identity    { name, gender, birthTick, heightCm, hairColor }
+ *                                    Demographic card for a colonist. Gender
+ *                                    enum is 'male' | 'female' | 'nonbinary' —
+ *                                    the last is reserved for future robot
+ *                                    colonists, cow spawner only rolls M/F.
+ *                                    `birthTick` is sim-calendar ticks and may
+ *                                    be negative (colonists older than the
+ *                                    colony). Age is derived on read via
+ *                                    calendar.ageYears so it advances live.
  * Job         { kind, state, payload } kind='none' = idle
  * Path        { steps, index }       current path; index >= steps.length = arrived
  *
@@ -142,6 +153,14 @@ export function registerComponents(world) {
     jobDirty: true,
     vitalsDirty: true,
     lastBoardVersion: -1,
+  }));
+  world.defineComponent('Identity', () => ({
+    name: 'cow',
+    /** @type {'male' | 'female' | 'nonbinary'} */
+    gender: 'female',
+    birthTick: 0,
+    heightCm: 170,
+    hairColor: '#4a2f20',
   }));
   world.defineComponent('Job', () => ({
     kind: 'none',

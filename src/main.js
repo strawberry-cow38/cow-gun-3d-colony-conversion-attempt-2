@@ -21,6 +21,7 @@ import { JobBoard } from './jobs/board.js';
 import { makeHaulPostingSystem } from './jobs/haul.js';
 import { createBuildTab } from './render/buildTab.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
+import { createCowPanel } from './render/cowPanel.js';
 import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createDraftBadge } from './render/draftBadge.js';
@@ -38,6 +39,7 @@ import { StationSelector } from './render/stationSelector.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
+import { dayFractionOfTick } from './sim/calendar.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
@@ -167,7 +169,7 @@ spawnInitialCows(world, tileGrid, cowCount);
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
 const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
-const timeOfDay = createTimeOfDay({ sun, hemi, sky });
+const timeOfDay = createTimeOfDay({ sun, hemi, sky, initialT: dayFractionOfTick(0) });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
 const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
 scheduler.add(lightingSystem);
@@ -293,6 +295,7 @@ const state = {
   primaryEasel: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
+  tickOffset: 0,
 };
 scene.add(state.tileMesh);
 
@@ -669,6 +672,12 @@ const cowPortraitBar = createCowPortraitBar({
   },
 });
 
+const cowPanel = createCowPanel({
+  world,
+  state,
+  getTick: () => loop.tick,
+});
+
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
@@ -693,12 +702,14 @@ const { render, getFps } = createRenderFrame({
   stressInstancer,
   instancers,
   cowPortraitBar,
+  cowPanel,
   itemStackPanel,
   furnacePanel,
   easelPanel,
   buildTab,
   clockEl,
   getSpeed: () => loop.speed,
+  getTick: () => loop.tick,
   updateHud,
   pruneStaleSelections,
 });
