@@ -98,6 +98,10 @@ export function createFurnacePanel(opts) {
   let lastKey = '';
   let lastStoredKey = '';
   let lastStockSig = '';
+  // computeStockByKind scans every Item/Inventory/Furnace entity — too heavy
+  // to run every render frame. Throttle to ~4 Hz; item counts change on sim
+  // ticks (not frames) so a quarter-second UI lag is invisible.
+  let stockRefreshCountdown = 0;
   /** Fill div per bill-id for the currently-selected furnace, updated in-place each frame. */
   /** @type {Map<number, HTMLDivElement>} */
   const progressFills = new Map();
@@ -191,25 +195,30 @@ export function createFurnacePanel(opts) {
     // bar instead, so counting them here would double-display.
     const hasUntilHave = bills.list.some((b) => b.countMode === 'untilHave');
     if (hasUntilHave) {
-      const stockByKind = computeStockByKind(world);
-      let sig = '';
-      for (const bill of bills.list) {
-        if (bill.countMode !== 'untilHave') continue;
-        const recipe = RECIPES[bill.recipeId];
-        if (!recipe) continue;
-        sig += `${bill.id}:${stockByKind.get(recipe.outputKind) ?? 0},`;
-      }
-      if (sig !== lastStockSig) {
-        lastStockSig = sig;
+      if (stockRefreshCountdown <= 0) {
+        stockRefreshCountdown = 15;
+        const stockByKind = computeStockByKind(world);
+        let sig = '';
         for (const bill of bills.list) {
           if (bill.countMode !== 'untilHave') continue;
-          const span = progressSpans.get(bill.id);
           const recipe = RECIPES[bill.recipeId];
-          if (!span || !recipe) continue;
-          span.textContent = billProgressLabel(bill, {
-            stockOfOutput: stockByKind.get(recipe.outputKind) ?? 0,
-          });
+          if (!recipe) continue;
+          sig += `${bill.id}:${stockByKind.get(recipe.outputKind) ?? 0},`;
         }
+        if (sig !== lastStockSig) {
+          lastStockSig = sig;
+          for (const bill of bills.list) {
+            if (bill.countMode !== 'untilHave') continue;
+            const span = progressSpans.get(bill.id);
+            const recipe = RECIPES[bill.recipeId];
+            if (!span || !recipe) continue;
+            span.textContent = billProgressLabel(bill, {
+              stockOfOutput: stockByKind.get(recipe.outputKind) ?? 0,
+            });
+          }
+        }
+      } else {
+        stockRefreshCountdown--;
       }
     }
 

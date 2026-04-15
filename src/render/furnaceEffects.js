@@ -17,7 +17,7 @@
  */
 
 import * as THREE from 'three';
-import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
 import { FACING_OFFSETS } from '../world/facing.js';
 import {
   CHIMNEY_TOP_Y,
@@ -25,6 +25,10 @@ import {
   FURNACE_FOOTPRINT,
   FURNACE_HEIGHT,
 } from './furnaceInstancer.js';
+
+/** Sort light-pool candidates by squared distance, ascending. Hoisted so the
+ *  per-frame `scratch.sort` call doesn't allocate a closure. */
+const byDistance2 = (/** @type {number[]} */ u, /** @type {number[]} */ v) => u[3] - v[3];
 
 // Shared park-position for expired particles; keeps them off-camera without
 // rebuilding the draw range. Same trick as roofCollapseParticles.
@@ -146,23 +150,26 @@ export function createFurnaceEffects(scene) {
     const flicker = 0.85 + 0.3 * Math.sin(tSec * 5.3) + 0.1 * Math.sin(tSec * 11.7);
     const lightIntensity = POINT_LIGHT_INTENSITY * flicker;
 
+    const halfW = grid.W / 2;
+    const halfH = grid.H / 2;
     for (const { id, components } of world.query(['Furnace', 'TileAnchor', 'FurnaceViz'])) {
       if (components.Furnace.activeBillId <= 0) continue;
       alive.add(id);
 
       const a = components.TileAnchor;
-      const w = tileToWorld(a.i, a.j, grid.W, grid.H);
+      const wx = (a.i + 0.5 - halfW) * TILE_SIZE;
+      const wz = (a.j + 0.5 - halfH) * TILE_SIZE;
       const y = grid.getElevation(a.i, a.j);
       const facing = components.Furnace.facing | 0;
       const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
 
-      const chimneyX = w.x;
+      const chimneyX = wx;
       const chimneyY = y + CHIMNEY_TOP_Y;
-      const chimneyZ = w.z;
+      const chimneyZ = wz;
 
-      const frontX = w.x + off.di * FURNACE_FOOTPRINT * 0.5;
+      const frontX = wx + off.di * FURNACE_FOOTPRINT * 0.5;
       const frontY = y + FRONT_GLOW_Y;
-      const frontZ = w.z + off.dj * FURNACE_FOOTPRINT * 0.5;
+      const frontZ = wz + off.dj * FURNACE_FOOTPRINT * 0.5;
 
       let acc = emitters.get(id);
       if (!acc) {
@@ -181,18 +188,18 @@ export function createFurnaceEffects(scene) {
       }
 
       const lightY = y + POINT_LIGHT_Y;
-      const dx = w.x - camX;
+      const dx = wx - camX;
       const dy = lightY - camY;
-      const dz = w.z - camZ;
+      const dz = wz - camZ;
       const d2 = dx * dx + dy * dy + dz * dz;
       let slot = scratch[scratchN];
       if (!slot) {
         slot = [0, 0, 0, 0];
         scratch[scratchN] = slot;
       }
-      slot[0] = w.x;
+      slot[0] = wx;
       slot[1] = lightY;
-      slot[2] = w.z;
+      slot[2] = wz;
       slot[3] = d2;
       scratchN++;
     }
@@ -205,7 +212,7 @@ export function createFurnaceEffects(scene) {
     stepEmbers(dt);
 
     scratch.length = scratchN;
-    scratch.sort((u, v) => u[3] - v[3]);
+    scratch.sort(byDistance2);
     const assigned = Math.min(scratchN, pointLights.length);
     for (let i = 0; i < assigned; i++) {
       const [lx, ly, lz] = scratch[i];
