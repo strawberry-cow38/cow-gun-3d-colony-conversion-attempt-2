@@ -49,20 +49,20 @@ describe('haul poster: stack consolidation', () => {
 
     makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
 
+    // One bundled haul carrying all 3 units of the small stack toward the big one.
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
-    expect(hauls).toHaveLength(3); // drain the small stack toward the big one
-    for (const h of hauls) {
-      expect(h.payload.itemId).toBe(small);
-      expect(h.payload.fromI).toBe(0);
-      expect(h.payload.fromJ).toBe(0);
-      expect(h.payload.toI).toBe(3);
-      expect(h.payload.toJ).toBe(3);
-    }
+    expect(hauls).toHaveLength(1);
+    expect(hauls[0].payload.itemId).toBe(small);
+    expect(hauls[0].payload.count).toBe(3);
+    expect(hauls[0].payload.fromI).toBe(0);
+    expect(hauls[0].payload.fromJ).toBe(0);
+    expect(hauls[0].payload.toI).toBe(3);
+    expect(hauls[0].payload.toJ).toBe(3);
     // And the large stack never got drained into the small one.
     expect(board.jobs.some((j) => j.payload.itemId === big)).toBe(false);
   });
 
-  it('respects capacity when merging — fewer hauls if the destination has little room', () => {
+  it('respects capacity when merging — bundle size equals destination free room', () => {
     const grid = new TileGrid(4, 4);
     grid.setStockpile(0, 0, 1);
     grid.setStockpile(3, 3, 1);
@@ -74,8 +74,9 @@ describe('haul poster: stack consolidation', () => {
     makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
-    // dest has room for only 2 more units
-    expect(hauls).toHaveLength(2);
+    // dest has room for only 2 more units → one bundled haul with count=2
+    expect(hauls).toHaveLength(1);
+    expect(hauls[0].payload.count).toBe(2);
   });
 
   it('does not consolidate equal-count stacks in a swap — tiebreaker picks one direction', () => {
@@ -90,15 +91,14 @@ describe('haul poster: stack consolidation', () => {
     makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
-    expect(hauls.length).toBe(5); // one direction only
-    const fromIds = new Set(hauls.map((h) => h.payload.itemId));
-    expect(fromIds.size).toBe(1);
+    expect(hauls).toHaveLength(1);
+    expect(hauls[0].payload.count).toBe(5);
     // Lower itemId merges into higher: src should be `a`, dest `b` tile.
-    expect(fromIds.has(a)).toBe(true);
-    expect(fromIds.has(b)).toBe(false);
+    expect(hauls[0].payload.itemId).toBe(a);
+    expect(hauls[0].payload.itemId).not.toBe(b);
   });
 
-  it('posts blueprint-clear hauls for forbidden stacks blocking wall sites', () => {
+  it('posts one bundled blueprint-clear haul for a forbidden stack blocking a wall site', () => {
     const grid = new TileGrid(4, 4);
     const world = makeWorld();
     const blocker = spawnItem(world, 1, 1, 'wood', 2, 50, true);
@@ -108,17 +108,13 @@ describe('haul poster: stack consolidation', () => {
     makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul' && j.payload.itemId === blocker);
-    expect(hauls.length).toBe(2);
-    for (const h of hauls) {
-      expect(h.payload.toRelocation).toBe(true);
-      expect(h.payload.fromI).toBe(1);
-      expect(h.payload.fromJ).toBe(1);
-      // relocation target must differ from the wall tile itself
-      expect(h.payload.toI === 1 && h.payload.toJ === 1).toBe(false);
-    }
-    // and drop tiles shouldn't collide with each other within one pass
-    const dropKeys = new Set(hauls.map((h) => `${h.payload.toI},${h.payload.toJ}`));
-    expect(dropKeys.size).toBe(hauls.length);
+    expect(hauls).toHaveLength(1);
+    const h = hauls[0];
+    expect(h.payload.count).toBe(2);
+    expect(h.payload.toRelocation).toBe(true);
+    expect(h.payload.fromI).toBe(1);
+    expect(h.payload.fromJ).toBe(1);
+    expect(h.payload.toI === 1 && h.payload.toJ === 1).toBe(false);
   });
 
   it('leaves forbidden stacks alone when no wall blueprint blocks them', () => {

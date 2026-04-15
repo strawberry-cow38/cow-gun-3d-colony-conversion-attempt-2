@@ -13,12 +13,14 @@
 /**
  * @typedef MenuItem
  * @property {string} label
- * @property {() => void} onPick
+ * @property {() => void} [onPick]
+ * @property {boolean} [disabled]  informational, unclickable entry
  */
 
 const BG = '#1a1a1a';
 const BORDER = '#3a3a3a';
 const HOVER_BG = '#2d3a2d';
+const DISABLED_FG = '#777';
 
 export function createPrioritizeMenu() {
   const root = document.createElement('div');
@@ -61,21 +63,25 @@ export function createPrioritizeMenu() {
       const row = document.createElement('div');
       Object.assign(row.style, {
         padding: '6px 14px',
-        cursor: 'pointer',
+        cursor: item.disabled ? 'default' : 'pointer',
         whiteSpace: 'nowrap',
+        color: item.disabled ? DISABLED_FG : '',
+        fontStyle: item.disabled ? 'italic' : '',
       });
       row.textContent = item.label;
-      row.addEventListener('mouseenter', () => {
-        row.style.background = HOVER_BG;
-      });
-      row.addEventListener('mouseleave', () => {
-        row.style.background = '';
-      });
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        hide();
-        item.onPick();
-      });
+      if (!item.disabled) {
+        row.addEventListener('mouseenter', () => {
+          row.style.background = HOVER_BG;
+        });
+        row.addEventListener('mouseleave', () => {
+          row.style.background = '';
+        });
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          hide();
+          item.onPick?.();
+        });
+      }
       root.appendChild(row);
     }
     visible = true;

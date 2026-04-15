@@ -69,7 +69,7 @@ export function makeFurnaceSystem(board, grid, opts) {
           supplyInFlight.set(k, (supplyInFlight.get(k) ?? 0) + 1);
         } else if (j.kind === 'haul' && typeof j.payload.fromFurnaceId === 'number') {
           const k = `${j.payload.fromFurnaceId}:${j.payload.kind}`;
-          haulFromInFlight.set(k, (haulFromInFlight.get(k) ?? 0) + 1);
+          haulFromInFlight.set(k, (haulFromInFlight.get(k) ?? 0) + (j.payload.count ?? 1));
         }
       }
 
@@ -90,18 +90,26 @@ export function makeFurnaceSystem(board, grid, opts) {
           const key = `${furnaceId}:${out.kind}`;
           let need = out.count - (haulFromInFlight.get(key) ?? 0);
           while (need > 0) {
-            const target = findAndReserveSlot(grid, slots, out.kind, furnace.workI, furnace.workJ);
+            const target = findAndReserveSlot(
+              grid,
+              slots,
+              out.kind,
+              furnace.workI,
+              furnace.workJ,
+              need,
+            );
             if (!target) break;
             board.post('haul', {
               fromFurnaceId: furnaceId,
               kind: out.kind,
+              count: target.count,
               fromI: furnace.workI,
               fromJ: furnace.workJ,
               toI: target.i,
               toJ: target.j,
             });
-            haulFromInFlight.set(key, (haulFromInFlight.get(key) ?? 0) + 1);
-            need--;
+            haulFromInFlight.set(key, (haulFromInFlight.get(key) ?? 0) + target.count);
+            need -= target.count;
           }
         }
 

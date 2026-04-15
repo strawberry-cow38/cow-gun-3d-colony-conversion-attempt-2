@@ -46,7 +46,7 @@ export class CowMoveCommand {
    * @param {import('../jobs/board.js').JobBoard} jobBoard
    * @param {() => Iterable<number>} getSelectedCows
    * @param {THREE.Scene} scene
-   * @param {{ show: (x: number, y: number, items: { label: string, onPick: () => void }[]) => void, hide: () => void }} contextMenu
+   * @param {{ show: (x: number, y: number, items: { label: string, onPick?: () => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
    * @param {{ play: (kind: string) => void }} [audio]
    */
   constructor(
@@ -165,6 +165,7 @@ export class CowMoveCommand {
    */
   #openContextMenu(e, tile, cowId) {
     const shift = this.shiftAtDown;
+    /** @type {{ label: string, onPick?: () => void, disabled?: boolean }[]} */
     const items = [
       {
         label: 'Move here',
@@ -180,7 +181,8 @@ export class CowMoveCommand {
     // silently revert. "Move here" still works because it posts a move job.
     const cow = this.world.get(cowId, 'Cow');
     if (!cow?.drafted) {
-      for (const job of findPrioritizableJobsAtTile(this.board, tile.i, tile.j)) {
+      const jobs = findPrioritizableJobsAtTile(this.board, tile.i, tile.j);
+      for (const job of jobs) {
         items.push({
           label: `Prioritize ${jobVerbForPrioritize(job.kind)}`,
           onPick: () => {
@@ -189,8 +191,34 @@ export class CowMoveCommand {
           },
         });
       }
+      // Haulable stack with no haul job posted → the poster couldn't find a
+      // stockpile slot (no stockpile built, or all same-kind piles full).
+      // Tell the player why nothing's happening instead of silently showing
+      // just "Move here".
+      if (!jobs.some((j) => j.kind === 'haul' || j.kind === 'deliver')) {
+        if (this.#tileHasHaulableStack(tile.i, tile.j)) {
+          items.push({ label: 'No stockpile available to haul to', disabled: true });
+        }
+      }
     }
     this.contextMenu.show(e.clientX, e.clientY, items);
+  }
+
+  /**
+   * True when (i, j) hosts an Item entity that the haul poster would try to
+   * move: loose (not on a stockpile tile), unforbidden.
+   *
+   * @param {number} i @param {number} j
+   */
+  #tileHasHaulableStack(i, j) {
+    if (this.tileGrid.isStockpile(i, j)) return false;
+    for (const { components } of this.world.query(['Item', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if (a.i !== i || a.j !== j) continue;
+      if (components.Item.forbidden) continue;
+      return true;
+    }
+    return false;
   }
 
   /** @param {MouseEvent} e */

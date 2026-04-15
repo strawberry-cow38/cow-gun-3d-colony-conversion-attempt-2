@@ -1646,13 +1646,16 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         job.payload = {};
         return;
       }
-      // Cap pickup so cows don't overshoot. Build sites: only take what's
-      // still needed (leftover would have to re-haul anyway). Supply jobs
-      // are posted 1-per-missing-unit, so the cow only grabs one per job
-      // (over-pickup would dump leftover into furnace.stored and trigger
-      // the expel ping-pong we've seen before). Elsewhere: grab as many
-      // units as fit in the remaining 60kg capacity.
-      let requested = item.count;
+      // Cap pickup so cows don't overshoot. payload.count is the bundled
+      // reservation — the cow only grabs her share so a single cow doesn't
+      // drain a 50-stack that two other cows were also promised slots for.
+      // Build sites additionally clamp to remaining need. Supply jobs are
+      // posted 1-per-missing-unit and over-pickup would dump leftover into
+      // furnace.stored and trigger an expel ping-pong. Anything that doesn't
+      // fit in the 60kg carry cap (inventoryAdd) stays on the source stack
+      // and the poster re-posts it next tick.
+      const payloadCount = /** @type {number | undefined} */ (job.payload.count);
+      let requested = Math.min(item.count, payloadCount ?? item.count);
       if (toBuildSite && typeof siteId === 'number') {
         const site = world.get(siteId, 'BuildSite');
         if (site) requested = Math.min(requested, Math.max(0, site.required - site.delivered));
