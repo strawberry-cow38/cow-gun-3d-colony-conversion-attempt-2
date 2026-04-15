@@ -19,7 +19,7 @@
  */
 
 import * as THREE from 'three';
-import { playRainLoop } from './ambient.js';
+import { playDawnLoop, playDayLoop, playDuskLoop, playNightLoop, playRainLoop } from './ambient.js';
 import { playChop, playDoor, playFootfall, playHammer, playMunch, playThunder } from './sfx.js';
 import {
   playClick,
@@ -94,6 +94,10 @@ const LOOP_SFX = {
   // Storm rain is louder and fades in slightly slower so the transition into
   // the first lightning flash feels like weather building, not a jump cut.
   storm: (ctx, dest) => playRainLoop(ctx, dest, { gain: 0.3, fadeIn: 4.0, fadeOut: 2.5 }),
+  ambient_dawn: (ctx, dest) => playDawnLoop(ctx, dest),
+  ambient_day: (ctx, dest) => playDayLoop(ctx, dest),
+  ambient_dusk: (ctx, dest) => playDuskLoop(ctx, dest),
+  ambient_night: (ctx, dest) => playNightLoop(ctx, dest),
 };
 
 const MASTER_GAIN = 0.35;

@@ -5,6 +5,7 @@
  * (default 10).
  */
 
+import { createAmbientScheduler } from './audio/ambientScheduler.js';
 import { createAudio } from './audio/audio.js';
 import { createHud } from './boot/hud.js';
 import { installKeyboard } from './boot/input.js';
@@ -173,6 +174,7 @@ const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({ sun, hemi, sky, initialT: dayFractionOfTick(0) });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
+const ambientScheduler = createAmbientScheduler({ audio, timeOfDay });
 const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
 scheduler.add(lightingSystem);
 scheduler.add(
@@ -700,6 +702,7 @@ const { render, getFps } = createRenderFrame({
   audio,
   timeOfDay,
   weather,
+  ambientScheduler,
   cowCamOverlay,
   draftBadge,
   stressInstancer,

@@ -34,6 +34,7 @@ function speedIcon(speed) {
  *   audio: ReturnType<typeof import('../audio/audio.js').createAudio>,
  *   timeOfDay: ReturnType<typeof import('../world/timeOfDay.js').createTimeOfDay>,
  *   weather: ReturnType<typeof import('../world/weather.js').createWeather>,
+ *   ambientScheduler: ReturnType<typeof import('../audio/ambientScheduler.js').createAmbientScheduler>,
  *   cowCamOverlay: ReturnType<typeof import('../render/cowCamOverlay.js').createCowCamOverlay>,
  *   draftBadge: ReturnType<typeof import('../render/draftBadge.js').createDraftBadge>,
  *   stressInstancer: ReturnType<typeof import('../render/stressInstancer.js').createStressInstancer> | null,
@@ -65,6 +66,7 @@ export function createRenderFrame({
   audio,
   timeOfDay,
   weather,
+  ambientScheduler,
   cowCamOverlay,
   draftBadge,
   stressInstancer,
@@ -158,6 +160,7 @@ export function createRenderFrame({
     const simTick = getTick() + (state.tickOffset ?? 0);
     timeOfDay.setT(dayFractionOfTick(simTick));
     weather.update(rdt, camera.position);
+    ambientScheduler.update();
     cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
     const tSec = (now - startClock) / 1000;
