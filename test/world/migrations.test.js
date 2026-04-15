@@ -588,6 +588,38 @@ describe('migration runner', () => {
     expect(out.cows[0].identity.profession.length).toBeGreaterThan(0);
   });
 
+  it('carves water lakes out of interior sand in the v31→v32 bump', () => {
+    // 7×7 grid: dirt border, 5×5 sand interior. Only tile (3,3) has a full
+    // 5×5 all-sand Chebyshev neighborhood, so it alone flips to water — the
+    // ring of sand at distance 1 stays sand (acts as the shore).
+    const W = 7;
+    const H = 7;
+    const biome = new Array(W * H).fill(1); // BIOME.DIRT border
+    for (let j = 1; j < H - 1; j++) {
+      for (let i = 1; i < W - 1; i++) biome[j * W + i] = 3; // BIOME.SAND
+    }
+    const v31 = {
+      version: 31,
+      tileGrid: {
+        W,
+        H,
+        elevation: new Array(W * H).fill(0),
+        biome,
+        stockpile: new Array(W * H).fill(0),
+      },
+      cows: [],
+      trees: [],
+      items: [],
+    };
+    const out = runMigrations(v31);
+    expect(out.version).toBe(CURRENT_VERSION);
+    const b = out.tileGrid.biome;
+    expect(b[3 * W + 3]).toBe(4); // BIOME.WATER at center
+    expect(b[1 * W + 1]).toBe(3); // shore sand stays sand
+    expect(b[2 * W + 2]).toBe(3); // inner sand without 5x5 sand neighborhood stays sand
+    expect(b[0]).toBe(1); // dirt border untouched
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

@@ -11,7 +11,7 @@
  * invalidation (full regen, load).
  */
 
-import { TileGrid } from '../world/tileGrid.js';
+import { BIOME, TileGrid } from '../world/tileGrid.js';
 
 const SQRT2 = Math.SQRT2;
 
@@ -38,14 +38,15 @@ function octile(ax, ay, bx, by) {
 
 /**
  * Default walkability: tile must be in-bounds, not in the occupancy array
- * (trees/rocks), and not flagged as a finished wall. BuildSites deliberately
- * do NOT block — haulers walk onto them to deliver materials — only the
- * erected Wall does. Biome-based walls come later when we add e.g. lava/water.
+ * (trees/rocks), not flagged as a finished wall, and not a water biome.
+ * BuildSites deliberately do NOT block — haulers walk onto them to deliver
+ * materials — only the erected Wall does.
  * @param {TileGrid} grid @param {number} i @param {number} j
  */
 export function defaultWalkable(grid, i, j) {
   if (!grid.inBounds(i, j)) return false;
   const k = grid.idx(i, j);
+  if (grid.biome[k] === BIOME.WATER) return false;
   return grid.occupancy[k] === 0 && grid.wall[k] === 0;
 }
 

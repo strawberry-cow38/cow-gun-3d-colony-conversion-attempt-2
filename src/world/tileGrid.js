@@ -50,7 +50,41 @@ export const BIOME = Object.freeze({
   DIRT: 1,
   STONE: 2,
   SAND: 3,
+  WATER: 4,
 });
+
+/**
+ * Erode sand regions so any sand tile with an unbroken 2-tile-thick sand
+ * buffer in all directions becomes WATER. Smaller patches stay all sand;
+ * large beaches get an inner lake ringed by a visible shore. Mutates the
+ * given biome buffer in place. Shared between `generateTerrain()` (new
+ * worlds) and the v31→v32 migration (old saves).
+ * @param {Uint8Array | number[]} biome
+ * @param {number} W
+ * @param {number} H
+ */
+export function carveWaterLakes(biome, W, H) {
+  // Two-pass: read from `biome`, write into `out`, then commit. Prevents a
+  // converted water tile from disqualifying its still-unscanned neighbors.
+  const out = typeof biome.slice === 'function' ? biome.slice() : Array.from(biome);
+  for (let j = 2; j < H - 2; j++) {
+    for (let i = 2; i < W - 2; i++) {
+      const k = j * W + i;
+      if (biome[k] !== BIOME.SAND) continue;
+      let allSand = true;
+      for (let dj = -2; dj <= 2 && allSand; dj++) {
+        for (let di = -2; di <= 2; di++) {
+          if (biome[(j + dj) * W + (i + di)] !== BIOME.SAND) {
+            allSand = false;
+            break;
+          }
+        }
+      }
+      if (allSand) out[k] = BIOME.WATER;
+    }
+  }
+  for (let k = 0; k < biome.length; k++) biome[k] = out[k];
+}
 
 export class TileGrid {
   /**
@@ -312,5 +346,6 @@ export class TileGrid {
         }
       }
     }
+    carveWaterLakes(this.biome, this.W, this.H);
   }
 }
