@@ -52,14 +52,21 @@ export function allCowIds(world) {
  * forbidden, forbid them all; otherwise allow them all. Returns the new
  * boolean state so the caller can drive UI/audio off it.
  *
+ * When flipping to forbidden, any open haul job targeting one of these items
+ * is completed — otherwise a cow that just claimed the haul would release and
+ * immediately re-claim it on the next tick (oscillating between haul and
+ * 'none'), because runHaulJob releases on forbidden but the job stays open.
+ *
  * @param {import('../ecs/world.js').World} world
  * @param {Iterable<number>} ids
+ * @param {import('../jobs/board.js').JobBoard} board
  * @returns {boolean | null}  new state, or null if the selection was empty
  */
-export function toggleForbiddenOnStacks(world, ids) {
+export function toggleForbiddenOnStacks(world, ids, board) {
+  const idSet = new Set(ids);
   let anyUnforbidden = false;
   let any = false;
-  for (const id of ids) {
+  for (const id of idSet) {
     const item = world.get(id, 'Item');
     if (!item) continue;
     any = true;
@@ -70,9 +77,16 @@ export function toggleForbiddenOnStacks(world, ids) {
   }
   if (!any) return null;
   const target = anyUnforbidden;
-  for (const id of ids) {
+  for (const id of idSet) {
     const item = world.get(id, 'Item');
     if (item) item.forbidden = target;
+  }
+  if (target) {
+    for (const job of board.jobs) {
+      if (job.completed) continue;
+      if (job.kind !== 'haul') continue;
+      if (idSet.has(job.payload.itemId)) board.complete(job.id);
+    }
   }
   return target;
 }

@@ -136,7 +136,7 @@ export const HOTKEYS = [
   {
     match: (e, ctx) => e.code === 'KeyF' && ctx.state.selectedItems.size > 0,
     run: (ctx) => {
-      const target = toggleForbiddenOnStacks(ctx.world, ctx.state.selectedItems);
+      const target = toggleForbiddenOnStacks(ctx.world, ctx.state.selectedItems, ctx.jobBoard);
       if (target === null) return;
       ctx.itemInstancer.markDirty();
       ctx.itemSelectionViz.markDirty();

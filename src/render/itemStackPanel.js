@@ -17,12 +17,13 @@ import { ITEM_INFO } from '../world/items.js';
  * @typedef {Object} ItemStackPanelOpts
  * @property {import('../ecs/world.js').World} world
  * @property {import('../boot/input.js').BootState} state
+ * @property {import('../jobs/board.js').JobBoard} board
  * @property {() => void} onChange
  */
 
 /** @param {ItemStackPanelOpts} opts */
 export function createItemStackPanel(opts) {
-  const { world, state, onChange } = opts;
+  const { world, state, board, onChange } = opts;
 
   const root = document.createElement('div');
   root.id = 'item-stack-panel';
@@ -86,7 +87,7 @@ export function createItemStackPanel(opts) {
   document.body.appendChild(root);
 
   function toggleForbidden() {
-    if (toggleForbiddenOnStacks(world, state.selectedItems) === null) return;
+    if (toggleForbiddenOnStacks(world, state.selectedItems, board) === null) return;
     onChange();
   }
 

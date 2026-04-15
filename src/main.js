@@ -818,6 +818,7 @@ const buildTab = createBuildTab({
 const itemStackPanel = createItemStackPanel({
   world,
   state,
+  board: jobBoard,
   onChange: () => {
     itemInstancer.markDirty();
     itemSelectionViz.markDirty();
