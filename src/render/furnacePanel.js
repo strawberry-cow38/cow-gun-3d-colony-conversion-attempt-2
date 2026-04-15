@@ -22,6 +22,7 @@ import {
   billProgressLabel,
   nextCountMode,
 } from '../world/recipes.js';
+import { computeStockByKind } from '../world/stock.js';
 
 /**
  * @typedef {Object} FurnacePanelOpts
@@ -96,9 +97,13 @@ export function createFurnacePanel(opts) {
 
   let lastKey = '';
   let lastStoredKey = '';
+  let lastStockSig = '';
   /** Fill div per bill-id for the currently-selected furnace, updated in-place each frame. */
   /** @type {Map<number, HTMLDivElement>} */
   const progressFills = new Map();
+  /** Progress label <span> per bill-id, updated when stock changes (untilHave mode). */
+  /** @type {Map<number, HTMLSpanElement>} */
+  const progressSpans = new Map();
 
   function update() {
     const n = state.selectedFurnaces.size;
@@ -132,10 +137,12 @@ export function createFurnacePanel(opts) {
       if (lastKey === 'unknown') return;
       lastKey = 'unknown';
       lastStoredKey = '';
+      lastStockSig = '';
       title.textContent = 'Furnace';
       storedLine.style.display = 'none';
       billsWrap.replaceChildren();
       progressFills.clear();
+      progressSpans.clear();
       return;
     }
     // Key fingerprints everything the panel renders. Bill rows cost a DOM
@@ -150,10 +157,12 @@ export function createFurnacePanel(opts) {
     const key = `one:${id}:${bills.nextBillId}:${activeId}:${billsKey}`;
     if (key !== lastKey) {
       lastKey = key;
+      lastStockSig = '';
       addBtn.style.display = '';
       title.textContent = 'Furnace · Bills';
       billsWrap.replaceChildren();
       progressFills.clear();
+      progressSpans.clear();
       if (bills.list.length === 0) {
         const empty = document.createElement('div');
         empty.textContent = 'No bills. Click "Add bill" to queue a recipe.';
@@ -176,18 +185,47 @@ export function createFurnacePanel(opts) {
       }
     }
 
+    // untilHave progress spans refresh on stock change. `excludeActiveCrafts`
+    // keeps the displayed number reflecting only what's physically in storage
+    // — the active craft's about-to-be-produced units show as the progress
+    // bar instead, so counting them here would double-display.
+    const hasUntilHave = bills.list.some((b) => b.countMode === 'untilHave');
+    if (hasUntilHave) {
+      const stockByKind = computeStockByKind(world);
+      let sig = '';
+      for (const bill of bills.list) {
+        if (bill.countMode !== 'untilHave') continue;
+        const recipe = RECIPES[bill.recipeId];
+        if (!recipe) continue;
+        sig += `${bill.id}:${stockByKind.get(recipe.outputKind) ?? 0},`;
+      }
+      if (sig !== lastStockSig) {
+        lastStockSig = sig;
+        for (const bill of bills.list) {
+          if (bill.countMode !== 'untilHave') continue;
+          const span = progressSpans.get(bill.id);
+          const recipe = RECIPES[bill.recipeId];
+          if (!span || !recipe) continue;
+          span.textContent = billProgressLabel(bill, {
+            stockOfOutput: stockByKind.get(recipe.outputKind) ?? 0,
+          });
+        }
+      }
+    }
+
     // Stored contents update independently of the bills-rebuild key so cow
-    // deposits don't thrash the bill rows.
+    // deposits don't thrash the bill rows. Outputs (finished products waiting
+    // for a haul-out) share the row — master wanted one view of "what's at
+    // the furnace right now" regardless of which stage it's in.
     if (furnace) {
-      const storedKey = furnace.stored.map((s) => `${s.kind}:${s.count}`).join(',');
+      const combined = [...furnace.stored, ...furnace.outputs];
+      const storedKey = combined.map((s) => `${s.kind}:${s.count}`).join(',');
       if (storedKey !== lastStoredKey) {
         lastStoredKey = storedKey;
-        if (furnace.stored.length === 0) {
+        if (combined.length === 0) {
           storedLine.textContent = 'Stored: empty';
         } else {
-          const parts = furnace.stored.map(
-            (s) => `${s.count} ${ITEM_INFO[s.kind]?.label ?? s.kind}`,
-          );
+          const parts = combined.map((s) => `${s.count} ${ITEM_INFO[s.kind]?.label ?? s.kind}`);
           storedLine.textContent = `Stored: ${parts.join(', ')}`;
         }
         storedLine.style.display = '';
@@ -221,8 +259,9 @@ export function createFurnacePanel(opts) {
     label.textContent = recipe?.label ?? bill.recipeId;
     Object.assign(label.style, { flex: '1', fontWeight: '600' });
     const progress = document.createElement('span');
-    progress.textContent = billProgressLabel(bill);
+    progress.textContent = billProgressLabel(bill, { recipe });
     Object.assign(progress.style, { color: '#b5c0cc', fontSize: '11px' });
+    progressSpans.set(bill.id, progress);
     head.append(label, progress);
 
     const ingLine = document.createElement('div');

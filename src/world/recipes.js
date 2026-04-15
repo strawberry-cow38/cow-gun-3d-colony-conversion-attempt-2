@@ -61,10 +61,22 @@ export function nextCountMode(mode) {
  * Short, one-line status string summarizing a bill's progress in its current
  * count mode. UI shows this next to the recipe label.
  *
+ * `count` mode appends a preview of total units yielded (target × outputCount)
+ * when a recipe is provided — "5/10 → 50". `untilHave` shows current stock
+ * against the target cap when that number is passed in.
+ *
  * @param {import('./recipes.js').Bill} bill
+ * @param {{ recipe?: Recipe, stockOfOutput?: number }} [ctx]
  */
-export function billProgressLabel(bill) {
+export function billProgressLabel(bill, ctx) {
   if (bill.countMode === 'forever') return '∞';
-  if (bill.countMode === 'count') return `${bill.done} / ${bill.target}`;
+  if (bill.countMode === 'count') {
+    const base = `${bill.done} / ${bill.target}`;
+    const recipe = ctx?.recipe;
+    if (!recipe) return base;
+    return `${base} → ${bill.target * recipe.outputCount}`;
+  }
+  const stock = ctx?.stockOfOutput;
+  if (typeof stock === 'number') return `${stock} / ${bill.target}`;
   return `stock ≤ ${bill.target}`;
 }
