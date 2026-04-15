@@ -2,9 +2,12 @@
  * RTS-style camera: orbits a focus point on the ground.
  *
  * Controls:
- * - WASD / arrow keys  → pan focus point along ground plane
- * - Middle-click drag  → orbit (yaw + pitch)
- * - Mouse wheel        → zoom (change distance from focus)
+ * - WASD / arrow keys    → pan focus point along ground plane
+ * - Middle-click drag    → orbit (yaw + pitch)
+ * - Mouse wheel          → zoom (change distance from focus)
+ * - One-finger drag      → pan (drag-the-world: finger right = view shifts right)
+ * - Two-finger pinch     → zoom
+ * - Two-finger drag      → orbit (yaw + pitch)
  *
  * Right-click is intentionally reserved for in-world context menus later.
  *
@@ -47,6 +50,8 @@ export class RtsCamera {
     this.dragging = false;
     /** @type {{ x: number, y: number } | null} */
     this.lastMouse = null;
+    /** @type {Map<number, { x: number, y: number }>} */
+    this.touches = new Map();
 
     // Pan speed scales with zoom level inside update(); base is ~10 tiles/sec
     // at the default distance.
@@ -54,6 +59,9 @@ export class RtsCamera {
     this.panReferenceDistance = this.distance;
     this.orbitSpeed = 0.005;
     this.zoomFactor = 1.15;
+    // Touch-drag pan: px → world units. Scaled by current distance so zoomed
+    // out views pan proportionally faster than close-ups.
+    this.touchPanScale = 0.0022;
 
     this.#bind();
     this.#syncCamera();
@@ -159,5 +167,63 @@ export class RtsCamera {
       },
       { passive: false },
     );
+
+    this.dom.addEventListener('touchstart', (e) => {
+      for (const t of e.changedTouches) {
+        this.touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+    });
+    this.dom.addEventListener('touchmove', (e) => {
+      /** @type {Map<number, { x: number, y: number }>} */
+      const prev = new Map();
+      for (const [k, v] of this.touches) prev.set(k, { x: v.x, y: v.y });
+      for (const t of e.changedTouches) {
+        if (this.touches.has(t.identifier)) {
+          this.touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+        }
+      }
+      if (this.touches.size === 1) {
+        const [id] = this.touches.keys();
+        const now = this.touches.get(id);
+        const before = prev.get(id);
+        if (!now || !before) return;
+        const dx = now.x - before.x;
+        const dy = now.y - before.y;
+        // Drag-the-world: finger right/down should shift the view in the same
+        // direction, so focus moves opposite along the camera's ground basis.
+        const cos = Math.cos(this.yaw);
+        const sin = Math.sin(this.yaw);
+        const scale = this.distance * this.touchPanScale;
+        this.focus.x += (-dx * cos + dy * sin) * scale;
+        this.focus.z += (dx * sin + dy * cos) * scale;
+      } else if (this.touches.size >= 2) {
+        const arr = [...this.touches.values()].slice(0, 2);
+        const prevArr = [...prev.values()].slice(0, 2);
+        if (prevArr.length < 2) return;
+        const curDist = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y);
+        const prevDist = Math.hypot(prevArr[0].x - prevArr[1].x, prevArr[0].y - prevArr[1].y);
+        if (prevDist > 0 && curDist > 0) {
+          const factor = prevDist / curDist;
+          this.distance = Math.max(
+            this.minDistance,
+            Math.min(this.maxDistance, this.distance * factor),
+          );
+        }
+        const curCx = (arr[0].x + arr[1].x) / 2;
+        const curCy = (arr[0].y + arr[1].y) / 2;
+        const prevCx = (prevArr[0].x + prevArr[1].x) / 2;
+        const prevCy = (prevArr[0].y + prevArr[1].y) / 2;
+        this.yaw -= (curCx - prevCx) * this.orbitSpeed;
+        this.pitch = Math.max(
+          this.minPitch,
+          Math.min(this.maxPitch, this.pitch + (curCy - prevCy) * this.orbitSpeed),
+        );
+      }
+    });
+    const endTouch = (/** @type {TouchEvent} */ e) => {
+      for (const t of e.changedTouches) this.touches.delete(t.identifier);
+    };
+    this.dom.addEventListener('touchend', endTouch);
+    this.dom.addEventListener('touchcancel', endTouch);
   }
 }
