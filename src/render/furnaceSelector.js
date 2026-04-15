@@ -1,18 +1,19 @@
 /**
- * Click-to-select a furnace. Raycasts against the furnace body/chimney
- * InstancedMesh so clicks land on the 3D model directly — even when an
- * item stack sits on the same tile (previously tile-based picking let
- * the item selector win every time).
+ * Click-to-select a furnace. Tile-based picking — raycast the tile mesh to
+ * resolve (i, j), then check whether a furnace sits on that tile. This mirrors
+ * ItemSelector's approach and, crucially, survives item stacks rendering in
+ * front of (or on top of) the furnace body: whichever way the pixel reads,
+ * the underlying tile is still the furnace's, so the furnace wins.
  *
- * Registered capture-phase BEFORE ItemSelector: on a mesh hit the
- * selector stops propagation so items on the same tile don't steal
- * focus; on a miss it falls through so items elsewhere still pick.
+ * Registered in capture-phase BEFORE ItemSelector. On a furnace tile we
+ * stopImmediatePropagation so items sharing that tile don't steal focus;
+ * on any other tile we fall through and the item picker handles it.
  *
- * Plain LMB replaces the selection; Shift+LMB toggles. No multi-pick yet —
- * the bills panel only edits one furnace at a time.
+ * Plain LMB replaces the selection; Shift+LMB toggles.
  */
 
 import * as THREE from 'three';
+import { worldToTile } from '../world/coords.js';
 
 const _ndc = new THREE.Vector2();
 
@@ -20,15 +21,17 @@ export class FurnaceSelector {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Object3D[]} getHitMeshes  furnace body + chimney instanced meshes
-   * @param {(instanceId: number) => number | null} entityFromInstanceId
+   * @param {() => THREE.Mesh} getTileMesh
+   * @param {{ W: number, H: number }} grid
+   * @param {import('../ecs/world.js').World} world
    * @param {(id: number | null, additive: boolean) => void} onSelect
    */
-  constructor(dom, camera, getHitMeshes, entityFromInstanceId, onSelect) {
+  constructor(dom, camera, getTileMesh, grid, world, onSelect) {
     this.dom = dom;
     this.camera = camera;
-    this.getHitMeshes = getHitMeshes;
-    this.entityFromInstanceId = entityFromInstanceId;
+    this.getTileMesh = getTileMesh;
+    this.grid = grid;
+    this.world = world;
     this.onSelect = onSelect;
     this.raycaster = new THREE.Raycaster();
     dom.addEventListener('click', (e) => this.#handleClick(e), { capture: true });
@@ -41,14 +44,23 @@ export class FurnaceSelector {
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
-    const hits = this.raycaster.intersectObjects(this.getHitMeshes(), false);
+    const hits = this.raycaster.intersectObject(this.getTileMesh(), false);
     if (hits.length === 0) return;
-    const hit = hits[0];
-    const instanceId = hit.instanceId;
-    if (typeof instanceId !== 'number') return;
-    const id = this.entityFromInstanceId(instanceId);
+    const p = hits[0].point;
+    const t = worldToTile(p.x, p.z, this.grid.W, this.grid.H);
+    if (t.i < 0) return;
+    const id = this.#furnaceAt(t.i, t.j);
     if (id === null) return;
     this.onSelect(id, e.shiftKey);
     e.stopImmediatePropagation();
+  }
+
+  /** @param {number} i @param {number} j */
+  #furnaceAt(i, j) {
+    for (const { id, components } of this.world.query(['Furnace', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if (a.i === i && a.j === j) return id;
+    }
+    return null;
   }
 }

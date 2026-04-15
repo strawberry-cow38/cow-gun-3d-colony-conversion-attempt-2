@@ -93,6 +93,7 @@ import { makeFarmPostingSystem } from './systems/farm.js';
 import { makeFurnaceSystem } from './systems/furnace.js';
 import { makeFurnaceExpelSystem } from './systems/furnaceExpel.js';
 import { makeGrowthSystem } from './systems/growth.js';
+import { makeItemRescueSystem } from './systems/itemRescue.js';
 import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { runRoofCollapse } from './systems/roofCollapse.js';
@@ -192,6 +193,7 @@ scheduler.add(
   }),
 );
 scheduler.add(makeFurnaceExpelSystem(tileGrid));
+scheduler.add(makeItemRescueSystem(tileGrid, () => onWorldItemChange()));
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
 let onRoomsRebuilt = () => {};
@@ -528,13 +530,15 @@ const selectFurnace = (id, additive) => {
 };
 
 // FurnaceSelector registered BEFORE ItemSelector so a click on a furnace
-// mesh wins even when an item stack sits on the same tile. It only stops
-// propagation on a mesh hit — misses fall through to the item picker.
+// tile wins even when an item stack sits on the same tile. Uses tile-based
+// picking (same as ItemSelector) so clicks anywhere within the furnace's
+// footprint resolve to the furnace entity.
 new FurnaceSelector(
   canvas,
   camera,
-  () => [furnaceInstancer.bodyMesh, furnaceInstancer.chimneyMesh],
-  (instanceId) => furnaceInstancer.entityFromInstanceId(instanceId),
+  () => state.tileMesh,
+  { W: gridW, H: gridH },
+  world,
   selectFurnace,
 );
 

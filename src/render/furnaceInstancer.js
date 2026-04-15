@@ -139,11 +139,6 @@ export function createFurnaceInstancer(scene, capacity = 64) {
     dirty = true;
   }
 
-  /** @param {number} instanceId */
-  function entityFromInstanceId(instanceId) {
-    return slots[instanceId]?.entityId ?? null;
-  }
-
   return {
     bodyMesh,
     chimneyMesh,
@@ -151,7 +146,6 @@ export function createFurnaceInstancer(scene, capacity = 64) {
     update,
     updateGlow,
     markDirty,
-    entityFromInstanceId,
   };
 }
 
