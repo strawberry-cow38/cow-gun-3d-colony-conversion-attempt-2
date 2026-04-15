@@ -34,6 +34,15 @@ export function makeFarmPostingSystem(board, grid, world) {
       pendingPlant.clear();
       pendingHarvest.clear();
       occupiedByCrop.clear();
+      // Reap till/plant jobs on tiles that are no longer zoned. The farm-zone
+      // designator already completes these on remove; this pass catches any
+      // other path that could clear a zone (save/load migrations, future
+      // programmatic clears) so cows never claim a stale farm job.
+      for (const j of board.jobs) {
+        if (j.completed) continue;
+        if (j.kind !== 'till' && j.kind !== 'plant') continue;
+        if (grid.getFarmZone(j.payload.i, j.payload.j) === 0) board.complete(j.id);
+      }
       for (const j of board.jobs) {
         if (j.completed) continue;
         if (j.kind === 'till') pendingTill.add(grid.idx(j.payload.i, j.payload.j));

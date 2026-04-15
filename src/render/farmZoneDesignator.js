@@ -27,17 +27,19 @@ export class FarmZoneDesignator {
    *   camera: THREE.PerspectiveCamera,
    *   tileMesh: () => THREE.Mesh,
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
+   *   jobBoard: import('../jobs/board.js').JobBoard,
    *   overlay: { markDirty: () => void },
    *   scene: THREE.Scene,
    *   onChanged: () => void,
    *   audio?: { play: (kind: string) => void },
    * }} opts
    */
-  constructor({ canvas, camera, tileMesh, tileGrid, overlay, scene, onChanged, audio }) {
+  constructor({ canvas, camera, tileMesh, tileGrid, jobBoard, overlay, scene, onChanged, audio }) {
     this.dom = canvas;
     this.camera = camera;
     this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
+    this.board = jobBoard;
     this.overlay = overlay;
     this.onStateChanged = onChanged;
     this.audio = audio;
@@ -175,6 +177,18 @@ export class FarmZoneDesignator {
         if (cur === target) continue;
         this.tileGrid.setFarmZone(i, j, target);
         any = true;
+      }
+    }
+    // Reap till/plant jobs on de-zoned tiles so cows don't thrash claiming
+    // stale work that runXJob would immediately bail on (see
+    // runTillJob/runPlantJob — both check getFarmZone === 0 and release).
+    if (any && removing) {
+      for (const j of this.board.jobs) {
+        if (j.completed) continue;
+        if (j.kind !== 'till' && j.kind !== 'plant') continue;
+        const { i: ji, j: jj } = j.payload;
+        if (ji < i0 || ji > i1 || jj < j0 || jj > j1) continue;
+        this.board.complete(j.id);
       }
     }
     if (any) {

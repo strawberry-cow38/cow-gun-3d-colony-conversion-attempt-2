@@ -127,6 +127,7 @@ export function setupDesignators({
 
   const farmZoneDesignator = new FarmZoneDesignator({
     ...baseArgs,
+    jobBoard,
     overlay: farmZoneOverlay,
     onChanged: () => notifyChanged(farmZoneDesignator),
   });
