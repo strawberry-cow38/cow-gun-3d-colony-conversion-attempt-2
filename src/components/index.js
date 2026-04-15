@@ -17,9 +17,15 @@
  *                                    spawn/hydrate so fresh cows evaluate once.
  *                                    `name` is authoritative — Identity mirrors
  *                                    it so colonist UI has one record to read.
- * Identity    { name, gender, birthTick, heightCm, hairColor, traits }
- *                                    Demographic card for a colonist. Gender
- *                                    enum is 'male' | 'female' | 'nonbinary' —
+ * Identity    { name, firstName, surname, title, gender, birthTick,
+ *                heightCm, hairColor, traits }
+ *                                    Demographic card for a colonist. `name`
+ *                                    is the composed display string
+ *                                    ("Dr. Bessie Moonfield"); the part
+ *                                    fields drive UI that wants them
+ *                                    independently. Title is
+ *                                    Mr./Mrs./Ms./Mx./Dr./Prof. Gender enum
+ *                                    is 'male' | 'female' | 'nonbinary' —
  *                                    the last is reserved for future robot
  *                                    colonists, cow spawner only rolls M/F.
  *                                    `birthTick` is sim-calendar ticks and may
@@ -160,6 +166,10 @@ export function registerComponents(world) {
   }));
   world.defineComponent('Identity', () => ({
     name: 'cow',
+    firstName: 'cow',
+    surname: '',
+    /** @type {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.'} */
+    title: 'Mx.',
     /** @type {'male' | 'female' | 'nonbinary'} */
     gender: 'female',
     birthTick: 0,

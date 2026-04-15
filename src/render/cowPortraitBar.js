@@ -237,8 +237,13 @@ function applyHighlight(el, s) {
 
 /** @param {string} name */
 function initialsOf(name) {
-  const parts = name.trim().split(/\s+/);
+  // Strip honorifics ("Dr.", "Mrs.") so the avatar reads as first+last initial.
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((p) => !p.endsWith('.'));
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 }
 

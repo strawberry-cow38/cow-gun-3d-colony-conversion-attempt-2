@@ -9,12 +9,34 @@
  */
 
 import { randomBirthTickForAge } from '../sim/calendar.js';
+import { pickCowSurname } from './cowNames.js';
 import { rollTraits } from './traits.js';
 
 /** @typedef {'male' | 'female' | 'nonbinary'} Gender */
+/** @typedef {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.'} Title */
 
 const ADULT_MIN_AGE = 20;
 const ADULT_MAX_AGE = 60;
+
+const TITLE_DR_CHANCE = 0.07;
+const TITLE_PROF_CHANCE = 0.03;
+
+/**
+ * Roll a title. Academic titles (Dr. / Prof.) are rare and override gender;
+ * otherwise pick the gendered honorific. Mx. covers nonbinary (reserved for
+ * future robot colonists).
+ *
+ * @param {Gender} gender
+ * @returns {Title}
+ */
+function rollTitle(gender) {
+  const r = Math.random();
+  if (r < TITLE_PROF_CHANCE) return 'Prof.';
+  if (r < TITLE_PROF_CHANCE + TITLE_DR_CHANCE) return 'Dr.';
+  if (gender === 'male') return 'Mr.';
+  if (gender === 'female') return Math.random() < 0.5 ? 'Mrs.' : 'Ms.';
+  return 'Mx.';
+}
 
 // Human-framed ranges (cm). Rough gender dimorphism that we can re-tune when
 // the human visuals land.
@@ -38,16 +60,31 @@ const HAIR_COLORS = [
 
 /**
  * @param {number} currentTick
- * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[] }}
+ * @param {string} firstName
+ * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[], firstName: string, surname: string, title: Title }}
  */
-export function rollCowIdentity(currentTick) {
+export function rollCowIdentity(currentTick, firstName) {
   const gender = /** @type {Gender} */ (Math.random() < 0.5 ? 'female' : 'male');
   const range = HEIGHT_CM[gender];
   const heightCm = Math.round(range.min + Math.random() * (range.max - range.min));
   const hairColor = HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)];
   const birthTick = randomBirthTickForAge(ADULT_MIN_AGE, ADULT_MAX_AGE, currentTick);
   const traits = rollTraits();
-  return { gender, birthTick, heightCm, hairColor, traits };
+  const surname = pickCowSurname();
+  const title = rollTitle(gender);
+  return { gender, birthTick, heightCm, hairColor, traits, firstName, surname, title };
+}
+
+/**
+ * Compose the display string from the parts. Skips blank surnames gracefully
+ * so colonists missing one (old saves pre-surname-migration) still render.
+ *
+ * @param {{ title: Title, firstName: string, surname: string }} id
+ */
+export function fullName(id) {
+  const parts = [id.title, id.firstName];
+  if (id.surname) parts.push(id.surname);
+  return parts.join(' ');
 }
 
 /** @param {Gender} gender */

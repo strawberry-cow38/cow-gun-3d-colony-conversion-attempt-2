@@ -120,7 +120,10 @@ describe('migration runner', () => {
     const out = runMigrations(v6);
     expect(out.version).toBe(CURRENT_VERSION);
     expect(out.cows[0].drafted).toBe(false);
-    expect(out.cows[0].name).toBe('bessie');
+    // v27→v28 rewrites name as "Title firstName Surname", keeping the old
+    // token as the first name.
+    expect(out.cows[0].identity.firstName).toBe('bessie');
+    expect(out.cows[0].name).toContain('bessie');
     expect(out.cows[0].inventory).toEqual({ items: [] });
   });
 

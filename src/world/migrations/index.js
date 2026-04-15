@@ -37,8 +37,9 @@ import { v23_to_v24 } from './v23_to_v24.js';
 import { v24_to_v25 } from './v24_to_v25.js';
 import { v25_to_v26 } from './v25_to_v26.js';
 import { v26_to_v27 } from './v26_to_v27.js';
+import { v27_to_v28 } from './v27_to_v28.js';
 
-export const CURRENT_VERSION = 27;
+export const CURRENT_VERSION = 28;
 
 /**
  * @typedef Migration
@@ -76,6 +77,7 @@ export const migrations = [
   v24_to_v25,
   v25_to_v26,
   v26_to_v27,
+  v27_to_v28,
 ];
 
 /**

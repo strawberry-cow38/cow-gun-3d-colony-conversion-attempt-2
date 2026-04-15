@@ -6,7 +6,7 @@
 
 import { tileToWorld } from '../world/coords.js';
 import { pickCowName } from '../world/cowNames.js';
-import { rollCowIdentity } from '../world/identity.js';
+import { fullName, rollCowIdentity } from '../world/identity.js';
 
 /**
  * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
@@ -58,8 +58,9 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
   if (!placed) return;
   const w = tileToWorld(placed.i, placed.j, grid.W, grid.H);
   const y = grid.getElevation(placed.i, placed.j);
-  const name = pickCowName();
-  const id = rollCowIdentity(currentTick);
+  const firstName = pickCowName();
+  const id = rollCowIdentity(currentTick, firstName);
+  const name = fullName(id);
   world.spawn({
     Cow: { drafted: false },
     Position: { x: w.x, y, z: w.z },
