@@ -1500,6 +1500,32 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     return;
   }
 
+  // Pre-pickup bail-out for supply jobs when the target furnace is now
+  // actively crafting. Master's rule: don't keep filling a running
+  // workstation. Post-pickup cows finish normally — dropping cargo at the
+  // stockpile would just trigger a haul back, and the cargo belongs in
+  // furnace.stored anyway so the next craft starts warm. When the furnace
+  // idles, the poster reposts fresh supply jobs for whatever's still short.
+  if (
+    toSupply &&
+    typeof furnaceId === 'number' &&
+    inv.items.length === 0 &&
+    (job.state === 'pathing-to-item' ||
+      job.state === 'walking-to-item' ||
+      job.state === 'picking-up')
+  ) {
+    const furnace = world.get(furnaceId, 'Furnace');
+    if (furnace && furnace.activeBillId > 0) {
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      path.steps = [];
+      path.index = 0;
+      return;
+    }
+  }
+
   // Source gone: for haul-from-furnace, bail if the furnace disappeared or
   // its output of this kind drained to zero before pickup. For tile Item
   // sources the forbidden check below covers the normal case.
