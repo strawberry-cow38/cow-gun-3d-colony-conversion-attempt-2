@@ -106,6 +106,17 @@ export function createPrioritizeMenu() {
   addEventListener('keydown', (e) => {
     if (e.code === 'Escape' && visible) hide();
   });
+  // Suppress the native browser context menu. RtsCamera already does this on
+  // the canvas, but contextmenu fires AFTER mouseup — by the time it fires,
+  // our menu has appeared under the cursor, the event's target is the menu
+  // (not the canvas), so the canvas listener doesn't match and the browser
+  // menu leaks through. Catch it on our root + on window as a belt-and-
+  // braces fallback for overlay elements that may be under the cursor at
+  // click time.
+  root.addEventListener('contextmenu', (e) => e.preventDefault());
+  addEventListener('contextmenu', (e) => {
+    if (visible) e.preventDefault();
+  });
 
   return {
     show,
