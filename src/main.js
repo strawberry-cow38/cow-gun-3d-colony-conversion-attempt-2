@@ -31,6 +31,7 @@ import { ItemSelector } from './render/itemSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
+import { createPrioritizeMenu } from './render/prioritizeMenu.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
@@ -466,6 +467,8 @@ new TilePicker(
   },
 );
 
+const prioritizeMenu = createPrioritizeMenu();
+
 new CowMoveCommand(
   canvas,
   camera,
@@ -474,8 +477,10 @@ new CowMoveCommand(
   pathCache,
   defaultWalkable,
   world,
+  jobBoard,
   () => state.selectedCows,
   scene,
+  prioritizeMenu,
   audio,
 );
 

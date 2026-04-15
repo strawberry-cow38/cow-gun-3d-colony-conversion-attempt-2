@@ -15,6 +15,8 @@
  */
 
 import * as THREE from 'three';
+import { jobVerbForPrioritize } from '../jobs/atTile.js';
+import { findPrioritizableJobsAtTile, prioritizeJob } from '../jobs/prioritize.js';
 import {
   TILE_SIZE,
   UNITS_PER_METER,
@@ -41,8 +43,10 @@ export class CowMoveCommand {
    * @param {import('../sim/pathfinding.js').PathCache} pathCache
    * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
    * @param {import('../ecs/world.js').World} world
+   * @param {import('../jobs/board.js').JobBoard} jobBoard
    * @param {() => Iterable<number>} getSelectedCows
    * @param {THREE.Scene} scene
+   * @param {{ show: (x: number, y: number, items: { label: string, onPick: () => void }[]) => void, hide: () => void }} contextMenu
    * @param {{ play: (kind: string) => void }} [audio]
    */
   constructor(
@@ -53,8 +57,10 @@ export class CowMoveCommand {
     pathCache,
     walkable,
     world,
+    jobBoard,
     getSelectedCows,
     scene,
+    contextMenu,
     audio,
   ) {
     this.dom = dom;
@@ -64,7 +70,9 @@ export class CowMoveCommand {
     this.pathCache = pathCache;
     this.walkable = walkable;
     this.world = world;
+    this.board = jobBoard;
     this.getSelectedCows = getSelectedCows;
+    this.contextMenu = contextMenu;
     this.audio = audio;
     this.raycaster = new THREE.Raycaster();
 
@@ -124,6 +132,14 @@ export class CowMoveCommand {
     const dy = e.clientY - this.startClientY;
     const dragged = dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX;
 
+    // Single-cow click (not drag) → open the context menu instead of moving
+    // immediately. Multi-cow and drag fall through to the existing batch
+    // move so rallying a squad keeps the fast flow.
+    if (!dragged && ids.length === 1) {
+      this.#openContextMenu(e, start, ids[0]);
+      return;
+    }
+
     const endTile = dragged ? (this.#pickTile(e) ?? start) : start;
 
     const targets =
@@ -140,6 +156,41 @@ export class CowMoveCommand {
     }
     if (issued > 0) this.audio?.play('command');
     else this.audio?.play('deny');
+  }
+
+  /**
+   * @param {MouseEvent} e
+   * @param {{ i: number, j: number }} tile
+   * @param {number} cowId
+   */
+  #openContextMenu(e, tile, cowId) {
+    const shift = this.shiftAtDown;
+    const items = [
+      {
+        label: 'Move here',
+        onPick: () => {
+          const endTile = spreadTargets(this.tileGrid, this.walkable, tile, 1)[0] ?? tile;
+          if (this.#issue(cowId, endTile, shift)) this.audio?.play('command');
+          else this.audio?.play('deny');
+        },
+      },
+    ];
+    // Skip prioritize options for drafted cows — the brain strips non-move
+    // jobs off drafted cows every tick, so prioritizing anything else would
+    // silently revert. "Move here" still works because it posts a move job.
+    const cow = this.world.get(cowId, 'Cow');
+    if (!cow?.drafted) {
+      for (const job of findPrioritizableJobsAtTile(this.board, tile.i, tile.j)) {
+        items.push({
+          label: `Prioritize ${jobVerbForPrioritize(job.kind)}`,
+          onPick: () => {
+            if (prioritizeJob(this.world, this.board, job.id, cowId)) this.audio?.play('command');
+            else this.audio?.play('deny');
+          },
+        });
+      }
+    }
+    this.contextMenu.show(e.clientX, e.clientY, items);
   }
 
   /** @param {MouseEvent} e */
