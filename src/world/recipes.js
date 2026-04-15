@@ -43,10 +43,59 @@ export const RECIPES = {
     outputCount: 5,
     workTicks: 600,
   },
+  paint_small: {
+    id: 'paint_small',
+    label: 'Paint small painting',
+    ingredients: [{ kind: 'wood', count: 2 }],
+    outputKind: 'painting',
+    outputCount: 1,
+    workTicks: 400,
+  },
+  paint_medium: {
+    id: 'paint_medium',
+    label: 'Paint medium painting',
+    ingredients: [{ kind: 'wood', count: 4 }],
+    outputKind: 'painting',
+    outputCount: 1,
+    workTicks: 800,
+  },
+  paint_large: {
+    id: 'paint_large',
+    label: 'Paint large painting',
+    ingredients: [{ kind: 'wood', count: 6 }],
+    outputKind: 'painting',
+    outputCount: 1,
+    workTicks: 1400,
+  },
+  paint_huge: {
+    id: 'paint_huge',
+    label: 'Paint HUGE painting',
+    ingredients: [{ kind: 'wood', count: 10 }],
+    outputKind: 'painting',
+    outputCount: 1,
+    workTicks: 2400,
+  },
 };
 
-/** @type {string[]} */
-export const RECIPE_ORDER = ['smelt_iron'];
+/**
+ * Recipes valid on a given station kind. Also the display order used by the
+ * bill-editor popup. Read by the station system's eligibility check.
+ *
+ * @type {Record<string, string[]>}
+ */
+export const STATION_RECIPES = {
+  furnace: ['smelt_iron'],
+  easel: ['paint_small', 'paint_medium', 'paint_large', 'paint_huge'],
+};
+
+/** Size in tiles (wall-mount span) per painting recipe. */
+/** @type {Record<string, number>} */
+export const PAINTING_SIZE_BY_RECIPE = {
+  paint_small: 1,
+  paint_medium: 2,
+  paint_large: 3,
+  paint_huge: 4,
+};
 
 /** @type {BillCountMode[]} */
 export const BILL_COUNT_MODES = ['forever', 'count', 'untilHave'];

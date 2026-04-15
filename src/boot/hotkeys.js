@@ -23,9 +23,11 @@ import {
   hydrateCows,
   hydrateCrops,
   hydrateDoors,
+  hydrateEasels,
   hydrateFloors,
   hydrateFurnaces,
   hydrateItems,
+  hydratePaintings,
   hydrateRoofs,
   hydrateTileGrid,
   hydrateTorches,
@@ -407,6 +409,8 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Floor');
     despawnAllComp(world, 'Crop');
     despawnAllComp(world, 'Furnace');
+    despawnAllComp(world, 'Easel');
+    despawnAllComp(world, 'Painting');
     jobBoard.clear();
     if (migrated.trees.length === 0) {
       // Pre-v5 save had no tree list — seed a fresh scatter so the world
@@ -425,6 +429,8 @@ async function loadGame(ctx) {
     hydrateFloors(world, tileGrid, jobBoard, migrated);
     hydrateCrops(world, tileGrid, jobBoard, migrated);
     hydrateFurnaces(world, tileGrid, jobBoard, migrated);
+    hydrateEasels(world, tileGrid, jobBoard, migrated);
+    hydratePaintings(world, tileGrid, migrated);
     ctx.rooms.rebuild();
     ctx.roomOverlay.markDirty();
     ctx.ignoreRoofOverlay.markDirty();

@@ -18,7 +18,7 @@ import { ITEM_INFO } from '../world/items.js';
 import {
   BILL_COUNT_MODES,
   RECIPES,
-  RECIPE_ORDER,
+  STATION_RECIPES,
   billProgressLabel,
   nextCountMode,
 } from '../world/recipes.js';
@@ -475,7 +475,7 @@ export function createFurnacePanel(opts) {
       flexDirection: 'column',
       gap: '2px',
     });
-    for (const recipeId of RECIPE_ORDER) {
+    for (const recipeId of STATION_RECIPES.furnace ?? []) {
       const rec = RECIPES[recipeId];
       const btn = document.createElement('button');
       btn.type = 'button';

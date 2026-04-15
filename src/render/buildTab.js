@@ -53,6 +53,7 @@ import { colorToCss } from './dragSizeLabel.js';
  * @property {ToggleableDesignator} roofDesignator
  * @property {ToggleableDesignator} floorDesignator
  * @property {ToggleableDesignator} furnaceDesignator
+ * @property {ToggleableDesignator} easelDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
@@ -167,6 +168,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a furnace (15 stone)',
       activeColor: '#d2785a',
       designator: opts.furnaceDesignator,
+    },
+    {
+      id: 'easel',
+      label: 'Easel',
+      icon: '🎨',
+      hotkeyHint: 'click a tile to place an easel (8 wood) — R rotates facing',
+      activeColor: '#d8b26a',
+      designator: opts.easelDesignator,
     },
     {
       id: 'no-roof',

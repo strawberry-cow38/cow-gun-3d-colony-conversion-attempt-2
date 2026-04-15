@@ -35,9 +35,12 @@ const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 const WORK_SPOT_COLOR = 0x7cffb0;
 
+/** Station kinds that have a facing (R-cycles) and a work-spot preview. */
+const FACING_KINDS = new Set(['furnace', 'easel']);
+
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -124,6 +127,17 @@ export const FURNACE_DESIGNATOR_CONFIG = {
   requiredKind: 'stone',
 };
 
+/** @type {BuildDesignatorConfig} */
+export const EASEL_DESIGNATOR_CONFIG = {
+  kind: 'easel',
+  previewColorAdd: 0xd8b26a,
+  addVerb: 'easel',
+  cancelVerb: 'cancel easel',
+  singlePlace: true,
+  required: 8,
+  requiredKind: 'wood',
+};
+
 export class BuildDesignator {
   /**
    * `deconstructOverlay` is the dirty-flag sink for the door-on-wall path:
@@ -198,7 +212,7 @@ export class BuildDesignator {
     // the cursor so the player can see footprint AND facing-implied workspot
     // before committing.
     this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
-    this.workSpotPreview = config.kind === 'furnace' ? buildPreview(scene, WORK_SPOT_COLOR) : null;
+    this.workSpotPreview = FACING_KINDS.has(config.kind) ? buildPreview(scene, WORK_SPOT_COLOR) : null;
 
     canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
@@ -223,7 +237,7 @@ export class BuildDesignator {
       this.deactivate();
       return;
     }
-    if (e.code === 'KeyR' && this.config.kind === 'furnace') {
+    if (e.code === 'KeyR' && FACING_KINDS.has(this.config.kind)) {
       const step = e.shiftKey ? 3 : 1;
       this.currentFacing = (this.currentFacing + step) % 4;
       this.#renderPreview();
@@ -472,7 +486,7 @@ export class BuildDesignator {
         delivered: 0,
         buildJobId: 0,
         progress: 0,
-        facing: kind === 'furnace' ? this.currentFacing : 0,
+        facing: FACING_KINDS.has(kind) ? this.currentFacing : 0,
       },
       BuildSiteViz: {},
       TileAnchor: { i, j },
@@ -575,12 +589,14 @@ export class BuildDesignator {
       );
       this.radiusRing.line.visible = true;
     }
-    if (this.furnaceGhost && this.workSpotPreview) {
+    if (this.furnaceGhost) {
       const cx = (x0 + x1) * 0.5;
       const cz = (z0 + z1) * 0.5;
       this.furnaceGhost.group.position.set(cx, y, cz);
       this.furnaceGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.furnaceGhost.group.visible = !this.removing;
+    }
+    if (this.workSpotPreview) {
       // Work spot is the tile the front faces. If that tile is blocked or
       // off-grid, fall back to any walkable cardinal neighbor so the player
       // can still see *some* indicator (the build job will do the same fallback

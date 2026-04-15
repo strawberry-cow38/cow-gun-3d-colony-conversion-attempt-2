@@ -89,6 +89,29 @@
  *              recipe jobs (see src/world/recipes.js). `activeBillId > 0`
  *              means a bill is mid-production; `workTicksRemaining` counts
  *              down to 0 on completion.
+ *
+ * Easel / EaselViz
+ *              { deconstructJobId, progress, stuff, workI, workJ, facing,
+ *                workTicksRemaining, activeBillId, artistCowId, startTick,
+ *                stored: { kind, count }[] }
+ *              A MANNED production station: the artist-cow stands on the
+ *              work-spot for the full duration. Supply lands in `stored`
+ *              (same pattern as furnace); ingredients are consumed at craft
+ *              start and there is NO output buffer — the finished painting
+ *              entity spawns on the easel tile as a one-off Item for haulers
+ *              to pick up. Paintings are unique, non-stackable. `artistCowId`
+ *              locks the work-in-progress to one cow; if she's pulled away
+ *              the bill pauses and only she can resume (preserves
+ *              attribution).
+ *
+ * Painting / PaintingViz
+ *              { size, title, palette[], shapes[], quality,
+ *                artistCowId, artistName, easelI, easelJ, startTick, finishTick }
+ *              A non-stackable creative work. `palette` and `shapes` drive
+ *              the procgen render. `size` is 1..4 tiles (wall-mount span).
+ *              Attribution fields are snapshots — `artistName` is frozen
+ *              even if the cow dies or gets renamed. `quality` is a forward-
+ *              compat framework field; always `'normal'` today.
  */
 
 /**
@@ -191,4 +214,35 @@ export function registerComponents(world) {
     list: [],
     nextBillId: 1,
   }));
+  world.defineComponent('Easel', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    stuff: 'wood',
+    workI: 0,
+    workJ: 0,
+    facing: 0,
+    workTicksRemaining: 0,
+    activeBillId: 0,
+    artistCowId: 0,
+    startTick: 0,
+    /** @type {{ kind: string, count: number }[]} */
+    stored: [],
+  }));
+  world.defineComponent('EaselViz', () => ({}));
+  world.defineComponent('Painting', () => ({
+    size: 1,
+    title: '',
+    /** @type {string[]} */
+    palette: [],
+    /** @type {{ type: string, x: number, y: number, w: number, h: number, color: number }[]} */
+    shapes: [],
+    quality: 'normal',
+    artistCowId: 0,
+    artistName: '',
+    easelI: 0,
+    easelJ: 0,
+    startTick: 0,
+    finishTick: 0,
+  }));
+  world.defineComponent('PaintingViz', () => ({}));
 }

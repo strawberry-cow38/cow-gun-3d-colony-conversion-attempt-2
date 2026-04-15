@@ -1,9 +1,9 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v23):
+ * Format (v24):
  * {
- *   version: 23,
+ *   version: 24,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
@@ -19,7 +19,9 @@
  *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   floors: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   crops: [ { i, j, kind: string, growthTicks: number } ],
- *   furnaces: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, stored: { kind, count }[], outputs: { kind, count }[], bills, nextBillId } ]
+ *   furnaces: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, stored: { kind, count }[], outputs: { kind, count }[], bills, nextBillId } ],
+ *   easels: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, artistCowId, startTick, stored: { kind, count }[], bills, nextBillId } ],
+ *   paintings: [ { i, j, size, title, palette, shapes, quality, artistCowId, artistName, easelI, easelJ, startTick, finishTick, forbidden } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -144,6 +146,43 @@ import { TileGrid } from './tileGrid.js';
  */
 
 /**
+ * @typedef SerializedEasel
+ * @property {number} i
+ * @property {number} j
+ * @property {string} stuff
+ * @property {number} workI
+ * @property {number} workJ
+ * @property {boolean} decon
+ * @property {number} progress
+ * @property {number} workTicksRemaining
+ * @property {number} activeBillId
+ * @property {number} artistCowId
+ * @property {number} startTick
+ * @property {number} [facing]
+ * @property {{ kind: string, count: number }[]} [stored]
+ * @property {import('./recipes.js').Bill[]} [bills]
+ * @property {number} [nextBillId]
+ */
+
+/**
+ * @typedef SerializedPainting
+ * @property {number} i
+ * @property {number} j
+ * @property {number} size
+ * @property {string} title
+ * @property {string[]} palette
+ * @property {{ type: string, x: number, y: number, w: number, h: number, color: number }[]} shapes
+ * @property {string} quality
+ * @property {number} artistCowId
+ * @property {string} artistName
+ * @property {number} easelI
+ * @property {number} easelJ
+ * @property {number} startTick
+ * @property {number} finishTick
+ * @property {boolean} forbidden
+ */
+
+/**
  * @typedef SerializedFurnace
  * @property {number} i
  * @property {number} j
@@ -224,6 +263,10 @@ export function serializeState(tileGrid, world) {
   /** @type {SerializedItem[]} */
   const items = [];
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
+    // Paintings are Item entities with per-instance metadata (title, palette,
+    // …). They round-trip through the `paintings` section below so that
+    // metadata survives; skip them here to avoid a duplicate plain-item entry.
+    if (components.Item.kind === 'painting') continue;
     items.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
@@ -336,6 +379,48 @@ export function serializeState(tileGrid, world) {
       nextBillId: components.Bills.nextBillId,
     });
   }
+  /** @type {SerializedEasel[]} */
+  const easels = [];
+  for (const { components } of world.query(['Easel', 'TileAnchor', 'Bills'])) {
+    easels.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      stuff: components.Easel.stuff ?? 'wood',
+      workI: components.Easel.workI,
+      workJ: components.Easel.workJ,
+      decon: components.Easel.deconstructJobId > 0,
+      progress: components.Easel.progress ?? 0,
+      workTicksRemaining: components.Easel.workTicksRemaining ?? 0,
+      activeBillId: components.Easel.activeBillId ?? 0,
+      artistCowId: components.Easel.artistCowId ?? 0,
+      startTick: components.Easel.startTick ?? 0,
+      facing: components.Easel.facing ?? 0,
+      stored: (components.Easel.stored ?? []).map((s) => ({ kind: s.kind, count: s.count })),
+      bills: components.Bills.list.map((b) => ({ ...b })),
+      nextBillId: components.Bills.nextBillId,
+    });
+  }
+  /** @type {SerializedPainting[]} */
+  const paintings = [];
+  for (const { components } of world.query(['Painting', 'Item', 'TileAnchor'])) {
+    const p = components.Painting;
+    paintings.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      size: p.size,
+      title: p.title,
+      palette: p.palette.slice(),
+      shapes: p.shapes.map((s) => ({ ...s })),
+      quality: p.quality,
+      artistCowId: p.artistCowId,
+      artistName: p.artistName,
+      easelI: p.easelI,
+      easelJ: p.easelJ,
+      startTick: p.startTick,
+      finishTick: p.finishTick,
+      forbidden: components.Item.forbidden === true,
+    });
+  }
   return {
     version: CURRENT_VERSION,
     tileGrid: {
@@ -365,6 +450,8 @@ export function serializeState(tileGrid, world) {
     floors,
     crops,
     furnaces,
+    easels,
+    paintings,
   };
 }
 
@@ -713,10 +800,84 @@ export function hydrateFurnaces(world, grid, board, state) {
 }
 
 /**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ easels?: SerializedEasel[] }} state
+ */
+export function hydrateEasels(world, grid, board, state) {
+  const easels = state.easels ?? [];
+  for (const e of easels) {
+    if (!grid.inBounds(e.i, e.j) || grid.isBlocked(e.i, e.j)) continue;
+    grid.blockTile(e.i, e.j);
+    const w = tileToWorld(e.i, e.j, grid.W, grid.H);
+    const id = world.spawn({
+      Easel: {
+        deconstructJobId: 0,
+        progress: e.progress ?? 0,
+        stuff: e.stuff ?? 'wood',
+        workI: e.workI,
+        workJ: e.workJ,
+        workTicksRemaining: e.workTicksRemaining ?? 0,
+        activeBillId: e.activeBillId ?? 0,
+        artistCowId: e.artistCowId ?? 0,
+        startTick: e.startTick ?? 0,
+        facing: e.facing ?? 0,
+        stored: (e.stored ?? []).map((s) => ({ kind: s.kind, count: s.count })),
+      },
+      EaselViz: {},
+      Bills: {
+        list: (e.bills ?? []).map((b) => ({ ...b })),
+        nextBillId: e.nextBillId ?? 1,
+      },
+      TileAnchor: { i: e.i, j: e.j },
+      Position: { x: w.x, y: grid.getElevation(e.i, e.j), z: w.z },
+    });
+    if (e.decon) {
+      const job = board.post('deconstruct', { entityId: id, kind: 'easel', i: e.i, j: e.j });
+      const rec = world.get(id, 'Easel');
+      if (rec) rec.deconstructJobId = job.id;
+    }
+  }
+}
+
+/**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {{ paintings?: SerializedPainting[] }} state
+ */
+export function hydratePaintings(world, grid, state) {
+  const paintings = state.paintings ?? [];
+  for (const p of paintings) {
+    if (!grid.inBounds(p.i, p.j)) continue;
+    const w = tileToWorld(p.i, p.j, grid.W, grid.H);
+    world.spawn({
+      Item: { kind: 'painting', count: 1, capacity: 1, forbidden: p.forbidden === true },
+      Painting: {
+        size: p.size,
+        title: p.title,
+        palette: (p.palette ?? []).slice(),
+        shapes: (p.shapes ?? []).map((s) => ({ ...s })),
+        quality: p.quality ?? 'normal',
+        artistCowId: p.artistCowId ?? 0,
+        artistName: p.artistName ?? '',
+        easelI: p.easelI ?? p.i,
+        easelJ: p.easelJ ?? p.j,
+        startTick: p.startTick ?? 0,
+        finishTick: p.finishTick ?? 0,
+      },
+      PaintingViz: {},
+      TileAnchor: { i: p.i, j: p.j },
+      Position: { x: w.x, y: grid.getElevation(p.i, p.j), z: w.z },
+    });
+  }
+}
+
+/**
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[], easels: SerializedEasel[], paintings: SerializedPainting[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

@@ -425,6 +425,11 @@ export function makeHaulPostingSystem(board, grid) {
           forbiddenByTile.set(grid.idx(a.i, a.j), { id, kind: item.kind, count: item.count });
           continue;
         }
+        // Paintings carry per-entity metadata (title, palette, artist). The
+        // generic haul flow despawns the source on pickup and spawns a fresh
+        // Item at the destination, which would drop the Painting component.
+        // Skip paintings here until a metadata-preserving haul path exists.
+        if (item.kind === 'painting') continue;
         if (grid.isStockpile(a.i, a.j)) continue;
         const alreadyClaimed = targetedCounts.get(id) ?? 0;
         let need = item.count - alreadyClaimed;

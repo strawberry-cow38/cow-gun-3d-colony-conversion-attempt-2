@@ -16,6 +16,7 @@
 import {
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
+  EASEL_DESIGNATOR_CONFIG,
   FLOOR_DESIGNATOR_CONFIG,
   FURNACE_DESIGNATOR_CONFIG,
   ROOF_DESIGNATOR_CONFIG,
@@ -65,6 +66,7 @@ export function setupDesignators({
     roofInstancer,
     floorInstancer,
     furnaceInstancer,
+    easelInstancer,
     buildSiteInstancer,
     cropInstancer,
     stockpileOverlay,
@@ -190,6 +192,14 @@ export function setupDesignators({
   });
   designators.push(furnaceDesignator);
 
+  const easelDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: EASEL_DESIGNATOR_CONFIG,
+    buildSiteInstancer,
+    onChanged: () => notifyChanged(easelDesignator),
+  });
+  designators.push(easelDesignator);
+
   const ignoreRoofDesignator = new IgnoreRoofDesignator({
     ...baseArgs,
     overlay: ignoreRoofOverlay,
@@ -199,7 +209,13 @@ export function setupDesignators({
 
   const deconstructDesignator = new DeconstructDesignator({
     ...jobArgs,
-    instancers: [wallInstancer, floorInstancer, furnaceInstancer, deconstructOverlay],
+    instancers: [
+      wallInstancer,
+      floorInstancer,
+      furnaceInstancer,
+      easelInstancer,
+      deconstructOverlay,
+    ],
     onChanged: () => notifyChanged(deconstructDesignator),
   });
   designators.push(deconstructDesignator);
@@ -235,6 +251,7 @@ export function setupDesignators({
       roofInstancer,
       floorInstancer,
       furnaceInstancer,
+      easelInstancer,
       deconstructOverlay,
     ],
     onChanged: () => notifyChanged(cancelDesignator),
@@ -254,6 +271,7 @@ export function setupDesignators({
     roofDesignator,
     floorDesignator,
     furnaceDesignator,
+    easelDesignator,
     ignoreRoofDesignator,
     deconstructDesignator,
     removeRoofDesignator,

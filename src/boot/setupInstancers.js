@@ -16,6 +16,7 @@ import { createCropInstancer } from '../render/cropInstancer.js';
 import { createCuttableMarkerInstancer } from '../render/cuttableMarkerInstancer.js';
 import { createDeconstructOverlay } from '../render/deconstructOverlay.js';
 import { createDoorInstancer } from '../render/doorInstancer.js';
+import { createEaselInstancer } from '../render/easelInstancer.js';
 import { createFarmZoneOverlay } from '../render/farmZoneOverlay.js';
 import { createFloorInstancer } from '../render/floorInstancer.js';
 import { createFurnaceEffects } from '../render/furnaceEffects.js';
@@ -25,6 +26,7 @@ import { createFurnaceSelectionViz } from '../render/furnaceSelectionViz.js';
 import { createIgnoreRoofOverlay } from '../render/ignoreRoofOverlay.js';
 import { createItemInstancer } from '../render/itemInstancer.js';
 import { createItemLabels } from '../render/itemLabels.js';
+import { createPaintingInstancer } from '../render/paintingInstancer.js';
 import { createItemSelectionViz } from '../render/itemSelectionViz.js';
 import { createPickTileOverlay } from '../render/pickTileOverlay.js';
 import { createRoofCollapseParticles } from '../render/roofCollapseParticles.js';
@@ -65,6 +67,8 @@ export function setupInstancers({ scene, audio, gridW, gridH }) {
     furnaceEffects: createFurnaceEffects(scene),
     furnaceProgressBars: createFurnaceProgressBars(scene),
     furnaceSelectionViz: createFurnaceSelectionViz(scene),
+    easelInstancer: createEaselInstancer(scene, 64),
+    paintingInstancer: createPaintingInstancer(scene, 128),
     buildSiteInstancer: createBuildSiteInstancer(scene, 1024),
     cropInstancer: createCropInstancer(scene, 1024),
     cuttableMarkerInstancer: createCuttableMarkerInstancer(scene, 256),

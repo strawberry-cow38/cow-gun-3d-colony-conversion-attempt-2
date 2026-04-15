@@ -47,6 +47,7 @@ import {
   makeCowWallCollisionSystem,
   makeHungerSystem,
 } from './systems/cow.js';
+import { makeEaselSystem } from './systems/easel.js';
 import { makeFarmPostingSystem } from './systems/farm.js';
 import { makeFurnaceSystem } from './systems/furnace.js';
 import { makeFurnaceExpelSystem } from './systems/furnaceExpel.js';
@@ -150,6 +151,7 @@ scheduler.add(
   }),
 );
 scheduler.add(makeFurnaceExpelSystem(tileGrid));
+scheduler.add(makeEaselSystem(jobBoard, tileGrid));
 scheduler.add(makeItemRescueSystem(tileGrid, () => onWorldItemChange()));
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
@@ -227,6 +229,8 @@ const {
   furnaceEffects,
   furnaceProgressBars,
   furnaceSelectionViz,
+  easelInstancer,
+  paintingInstancer,
   buildSiteInstancer,
   cropInstancer,
   cuttableMarkerInstancer,
@@ -497,6 +501,7 @@ const {
   roofDesignator,
   floorDesignator,
   furnaceDesignator,
+  easelDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,
@@ -533,6 +538,7 @@ const buildTab = createBuildTab({
   roofDesignator,
   floorDesignator,
   furnaceDesignator,
+  easelDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,

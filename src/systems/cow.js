@@ -38,6 +38,8 @@ import {
   stackCount,
   stackRemove,
 } from '../world/items.js';
+import { generatePainting } from '../world/painting.js';
+import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
@@ -165,7 +167,8 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'deconstruct' ||
             job.kind === 'till' ||
             job.kind === 'plant' ||
-            job.kind === 'harvest'
+            job.kind === 'harvest' ||
+            job.kind === 'paint'
           ) {
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
@@ -270,7 +273,13 @@ export function makeCowBrainSystem(deps) {
             // ignore freshly designated trees / dropped items.
             if (job.kind === 'wander' || job.kind === 'none') {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-              const candidate = board.findUnclaimed(near);
+              const candidate = board.findUnclaimed(near, (j) => {
+                // Paint jobs can be artist-locked: only the cow who first
+                // started the bill may resume it after an interruption.
+                if (j.kind !== 'paint') return true;
+                const lock = j.payload.lockedCowId | 0;
+                return lock === 0 || lock === id;
+              });
               if (candidate && candidate.kind === 'chop' && board.claim(candidate.id, id)) {
                 job.kind = 'chop';
                 job.state = 'pathing';
@@ -378,6 +387,17 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (candidate && candidate.kind === 'paint' && board.claim(candidate.id, id)) {
+                job.kind = 'paint';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  easelId: candidate.payload.easelId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               }
             }
 
@@ -410,6 +430,8 @@ export function makeCowBrainSystem(deps) {
           runPlantJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'harvest') {
           runHarvestJob(world, job, path, pos, grid, paths, board, deps);
+        } else if (job.kind === 'paint') {
+          runPaintJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'haul' || job.kind === 'deliver' || job.kind === 'supply') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -998,19 +1020,22 @@ function finishBuild(world, grid, siteId, jobId, board, walkable) {
     // chosen facing; fall back to any walkable cardinal neighbor, then to the
     // furnace tile itself.
     const facing = site.facing | 0;
-    const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
-    const fi = anchor.i + off.di;
-    const fj = anchor.j + off.dj;
-    const facingSpot = grid.inBounds(fi, fj) && walkable(grid, fi, fj) ? { i: fi, j: fj } : null;
-    const workSpot = facingSpot ??
-      findAdjacentWalkable(grid, walkable, anchor.i, anchor.j) ?? {
-        i: anchor.i,
-        j: anchor.j,
-      };
+    const workSpot = pickStationWorkSpot(grid, walkable, anchor, facing);
     grid.blockTile(anchor.i, anchor.j);
     world.spawn({
       Furnace: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
       FurnaceViz: {},
+      Bills: { list: [], nextBillId: 1 },
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
+  } else if (site.kind === 'easel') {
+    const facing = site.facing | 0;
+    const workSpot = pickStationWorkSpot(grid, walkable, anchor, facing);
+    grid.blockTile(anchor.i, anchor.j);
+    world.spawn({
+      Easel: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
+      EaselViz: {},
       Bills: { list: [], nextBillId: 1 },
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
@@ -1026,6 +1051,31 @@ function finishBuild(world, grid, siteId, jobId, board, walkable) {
   }
   world.despawn(siteId);
   board.complete(jobId);
+}
+
+/**
+ * Pick the work-spot tile for a facing-aware station (furnace, easel). Prefer
+ * the tile in front of `facing`; fall back to any walkable cardinal neighbor;
+ * last resort, the station's own tile. Call BEFORE `grid.blockTile` so the
+ * neighbor scan doesn't reject the station's own tile.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {(g: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {{ i: number, j: number }} anchor
+ * @param {number} facing
+ */
+function pickStationWorkSpot(grid, walkable, anchor, facing) {
+  const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
+  const fi = anchor.i + off.di;
+  const fj = anchor.j + off.dj;
+  const facingSpot = grid.inBounds(fi, fj) && walkable(grid, fi, fj) ? { i: fi, j: fj } : null;
+  return (
+    facingSpot ??
+    findAdjacentWalkable(grid, walkable, anchor.i, anchor.j) ?? {
+      i: anchor.i,
+      j: anchor.j,
+    }
+  );
 }
 
 /**
@@ -1061,6 +1111,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   roof: 'Roof',
   floor: 'Floor',
   furnace: 'Furnace',
+  easel: 'Easel',
 });
 
 /**
@@ -1081,8 +1132,8 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
 function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
-  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'} */ (
-    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'} */ (kind)] ??
+  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'} */ (
+    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'} */ (kind)] ??
       'Wall'
   );
   const tag = world.get(entityId, compName);
@@ -1174,9 +1225,11 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   else if (kind === 'torch') grid.setTorch(anchor.i, anchor.j, 0);
   else if (kind === 'roof') grid.setRoof(anchor.i, anchor.j, 0);
   else if (kind === 'floor') grid.setFloor(anchor.i, anchor.j, 0);
-  else if (kind === 'furnace') grid.unblockTile(anchor.i, anchor.j);
+  else if (kind === 'furnace' || kind === 'easel') grid.unblockTile(anchor.i, anchor.j);
   // Wall/door/torch cost 1 wood → 50% refund = 1. Roofs are free so they
-  // refund nothing. Furnaces cost 15 stone → refund 7. When buildings diverge
+  // refund nothing. Furnaces cost 15 stone → refund 7. Easels cost 8 wood →
+  // refund 4, plus any in-progress craft's ingredients (already consumed at
+  // craft start, so the player isn't silently robbed). When buildings diverge
   // further, the original `required`/`requiredKind` should live on the
   // finished-structure entity (mirroring how BuildSite tracks them).
   if (kind === 'furnace') {
@@ -1187,6 +1240,18 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
         addItemsToTile(world, grid, s.kind, s.count, anchor.i, anchor.j);
       for (const s of furnace.outputs)
         addItemsToTile(world, grid, s.kind, s.count, anchor.i, anchor.j);
+    }
+  } else if (kind === 'easel') {
+    for (let k = 0; k < 4; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+    const easel = world.get(entityId, 'Easel');
+    const bills = world.get(entityId, 'Bills');
+    if (easel && bills && easel.activeBillId > 0) {
+      const active = bills.list.find((b) => b.id === easel.activeBillId);
+      const recipe = active ? RECIPES[active.recipeId] : null;
+      if (recipe) {
+        for (const ing of recipe.ingredients)
+          addItemsToTile(world, grid, ing.kind, ing.count, anchor.i, anchor.j);
+      }
     }
   } else {
     const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
@@ -1461,22 +1526,23 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     toRelocation,
     toSupply,
     furnaceId,
+    easelId,
     fromFurnaceId,
     fromI,
     fromJ,
     siteId,
   } =
-    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, siteId?: number, kind?: string }} */ (
+    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, easelId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, siteId?: number, kind?: string }} */ (
       job.payload
     );
   const kind = /** @type {string | undefined} */ (job.payload.kind);
 
   // Target tile stopped being a valid drop (stockpile undesignated, or
-  // BuildSite cancelled/already built, or furnace gone) → complete + bail.
+  // BuildSite cancelled/already built, or station gone) → complete + bail.
   const targetGone = toBuildSite
     ? findBuildSiteAt(world, toI, toJ) === null
     : toSupply
-      ? !furnaceWorkSpotMatches(world, furnaceId, toI, toJ)
+      ? !stationWorkSpotMatches(world, furnaceId, easelId, toI, toJ)
       : !toRelocation && !grid.isStockpile(toI, toJ);
   if (targetGone) {
     if (inv.items.length > 0) {
@@ -1492,22 +1558,25 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     return;
   }
 
-  // Pre-pickup bail-out for supply jobs when the target furnace is now
+  // Pre-pickup bail-out for supply jobs when the target station is now
   // actively crafting. Master's rule: don't keep filling a running
   // workstation. Post-pickup cows finish normally — dropping cargo at the
   // stockpile would just trigger a haul back, and the cargo belongs in
-  // furnace.stored anyway so the next craft starts warm. When the furnace
+  // station.stored anyway so the next craft starts warm. When the station
   // idles, the poster reposts fresh supply jobs for whatever's still short.
   if (
     toSupply &&
-    typeof furnaceId === 'number' &&
     inv.items.length === 0 &&
     (job.state === 'pathing-to-item' ||
       job.state === 'walking-to-item' ||
       job.state === 'picking-up')
   ) {
-    const furnace = world.get(furnaceId, 'Furnace');
-    if (furnace && furnace.activeBillId > 0) {
+    const station = typeof furnaceId === 'number'
+      ? world.get(furnaceId, 'Furnace')
+      : typeof easelId === 'number'
+        ? world.get(easelId, 'Easel')
+        : null;
+    if (station && station.activeBillId > 0) {
       board.complete(jobId);
       job.kind = 'none';
       job.state = 'idle';
@@ -1712,13 +1781,15 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
               addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
             }
           }
-        } else if (toSupply && typeof furnaceId === 'number') {
-          const furnace = world.get(furnaceId, 'Furnace');
+        } else if (toSupply && (typeof furnaceId === 'number' || typeof easelId === 'number')) {
+          const station = typeof furnaceId === 'number'
+            ? world.get(furnaceId, 'Furnace')
+            : world.get(/** @type {number} */ (easelId), 'Easel');
           for (const stack of inv.items) {
-            if (furnace && stack.kind === kind) {
-              // Matching ingredient → deposit into furnace.stored so the
+            if (station && stack.kind === kind) {
+              // Matching ingredient → deposit into station.stored so the
               // haul poster can't yank it back to the stockpile.
-              stackAdd(furnace.stored, stack.kind, stack.count);
+              stackAdd(station.stored, stack.kind, stack.count);
             } else {
               addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
             }
@@ -1740,6 +1811,175 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
 }
 
 /**
+ * Paint job state machine. A MANNED craft: the cow walks to the easel's work
+ * spot and stands there while `workTicksRemaining` counts down. On first
+ * arrival she takes the artist lock (`easel.artistCowId` + `job.payload.
+ * lockedCowId` = her id) so interruptions preserve attribution — only she
+ * can resume the bill. On completion she spawns the Painting entity on the
+ * easel's own tile; the player hauls it to a wall later via a future
+ * wall-mount flow.
+ *
+ * Ingredients were already consumed when the easel system started the bill,
+ * so bailing here (easel gone, bill suspended, path unreachable) doesn't
+ * refund anything — the player ate that cost the moment the bill started.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} cowId
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {(g: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ tick: number }} ctx
+ * @param {BrainDeps} deps
+ */
+function runPaintJob(world, cowId, job, path, pos, grid, paths, walkable, board, ctx, deps) {
+  const { easelId, jobId } = /** @type {{ easelId: number, jobId: number }} */ (job.payload);
+  const easel = world.get(easelId, 'Easel');
+  const bills = world.get(easelId, 'Bills');
+  const boardJob = board.get(jobId);
+
+  // Easel gone, bill cleared, or board job completed → bail. Keep any partial
+  // progress cleared on the easel side (activeBillId/artistCowId) to avoid a
+  // zombie craft locking future bills.
+  if (!easel || !bills || !boardJob || boardJob.completed || easel.activeBillId === 0) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  // Artist lock: if another cow already owns this craft, give up the claim.
+  const lock = (boardJob.payload.lockedCowId | 0) || (easel.artistCowId | 0);
+  if (lock > 0 && lock !== cowId) {
+    board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const target = { i: easel.workI, j: easel.workJ };
+    const route = paths.find(start, target);
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      // Arrived. Take the artist lock on both the easel AND the board job so
+      // a drafted/interrupted cow retains exclusive rights to resume.
+      if (easel.artistCowId === 0) easel.artistCowId = cowId;
+      boardJob.payload.lockedCowId = cowId;
+      if (easel.startTick === 0) easel.startTick = ctx.tick;
+      job.state = 'painting';
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'painting') {
+    easel.workTicksRemaining = Math.max(0, easel.workTicksRemaining - 1);
+    easel.progress = 1 - easel.workTicksRemaining / Math.max(1, getActiveRecipeTicks(easel, bills));
+    if (easel.workTicksRemaining > 0 && easel.workTicksRemaining % 30 === 0) {
+      deps.onCowHammer(pos);
+    }
+    if (easel.workTicksRemaining <= 0) {
+      finishPaint(world, grid, cowId, easelId, easel, bills, ctx.tick, deps);
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * Total workTicks of the active bill on the easel. Used only for the
+ * progress display; falls back to 1 if the bill vanished (keeps the ratio
+ * bounded and the UI sane).
+ *
+ * @param {{ activeBillId: number }} easel
+ * @param {{ list: import('../world/recipes.js').Bill[] }} bills
+ */
+function getActiveRecipeTicks(easel, bills) {
+  const bill = bills.list.find((b) => b.id === easel.activeBillId);
+  if (!bill) return 1;
+  const recipe = RECIPES[bill.recipeId];
+  return recipe?.workTicks ?? 1;
+}
+
+/**
+ * Spawn a Painting entity on the easel's own tile (an Item stack of kind
+ * 'painting', count 1). Bumps bill.done, clears activeBillId and
+ * artistCowId so the next bill can start on the next tick.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} cowId
+ * @param {number} easelId
+ * @param {{ activeBillId: number, artistCowId: number, workTicksRemaining: number, startTick: number, progress: number }} easel
+ * @param {{ list: import('../world/recipes.js').Bill[] }} bills
+ * @param {number} tick
+ * @param {BrainDeps} deps
+ */
+function finishPaint(world, grid, cowId, easelId, easel, bills, tick, deps) {
+  const bill = bills.list.find((b) => b.id === easel.activeBillId);
+  const anchor = world.get(easelId, 'TileAnchor');
+  easel.activeBillId = 0;
+  easel.artistCowId = 0;
+  easel.workTicksRemaining = 0;
+  easel.progress = 0;
+  easel.startTick = 0;
+  if (!bill || !anchor) return;
+  const recipe = RECIPES[bill.recipeId];
+  if (!recipe) return;
+  bill.done += 1;
+  const size = PAINTING_SIZE_BY_RECIPE[bill.recipeId] ?? 1;
+  const seed = (tick * 1000 + cowId) | 0;
+  const spec = generatePainting(seed, size);
+  const artistName = /** @type {{ name?: string } | null} */ (world.get(cowId, 'Brain'))?.name ?? 'cow';
+  const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
+  world.spawn({
+    Item: { kind: 'painting', count: 1, capacity: 1, forbidden: false },
+    Painting: {
+      size,
+      title: spec.title,
+      palette: spec.palette,
+      shapes: spec.shapes,
+      quality: 'normal',
+      artistCowId: cowId,
+      artistName,
+      easelI: anchor.i,
+      easelJ: anchor.j,
+      startTick: easel.startTick | 0,
+      finishTick: tick,
+    },
+    PaintingViz: {},
+    TileAnchor: { i: anchor.i, j: anchor.j },
+    Position: { x: w.x, y: grid.getElevation(anchor.i, anchor.j), z: w.z },
+  });
+  deps.onItemChange();
+}
+
+/**
  * Find the BuildSite entity anchored at (i, j), if any. Returns its entity
  * id or null. O(sites) scan — site count stays small in practice.
  *
@@ -1754,19 +1994,26 @@ function findBuildSiteAt(world, i, j) {
 }
 
 /**
- * True when the furnace entity still exists and its work spot is still (i, j).
- * If the furnace was deconstructed mid-haul (or the player rebuilt it elsewhere
- * and reused the id slot — won't happen with monotonically growing ids, but
- * cheap to check), the supply job no longer has a valid drop target.
+ * True when the target station entity still exists and its work spot is still
+ * (i, j). Checks Furnace then Easel — supply jobs target whichever station
+ * posted them. If the station was deconstructed mid-haul, the supply job no
+ * longer has a valid drop target.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {number | undefined} furnaceId
+ * @param {number | undefined} easelId
  * @param {number} i @param {number} j
  */
-function furnaceWorkSpotMatches(world, furnaceId, i, j) {
-  if (typeof furnaceId !== 'number') return false;
-  const f = world.get(furnaceId, 'Furnace');
-  return f !== undefined && f.workI === i && f.workJ === j;
+function stationWorkSpotMatches(world, furnaceId, easelId, i, j) {
+  if (typeof furnaceId === 'number') {
+    const f = world.get(furnaceId, 'Furnace');
+    if (f !== undefined && f.workI === i && f.workJ === j) return true;
+  }
+  if (typeof easelId === 'number') {
+    const e = world.get(easelId, 'Easel');
+    if (e !== undefined && e.workI === i && e.workJ === j) return true;
+  }
+  return false;
 }
 
 /**

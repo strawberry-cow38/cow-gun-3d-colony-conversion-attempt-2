@@ -12,6 +12,7 @@ export const ITEM_KINDS = /** @type {const} */ ([
   'metal_ore',
   'coal',
   'iron',
+  'painting',
 ]);
 
 /** @type {Record<string, number>} */
@@ -22,6 +23,7 @@ export const MAX_STACK = {
   metal_ore: 30,
   coal: 30,
   iron: 30,
+  painting: 1,
 };
 
 /** @type {Record<string, { label: string, description: string }>} */
@@ -50,6 +52,10 @@ export const ITEM_INFO = {
     label: 'Iron',
     description: 'Smelted from metal ore in a furnace.',
   },
+  painting: {
+    label: 'Painting',
+    description: 'Unique artwork made by a cow at an easel. Non-stackable.',
+  },
 };
 
 /** Hunger restored per unit of food consumed (0..1 scale). */
@@ -73,6 +79,7 @@ export const WEIGHT_PER_UNIT = {
   metal_ore: 8,
   coal: 3,
   iron: 4,
+  painting: 4,
 };
 
 /** Total mass a cow can haul in a single trip. */
@@ -191,6 +198,7 @@ export const KIND_COLOR = {
   metal_ore: 0xb0a48a,
   coal: 0x2a2a2e,
   iron: 0xc8cbd0,
+  painting: 0xd8b26a,
 };
 
 /** @param {string} kind */

@@ -44,6 +44,8 @@ export function setupWorldCallbacks({
     roofInstancer,
     floorInstancer,
     furnaceInstancer,
+    easelInstancer,
+    paintingInstancer,
     buildSiteInstancer,
     deconstructOverlay,
     roomOverlay,
@@ -121,14 +123,15 @@ export function setupWorldCallbacks({
       roofInstancer.markDirty();
       floorInstancer.markDirty();
       furnaceInstancer.markDirty();
+      easelInstancer.markDirty();
       buildSiteInstancer.markDirty();
       deconstructOverlay.markDirty();
-      // Walls/doors/furnaces all change walkability (furnace blocks its tile via
-      // the generic occupancy bitmap; door deconstruct/build flips the door bit).
-      // Torches/floors/roofs stay passable, so skip the cache invalidation +
-      // topology rebuild for them — that keeps the stutter off when the player
-      // drops a row of torches or floors.
-      if (kind === 'wall' || kind === 'door' || kind === 'furnace') {
+      // Walls/doors/furnaces/easels all change walkability (stations block
+      // their tile via the generic occupancy bitmap; door deconstruct/build
+      // flips the door bit). Torches/floors/roofs stay passable, so skip the
+      // cache invalidation + topology rebuild for them — that keeps the
+      // stutter off when the player drops a row of torches or floors.
+      if (kind === 'wall' || kind === 'door' || kind === 'furnace' || kind === 'easel') {
         invalidatePathCacheAt(pos);
         scheduler.dirty.mark('topology');
       }
@@ -161,6 +164,7 @@ export function setupWorldCallbacks({
     onWorldItemChange() {
       itemInstancer.markDirty();
       itemSelectionViz.markDirty();
+      paintingInstancer.markDirty();
       buildSiteInstancer.markDirty();
     },
   };

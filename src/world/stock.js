@@ -1,15 +1,15 @@
 /**
  * Counts how many units of each item kind exist in the colony's reserves.
- * Shared between the furnace system (for `untilHave` ceiling checks) and the
- * bill UI (for showing current stock next to a bill's cap target).
+ * Shared between the furnace/easel systems (for `untilHave` ceiling checks)
+ * and the bill UI (for showing current stock next to a bill's cap target).
  *
  * Always counted: loose/stockpile Items (non-forbidden), cow Inventories,
  * and every furnace's `outputs` (finished, waiting for a haul-out job).
  *
  * Optional: `includeActiveCrafts` adds `recipe.outputCount` for every
- * furnace with an active craft. The system wants that (prevents greenlight
- * of a redundant craft mid-cook); the UI wants it off (master prefers the
- * panel to show only what's physically in storage).
+ * station (furnace or easel) with an active craft. The system wants that
+ * (prevents greenlight of a redundant craft mid-cook); the UI wants it off
+ * (master prefers the panel to show only what's physically in storage).
  */
 
 import { RECIPES } from './recipes.js';
@@ -40,6 +40,16 @@ export function computeStockByKind(world, opts) {
     }
     if (includeActive && f.activeBillId > 0) {
       const bill = components.Bills.list.find((b) => b.id === f.activeBillId);
+      const recipe = bill ? RECIPES[bill.recipeId] : null;
+      if (recipe) {
+        out.set(recipe.outputKind, (out.get(recipe.outputKind) ?? 0) + recipe.outputCount);
+      }
+    }
+  }
+  for (const { components } of world.query(['Easel', 'Bills'])) {
+    const e = components.Easel;
+    if (includeActive && e.activeBillId > 0) {
+      const bill = components.Bills.list.find((b) => b.id === e.activeBillId);
       const recipe = bill ? RECIPES[bill.recipeId] : null;
       if (recipe) {
         out.set(recipe.outputKind, (out.get(recipe.outputKind) ?? 0) + recipe.outputCount);

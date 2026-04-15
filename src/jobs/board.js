@@ -74,14 +74,20 @@ export class JobBoard {
    * nearest by Chebyshev tile distance within the same tier. A tier-2 chop at
    * the far edge of the map still beats a tier-3 haul next door — urgency is
    * the primary axis.
+   *
+   * Pass `canClaim` to exclude jobs this caller can't take — e.g. paint jobs
+   * locked to a specific artist cow. Skipped jobs don't affect ordering.
+   *
    * @param {{ i: number, j: number }} [near]
+   * @param {(job: Job) => boolean} [canClaim]
    */
-  findUnclaimed(near) {
+  findUnclaimed(near, canClaim) {
     let best = null;
     let bestTier = Number.POSITIVE_INFINITY;
     let bestD = Number.POSITIVE_INFINITY;
     for (const job of this.jobs) {
       if (job.claimedBy !== null || job.completed) continue;
+      if (canClaim && !canClaim(job)) continue;
       let d = 0;
       if (near && job.payload.i !== undefined && job.payload.j !== undefined) {
         d = Math.max(Math.abs(job.payload.i - near.i), Math.abs(job.payload.j - near.j));
