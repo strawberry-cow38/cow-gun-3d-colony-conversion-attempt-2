@@ -83,6 +83,8 @@ export function buildHaulTargetedCounts(world, board) {
   for (const j of board.jobs) {
     if (j.completed) continue;
     if (j.kind !== 'haul' && j.kind !== 'deliver' && j.kind !== 'supply') continue;
+    // Haul-from-furnace jobs have no source Item entity — skip them.
+    if (typeof j.payload.itemId !== 'number') continue;
     const id = j.payload.itemId;
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }

@@ -1,9 +1,9 @@
 /**
  * Save / load: serialize world state to JSON, gzip it on the wire and at rest.
  *
- * Format (v22):
+ * Format (v23):
  * {
- *   version: 22,
+ *   version: 23,
  *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
@@ -19,7 +19,7 @@
  *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   floors: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   crops: [ { i, j, kind: string, growthTicks: number } ],
- *   furnaces: [ { i, j, stuff, workI, workJ, decon, progress, workTicksRemaining, activeBillId } ]
+ *   furnaces: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, stored: { kind, count }[], outputs: { kind, count }[], bills, nextBillId } ]
  * }
  *
  * Browser uses CompressionStream('gzip'). Node tests use zlib.
@@ -155,6 +155,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} workTicksRemaining
  * @property {number} activeBillId
  * @property {number} [facing]
+ * @property {{ kind: string, count: number }[]} [stored]
+ * @property {{ kind: string, count: number }[]} [outputs]
  * @property {import('./recipes.js').Bill[]} [bills]
  * @property {number} [nextBillId]
  */
@@ -328,6 +330,8 @@ export function serializeState(tileGrid, world) {
       workTicksRemaining: components.Furnace.workTicksRemaining ?? 0,
       activeBillId: components.Furnace.activeBillId ?? 0,
       facing: components.Furnace.facing ?? 0,
+      stored: components.Furnace.stored.map((s) => ({ kind: s.kind, count: s.count })),
+      outputs: components.Furnace.outputs.map((s) => ({ kind: s.kind, count: s.count })),
       bills: components.Bills.list.map((b) => ({ ...b })),
       nextBillId: components.Bills.nextBillId,
     });
@@ -689,6 +693,8 @@ export function hydrateFurnaces(world, grid, board, state) {
         workTicksRemaining: f.workTicksRemaining ?? 0,
         activeBillId: f.activeBillId ?? 0,
         facing: f.facing ?? 0,
+        stored: (f.stored ?? []).map((s) => ({ kind: s.kind, count: s.count })),
+        outputs: (f.outputs ?? []).map((s) => ({ kind: s.kind, count: s.count })),
       },
       FurnaceViz: {},
       Bills: {

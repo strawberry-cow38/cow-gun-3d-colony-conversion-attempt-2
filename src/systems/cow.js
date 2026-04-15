@@ -34,6 +34,9 @@ import {
   addItemToTile,
   addItemsToTile,
   inventoryAdd,
+  stackAdd,
+  stackCount,
+  stackRemove,
 } from '../world/items.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -315,6 +318,8 @@ export function makeCowBrainSystem(deps) {
                   toRelocation: candidate.payload.toRelocation === true,
                   toSupply: candidate.payload.toSupply === true,
                   furnaceId: candidate.payload.furnaceId,
+                  fromFurnaceId: candidate.payload.fromFurnaceId,
+                  kind: candidate.payload.kind,
                 };
                 path.steps = [];
                 path.index = 0;
@@ -1183,6 +1188,13 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   // finished-structure entity (mirroring how BuildSite tracks them).
   if (kind === 'furnace') {
     for (let k = 0; k < 7; k++) addItemToTile(world, grid, 'stone', anchor.i, anchor.j);
+    const furnace = world.get(entityId, 'Furnace');
+    if (furnace) {
+      for (const s of furnace.stored)
+        addItemsToTile(world, grid, s.kind, s.count, anchor.i, anchor.j);
+      for (const s of furnace.outputs)
+        addItemsToTile(world, grid, s.kind, s.count, anchor.i, anchor.j);
+    }
   } else {
     const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
     for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
@@ -1447,18 +1459,26 @@ function tileHasCrop(world, i, j) {
  * @param {BrainDeps} deps
  */
 function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
-  const { jobId, itemId, toI, toJ, toBuildSite, toRelocation, toSupply, furnaceId } =
-    /** @type {{ jobId: number, itemId: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number }} */ (
+  const {
+    jobId,
+    itemId,
+    toI,
+    toJ,
+    toBuildSite,
+    toRelocation,
+    toSupply,
+    furnaceId,
+    fromFurnaceId,
+    fromI,
+    fromJ,
+  } =
+    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, kind?: string }} */ (
       job.payload
     );
+  const kind = /** @type {string | undefined} */ (job.payload.kind);
 
   // Target tile stopped being a valid drop (stockpile undesignated, or
   // BuildSite cancelled/already built, or furnace gone) → complete + bail.
-  // Delivery to a BuildSite uses the site's existence at that tile, not the
-  // stockpile bit. Supply uses the furnace's work spot still pointing here.
-  // Blueprint-clear relocations have no persistent marker on the tile; if
-  // the cow can't get there at drop time the state machine falls back to
-  // dropping in place, which is fine.
   const targetGone = toBuildSite
     ? findBuildSiteAt(world, toI, toJ) === null
     : toSupply
@@ -1478,17 +1498,39 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     return;
   }
 
-  // Item got forbidden after the cow claimed the haul. Release pre-pickup —
-  // post-pickup the carried unit is already off the tile, so let the cow
-  // finish dropping it. Blueprint-clear relocations intentionally move
-  // forbidden stacks and are exempt.
+  // Source gone: for haul-from-furnace, bail if the furnace disappeared or
+  // its output of this kind drained to zero before pickup. For tile Item
+  // sources the forbidden check below covers the normal case.
   if (
-    !toRelocation &&
+    typeof fromFurnaceId === 'number' &&
     (job.state === 'pathing-to-item' ||
       job.state === 'walking-to-item' ||
       job.state === 'picking-up')
   ) {
-    const srcItem = world.get(itemId, 'Item');
+    const furnace = world.get(fromFurnaceId, 'Furnace');
+    if (!furnace || !kind || stackCount(furnace.outputs, kind) <= 0) {
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      path.steps = [];
+      path.index = 0;
+      return;
+    }
+  }
+
+  // Item got forbidden after the cow claimed the haul. Release pre-pickup —
+  // post-pickup the carried unit is already off the tile, so let the cow
+  // finish dropping it. Blueprint-clear relocations intentionally move
+  // forbidden stacks and are exempt. Haul-from-furnace has no Item entity.
+  if (
+    !toRelocation &&
+    typeof fromFurnaceId !== 'number' &&
+    (job.state === 'pathing-to-item' ||
+      job.state === 'walking-to-item' ||
+      job.state === 'picking-up')
+  ) {
+    const srcItem = typeof itemId === 'number' ? world.get(itemId, 'Item') : null;
     if (srcItem?.forbidden === true) {
       board.release(jobId);
       job.kind = 'none';
@@ -1501,10 +1543,16 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
   }
 
   if (job.state === 'pathing-to-item') {
-    // The source Item must still exist and be somewhere pickup-able.
-    const anchor = world.get(itemId, 'TileAnchor');
-    const item = world.get(itemId, 'Item');
-    if (!anchor || !item) {
+    // Pickup target: furnace work spot OR Item tile.
+    let target = null;
+    if (typeof fromFurnaceId === 'number') {
+      target = { i: fromI ?? 0, j: fromJ ?? 0 };
+    } else if (typeof itemId === 'number') {
+      const anchor = world.get(itemId, 'TileAnchor');
+      const item = world.get(itemId, 'Item');
+      if (anchor && item) target = { i: anchor.i, j: anchor.j };
+    }
+    if (!target) {
       board.complete(jobId);
       job.kind = 'none';
       job.state = 'idle';
@@ -1512,7 +1560,7 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       return;
     }
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    const route = paths.find(start, { i: anchor.i, j: anchor.j });
+    const route = paths.find(start, target);
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
@@ -1540,7 +1588,23 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     const remaining = (job.payload.ticksRemaining ?? PICKUP_TICKS) - 1;
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
-      const item = world.get(itemId, 'Item');
+      if (typeof fromFurnaceId === 'number') {
+        const furnace = world.get(fromFurnaceId, 'Furnace');
+        const available = furnace && kind ? stackCount(furnace.outputs, kind) : 0;
+        if (!furnace || !kind || available <= 0) {
+          board.complete(jobId);
+          job.kind = 'none';
+          job.state = 'idle';
+          job.payload = {};
+          return;
+        }
+        const added = inventoryAdd(inv, kind, available);
+        if (added > 0) stackRemove(furnace.outputs, kind, added);
+        deps.onItemChange();
+        job.state = 'pathing-to-drop';
+        return;
+      }
+      const item = typeof itemId === 'number' ? world.get(itemId, 'Item') : null;
       if (!item || item.count <= 0) {
         board.complete(jobId);
         job.kind = 'none';
@@ -1549,10 +1613,9 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         return;
       }
       // Grab as many units as fit in the remaining 60kg capacity.
-      // inventoryAdd clamps to capacity and returns the actual count taken.
       const added = inventoryAdd(inv, item.kind, item.count);
       item.count -= added;
-      if (item.count <= 0) world.despawn(itemId);
+      if (item.count <= 0 && typeof itemId === 'number') world.despawn(itemId);
       deps.onItemChange();
       job.state = 'pathing-to-drop';
     }
@@ -1613,10 +1676,12 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
           } else {
             addItemsToTile(world, grid, kind, count, toI, toJ);
           }
-        } else if (toSupply) {
-          // Drop forbidden so the haul poster doesn't immediately yank the
-          // ingredient back to the stockpile before the furnace consumes it.
-          addItemsToTile(world, grid, kind, count, toI, toJ, { forbidden: true });
+        } else if (toSupply && typeof furnaceId === 'number') {
+          // Deposit straight into the furnace's internal storage — never
+          // lands on the tile, so the haul poster can't yank it back.
+          const furnace = world.get(furnaceId, 'Furnace');
+          if (furnace) stackAdd(furnace.stored, kind, count);
+          else addItemsToTile(world, grid, kind, count, toI, toJ);
         } else {
           addItemsToTile(world, grid, kind, count, toI, toJ);
         }

@@ -77,16 +77,18 @@
  *              (woodYieldFor for Tree, cropYieldFor for Crop).
  *
  * Furnace / FurnaceViz / Bills
- *              { deconstructJobId, progress, stuff, workI, workJ,
- *                workTicksRemaining, activeBillId }
+ *              { deconstructJobId, progress, stuff, workI, workJ, facing,
+ *                workTicksRemaining, activeBillId, stored[], outputs[] }
  *              An unmanned production station. Cows haul ingredients to the
  *              work-spot tile (workI, workJ — a cardinal-adjacent walkable
- *              picked at spawn); the furnace ticks autonomously and spawns
- *              output on the same tile for haulers to pick up. `Bills.list`
- *              holds ordered, player-edited recipe jobs (see src/world/recipes.js).
- *              `activeBillId > 0` means a bill is mid-production; `workTicksRemaining`
- *              counts down to 0 on completion. Bills must exist at spawn
- *              (archetype ECS) — empty list is fine.
+ *              picked at spawn) and deposit them INTO `stored`. The furnace
+ *              consumes from `stored` and pushes finished goods into
+ *              `outputs`, which a haul job then pulls out and carries to a
+ *              stockpile. Both arrays use the same `{kind,count}[]` shape as
+ *              cow Inventory. `Bills.list` holds ordered, player-edited
+ *              recipe jobs (see src/world/recipes.js). `activeBillId > 0`
+ *              means a bill is mid-production; `workTicksRemaining` counts
+ *              down to 0 on completion.
  */
 
 /**
@@ -178,6 +180,10 @@ export function registerComponents(world) {
     workTicksRemaining: 0,
     activeBillId: 0,
     facing: 0,
+    /** @type {{ kind: string, count: number }[]} */
+    stored: [],
+    /** @type {{ kind: string, count: number }[]} */
+    outputs: [],
   }));
   world.defineComponent('FurnaceViz', () => ({}));
   world.defineComponent('Bills', () => ({

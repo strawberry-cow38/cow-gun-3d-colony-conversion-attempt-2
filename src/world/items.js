@@ -132,6 +132,57 @@ export function inventoryAdd(inv, kind, count) {
   return add;
 }
 
+/**
+ * Unweighted `{kind,count}[]` stack-array helpers — shared by Furnace.stored
+ * and Furnace.outputs. Cow Inventory uses the weight-budgeted variant above.
+ *
+ * @param {{ kind: string, count: number }[]} arr
+ * @param {string} kind
+ * @returns {number}
+ */
+export function stackCount(arr, kind) {
+  for (const s of arr) if (s.kind === kind) return s.count;
+  return 0;
+}
+
+/**
+ * @param {{ kind: string, count: number }[]} arr
+ * @param {string} kind
+ * @param {number} count
+ */
+export function stackAdd(arr, kind, count) {
+  if (count <= 0) return;
+  for (const s of arr) {
+    if (s.kind === kind) {
+      s.count += count;
+      return;
+    }
+  }
+  arr.push({ kind, count });
+}
+
+/**
+ * Remove up to `count` units of `kind`. Prunes emptied entries. Returns
+ * units actually removed.
+ *
+ * @param {{ kind: string, count: number }[]} arr
+ * @param {string} kind
+ * @param {number} count
+ * @returns {number}
+ */
+export function stackRemove(arr, kind, count) {
+  if (count <= 0) return 0;
+  for (let i = 0; i < arr.length; i++) {
+    const s = arr[i];
+    if (s.kind !== kind) continue;
+    const take = Math.min(s.count, count);
+    s.count -= take;
+    if (s.count <= 0) arr.splice(i, 1);
+    return take;
+  }
+  return 0;
+}
+
 /** @type {Record<string, number>} RGB hex per kind, used by itemInstancer + cow carry viz. */
 export const KIND_COLOR = {
   wood: 0x8a5a2b,

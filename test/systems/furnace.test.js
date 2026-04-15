@@ -94,64 +94,46 @@ describe('furnace system: supply posting', () => {
     expect(board.jobs.length).toBe(before);
   });
 
-  it('counts ingredients already on the work spot (forbidden or not)', () => {
+  it('counts ingredients already inside furnace.stored, no supplies posted', () => {
     const grid = new TileGrid(8, 8);
     const world = makeWorld();
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{}]);
-    spawnItem(world, 2, 3, 'coal', 1, { forbidden: true });
-    spawnItem(world, 2, 3, 'metal_ore', 5, { forbidden: true });
+    const furnace = world.get(fid, 'Furnace');
+    furnace.stored.push({ kind: 'coal', count: 1 });
+    furnace.stored.push({ kind: 'metal_ore', count: 5 });
     spawnItem(world, 5, 5, 'coal', 10);
     const board = new JobBoard();
 
     tick(world, board, grid);
 
-    // All ingredients on the spot → craft starts immediately, no supplies.
     expect(board.jobs.filter((j) => j.kind === 'supply')).toHaveLength(0);
-    const furnace = world.get(fid, 'Furnace');
     expect(furnace.activeBillId).toBe(1);
     expect(furnace.workTicksRemaining).toBeGreaterThan(0);
   });
 });
 
 describe('furnace system: craft lifecycle', () => {
-  it('consumes ingredients on craft start and spawns output on completion', () => {
+  it('consumes from stored on craft start and pushes output into furnace.outputs', () => {
     const grid = new TileGrid(8, 8);
     const world = makeWorld();
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{}]);
-    spawnItem(world, 2, 3, 'coal', 1, { forbidden: true });
-    spawnItem(world, 2, 3, 'metal_ore', 5, { forbidden: true });
+    const furnace0 = world.get(fid, 'Furnace');
+    furnace0.stored.push({ kind: 'coal', count: 1 });
+    furnace0.stored.push({ kind: 'metal_ore', count: 5 });
     const board = new JobBoard();
 
     tick(world, board, grid);
     let furnace = world.get(fid, 'Furnace');
     expect(furnace.activeBillId).toBe(1);
     expect(furnace.workTicksRemaining).toBe(600);
+    expect(furnace.stored).toEqual([]);
 
-    // Ingredients consumed off the work spot.
-    let onSpot = 0;
-    for (const { components } of world.query(['Item', 'TileAnchor'])) {
-      const a = components.TileAnchor;
-      if (a.i === 2 && a.j === 3) onSpot += components.Item.count;
-    }
-    expect(onSpot).toBe(0);
-
-    // Tick forward (rare period = 8). 600/8 = 75 ticks to complete.
     for (let n = 0; n < 75; n++) tick(world, board, grid);
     furnace = world.get(fid, 'Furnace');
     expect(furnace.activeBillId).toBe(0);
     expect(furnace.workTicksRemaining).toBe(0);
+    expect(furnace.outputs).toEqual([{ kind: 'iron', count: 5 }]);
 
-    // Output: 5 iron at the work spot.
-    let iron = 0;
-    for (const { components } of world.query(['Item', 'TileAnchor'])) {
-      const a = components.TileAnchor;
-      if (a.i === 2 && a.j === 3 && components.Item.kind === 'iron') {
-        iron += components.Item.count;
-      }
-    }
-    expect(iron).toBe(5);
-
-    // Bill done counter incremented.
     const bills = world.get(fid, 'Bills');
     expect(bills.list[0].done).toBe(1);
   });
@@ -160,8 +142,9 @@ describe('furnace system: craft lifecycle', () => {
     const grid = new TileGrid(8, 8);
     const world = makeWorld();
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{}]);
-    spawnItem(world, 2, 3, 'coal', 1, { forbidden: true });
-    spawnItem(world, 2, 3, 'metal_ore', 5, { forbidden: true });
+    const furnace0 = world.get(fid, 'Furnace');
+    furnace0.stored.push({ kind: 'coal', count: 1 });
+    furnace0.stored.push({ kind: 'metal_ore', count: 5 });
     const board = new JobBoard();
 
     tick(world, board, grid);
@@ -178,8 +161,9 @@ describe('furnace system: craft lifecycle', () => {
     const grid = new TileGrid(8, 8);
     const world = makeWorld();
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{ suspended: true }, { suspended: false }]);
-    spawnItem(world, 2, 3, 'coal', 1, { forbidden: true });
-    spawnItem(world, 2, 3, 'metal_ore', 5, { forbidden: true });
+    const furnace0 = world.get(fid, 'Furnace');
+    furnace0.stored.push({ kind: 'coal', count: 1 });
+    furnace0.stored.push({ kind: 'metal_ore', count: 5 });
     const board = new JobBoard();
 
     tick(world, board, grid);
