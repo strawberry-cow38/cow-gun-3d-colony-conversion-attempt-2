@@ -126,42 +126,48 @@ export const FURNACE_DESIGNATOR_CONFIG = {
 
 export class BuildDesignator {
   /**
-   * @param {BuildDesignatorConfig} config
-   * @param {HTMLElement} dom
-   * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh
-   * @param {import('../world/tileGrid.js').TileGrid} tileGrid
-   * @param {import('../ecs/world.js').World} world
-   * @param {import('../jobs/board.js').JobBoard} board
-   * @param {{ markDirty: () => void }} buildSiteInstancer
-   * @param {THREE.Scene} scene
-   * @param {() => void} onStateChanged
-   * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ markDirty: () => void }} [deconstructOverlay]  door-on-wall path queues a wall deconstruct and needs to tip the overlay dirty so the red tile marker appears
+   * `deconstructOverlay` is the dirty-flag sink for the door-on-wall path:
+   * queuing a wall deconstruct needs to tip the overlay so the red tile
+   * marker appears.
+   *
+   * @param {{
+   *   config: BuildDesignatorConfig,
+   *   canvas: HTMLElement,
+   *   camera: THREE.PerspectiveCamera,
+   *   tileMesh: () => THREE.Mesh,
+   *   tileGrid: import('../world/tileGrid.js').TileGrid,
+   *   world: import('../ecs/world.js').World,
+   *   jobBoard: import('../jobs/board.js').JobBoard,
+   *   buildSiteInstancer: { markDirty: () => void },
+   *   scene: THREE.Scene,
+   *   onChanged: () => void,
+   *   audio?: { play: (kind: string) => void },
+   *   deconstructOverlay?: { markDirty: () => void },
+   * }} opts
    */
-  constructor(
+  constructor({
     config,
-    dom,
+    canvas,
     camera,
-    getTileMesh,
+    tileMesh,
     tileGrid,
     world,
-    board,
+    jobBoard,
     buildSiteInstancer,
     scene,
-    onStateChanged,
+    onChanged,
     audio,
     deconstructOverlay,
-  ) {
+  }) {
     this.config = config;
-    this.dom = dom;
+    this.dom = canvas;
     this.camera = camera;
-    this.getTileMesh = getTileMesh;
+    this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
     this.world = world;
-    this.board = board;
+    this.board = jobBoard;
     this.buildSites = buildSiteInstancer;
-    this.onStateChanged = onStateChanged;
+    this.onStateChanged = onChanged;
     this.audio = audio;
     this.deconstructOverlay = deconstructOverlay;
     this.active = false;
@@ -194,10 +200,10 @@ export class BuildDesignator {
     this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
     this.workSpotPreview = config.kind === 'furnace' ? buildPreview(scene, WORK_SPOT_COLOR) : null;
 
-    dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
+    canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
     addEventListener('mouseup', (e) => this.#onUp(e), true);
-    dom.addEventListener(
+    canvas.addEventListener(
       'click',
       (e) => {
         if (!this.active) return;

@@ -42,45 +42,63 @@ export const DECON_KINDS = /** @type {const} */ ([
 
 export class DeconstructDesignator {
   /**
-   * @param {HTMLElement} dom
-   * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh
-   * @param {import('../world/tileGrid.js').TileGrid} tileGrid
-   * @param {import('../ecs/world.js').World} world
-   * @param {import('../jobs/board.js').JobBoard} board
-   * @param {{ markDirty: () => void }[]} instancers  dirty flags for the viz of every kind we can mark
-   * @param {THREE.Scene} scene
-   * @param {() => void} onStateChanged
-   * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ kinds?: readonly { comp: string, kind: string }[], previewColor?: number, tagIgnoreRoof?: boolean, addVerb?: string, cancelVerb?: string }} [opts]  Roof-only mode uses `kinds: [{comp:'Roof',kind:'roof'}]` + its own preview color so the player can demolish roofs without also hitting the walls holding them up. `tagIgnoreRoof` additionally flips the tile's ignoreRoof bit on demolish so the auto-roofer doesn't rebuild what the player just tore down; the reverse path (shift-drag to cancel) clears it again. `addVerb`/`cancelVerb` label the size guide — default "demolish"/"cancel demolish".
+   * Roof-only and floor-only modes override `kinds` + `previewColor` so the
+   * player can demolish roofs/floors without also hitting the structure
+   * around them. `tagIgnoreRoof` additionally flips the tile's ignoreRoof bit
+   * on demolish so the auto-roofer doesn't rebuild what the player just tore
+   * down; the reverse path (shift-drag to cancel) clears it again.
+   * `addVerb`/`cancelVerb` label the size guide — default
+   * "demolish"/"cancel demolish".
+   *
+   * @param {{
+   *   canvas: HTMLElement,
+   *   camera: THREE.PerspectiveCamera,
+   *   tileMesh: () => THREE.Mesh,
+   *   tileGrid: import('../world/tileGrid.js').TileGrid,
+   *   world: import('../ecs/world.js').World,
+   *   jobBoard: import('../jobs/board.js').JobBoard,
+   *   instancers: { markDirty: () => void }[],
+   *   scene: THREE.Scene,
+   *   onChanged: () => void,
+   *   audio?: { play: (kind: string) => void },
+   *   kinds?: readonly { comp: string, kind: string }[],
+   *   previewColor?: number,
+   *   tagIgnoreRoof?: boolean,
+   *   addVerb?: string,
+   *   cancelVerb?: string,
+   * }} opts
    */
-  constructor(
-    dom,
+  constructor({
+    canvas,
     camera,
-    getTileMesh,
+    tileMesh,
     tileGrid,
     world,
-    board,
+    jobBoard,
     instancers,
     scene,
-    onStateChanged,
+    onChanged,
     audio,
-    opts,
-  ) {
-    this.dom = dom;
+    kinds,
+    previewColor,
+    tagIgnoreRoof,
+    addVerb,
+    cancelVerb,
+  }) {
+    this.dom = canvas;
     this.camera = camera;
-    this.getTileMesh = getTileMesh;
+    this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
     this.world = world;
-    this.board = board;
+    this.board = jobBoard;
     this.instancers = instancers;
-    this.onStateChanged = onStateChanged;
+    this.onStateChanged = onChanged;
     this.audio = audio;
-    this.kinds = opts?.kinds ?? DECON_KINDS;
-    this.previewColor = opts?.previewColor ?? DECONSTRUCT_PREVIEW_COLOR;
-    this.tagIgnoreRoof = opts?.tagIgnoreRoof === true;
-    this.addVerb = opts?.addVerb ?? 'demolish';
-    this.cancelVerb = opts?.cancelVerb ?? 'cancel demolish';
+    this.kinds = kinds ?? DECON_KINDS;
+    this.previewColor = previewColor ?? DECONSTRUCT_PREVIEW_COLOR;
+    this.tagIgnoreRoof = tagIgnoreRoof === true;
+    this.addVerb = addVerb ?? 'demolish';
+    this.cancelVerb = cancelVerb ?? 'cancel demolish';
     this.active = false;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
@@ -98,10 +116,10 @@ export class DeconstructDesignator {
       removeHex: PREVIEW_COLOR_REMOVE,
     });
 
-    dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
+    canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
     addEventListener('mouseup', (e) => this.#onUp(e), true);
-    dom.addEventListener(
+    canvas.addEventListener(
       'click',
       (e) => {
         if (!this.active) return;

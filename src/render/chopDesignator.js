@@ -23,37 +23,39 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
 export class ChopDesignator {
   /**
-   * @param {HTMLElement} dom
-   * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh
-   * @param {import('../world/tileGrid.js').TileGrid} tileGrid
-   * @param {{ markDirty: () => void }} treeInstancer
-   * @param {import('../ecs/world.js').World} world
-   * @param {import('../jobs/board.js').JobBoard} board
-   * @param {THREE.Scene} scene
-   * @param {() => void} onStateChanged  called whenever mode toggles or trees change
-   * @param {{ play: (kind: string) => void }} [audio]
+   * @param {{
+   *   canvas: HTMLElement,
+   *   camera: THREE.PerspectiveCamera,
+   *   tileMesh: () => THREE.Mesh,
+   *   tileGrid: import('../world/tileGrid.js').TileGrid,
+   *   treeInstancer: { markDirty: () => void },
+   *   world: import('../ecs/world.js').World,
+   *   jobBoard: import('../jobs/board.js').JobBoard,
+   *   scene: THREE.Scene,
+   *   onChanged: () => void,
+   *   audio?: { play: (kind: string) => void },
+   * }} opts `onChanged` fires whenever mode toggles or trees change.
    */
-  constructor(
-    dom,
+  constructor({
+    canvas,
     camera,
-    getTileMesh,
+    tileMesh,
     tileGrid,
     treeInstancer,
     world,
-    board,
+    jobBoard,
     scene,
-    onStateChanged,
+    onChanged,
     audio,
-  ) {
-    this.dom = dom;
+  }) {
+    this.dom = canvas;
     this.camera = camera;
-    this.getTileMesh = getTileMesh;
+    this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
     this.trees = treeInstancer;
     this.world = world;
-    this.board = board;
-    this.onStateChanged = onStateChanged;
+    this.board = jobBoard;
+    this.onStateChanged = onChanged;
     this.audio = audio;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
@@ -72,10 +74,10 @@ export class ChopDesignator {
       removeHex: PREVIEW_COLOR_REMOVE,
     });
 
-    dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
+    canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
     addEventListener('mouseup', (e) => this.#onUp(e), true);
-    dom.addEventListener(
+    canvas.addEventListener(
       'click',
       (e) => {
         if (!this.active) return;

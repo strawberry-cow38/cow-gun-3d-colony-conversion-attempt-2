@@ -20,22 +20,24 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 
 export class StockpileDesignator {
   /**
-   * @param {HTMLElement} dom
-   * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh
-   * @param {import('../world/tileGrid.js').TileGrid} tileGrid
-   * @param {{ markDirty: () => void }} overlay
-   * @param {THREE.Scene} scene
-   * @param {() => void} onStateChanged
-   * @param {{ play: (kind: string) => void }} [audio]
+   * @param {{
+   *   canvas: HTMLElement,
+   *   camera: THREE.PerspectiveCamera,
+   *   tileMesh: () => THREE.Mesh,
+   *   tileGrid: import('../world/tileGrid.js').TileGrid,
+   *   overlay: { markDirty: () => void },
+   *   scene: THREE.Scene,
+   *   onChanged: () => void,
+   *   audio?: { play: (kind: string) => void },
+   * }} opts
    */
-  constructor(dom, camera, getTileMesh, tileGrid, overlay, scene, onStateChanged, audio) {
-    this.dom = dom;
+  constructor({ canvas, camera, tileMesh, tileGrid, overlay, scene, onChanged, audio }) {
+    this.dom = canvas;
     this.camera = camera;
-    this.getTileMesh = getTileMesh;
+    this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
     this.overlay = overlay;
-    this.onStateChanged = onStateChanged;
+    this.onStateChanged = onChanged;
     this.audio = audio;
     this.active = false;
     this.raycaster = new THREE.Raycaster();
@@ -54,10 +56,10 @@ export class StockpileDesignator {
       removeHex: PREVIEW_COLOR_REMOVE,
     });
 
-    dom.addEventListener('mousedown', (e) => this.#onDown(e), true);
+    canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));
     addEventListener('mouseup', (e) => this.#onUp(e), true);
-    dom.addEventListener(
+    canvas.addEventListener(
       'click',
       (e) => {
         if (!this.active) return;

@@ -1,11 +1,16 @@
 /**
  * Construct every tile-painting designator (chop, mine, build, deconstruct, …).
  *
- * The designators are mutually exclusive: activating one deactivates every
- * other via the shared `deactivateOthers` walk. We push each one into the
- * list as it's built; `onStateChanged` only fires from event handlers that
- * can't run before the whole list has been populated, so the mid-construction
- * list is safe to reference from the callbacks.
+ * Each designator takes an options bag with the usual tile-picking quartet
+ * (canvas/camera/tileMesh/tileGrid) plus scene/audio and its own extras. Two
+ * pre-built bags — `baseArgs` (no-job designators) and `jobArgs` (job-posting
+ * ones) — get spread at each call site so the per-designator wiring only
+ * names the bits that actually differ.
+ *
+ * Each `onChanged` captures the `const` it's defined on; this is fine despite
+ * the TDZ because the lambda only runs from DOM events, which can't fire
+ * before construction returns. The shared `notifyChanged` walk deactivates
+ * every other tool so the tile-paint modes stay mutually exclusive.
  */
 
 import {
@@ -71,270 +76,168 @@ export function setupDesignators({
 
   /** @type {{ active: boolean, deactivate: () => void }[]} */
   const designators = [];
-  /** @param {{ active: boolean, deactivate: () => void }} self */
-  const deactivateOthers = (self) => {
-    if (!self.active) return;
-    for (const d of designators) if (d !== self) d.deactivate();
-  };
-  /** @param {{ active: boolean, deactivate: () => void }} d */
-  const onChanged = (d) => {
-    deactivateOthers(d);
+  /**
+   * Activation of any designator deactivates the others (tiles can only be
+   * in one designation mode at a time). Also pokes the HUD so the build tab
+   * highlight follows the active tool.
+   * @param {{ active: boolean, deactivate: () => void }} self
+   */
+  const notifyChanged = (self) => {
+    if (self.active) {
+      for (const d of designators) if (d !== self) d.deactivate();
+    }
     updateHud();
   };
 
-  const chopDesignator = new ChopDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
+  // Shared arg bundles: every designator needs the tile-picking quartet plus
+  // scene+audio; job-posting designators additionally need world+jobBoard.
+  // Spreading these at each call site keeps the noise down without hiding
+  // which extra dependencies a given designator pulls in.
+  const baseArgs = { canvas, camera, tileMesh, tileGrid, scene, audio };
+  const jobArgs = { ...baseArgs, world, jobBoard };
+
+  const chopDesignator = new ChopDesignator({
+    ...jobArgs,
     treeInstancer,
-    world,
-    jobBoard,
-    scene,
-    () => onChanged(chopDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(chopDesignator),
+  });
   designators.push(chopDesignator);
 
-  const cutDesignator = new CutDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
+  const cutDesignator = new CutDesignator({
+    ...jobArgs,
     treeInstancer,
     cropInstancer,
-    world,
-    jobBoard,
-    scene,
-    () => onChanged(cutDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(cutDesignator),
+  });
   designators.push(cutDesignator);
 
-  const mineDesignator = new MineDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
+  const mineDesignator = new MineDesignator({
+    ...jobArgs,
     boulderInstancer,
-    world,
-    jobBoard,
-    scene,
-    () => onChanged(mineDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(mineDesignator),
+  });
   designators.push(mineDesignator);
 
-  const stockpileDesignator = new StockpileDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    stockpileOverlay,
-    scene,
-    () => onChanged(stockpileDesignator),
-    audio,
-  );
+  const stockpileDesignator = new StockpileDesignator({
+    ...baseArgs,
+    overlay: stockpileOverlay,
+    onChanged: () => notifyChanged(stockpileDesignator),
+  });
   designators.push(stockpileDesignator);
 
-  const farmZoneDesignator = new FarmZoneDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    farmZoneOverlay,
-    scene,
-    () => onChanged(farmZoneDesignator),
-    audio,
-  );
+  const farmZoneDesignator = new FarmZoneDesignator({
+    ...baseArgs,
+    overlay: farmZoneOverlay,
+    onChanged: () => notifyChanged(farmZoneDesignator),
+  });
   designators.push(farmZoneDesignator);
 
-  const wallDesignator = new BuildDesignator(
-    WALL_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const wallDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: WALL_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(wallDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(wallDesignator),
+  });
   designators.push(wallDesignator);
 
-  const doorDesignator = new BuildDesignator(
-    DOOR_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const doorDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: DOOR_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(doorDesignator),
-    audio,
     deconstructOverlay,
-  );
+    onChanged: () => notifyChanged(doorDesignator),
+  });
   designators.push(doorDesignator);
 
-  const torchDesignator = new BuildDesignator(
-    TORCH_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const torchDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: TORCH_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(torchDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(torchDesignator),
+  });
   designators.push(torchDesignator);
 
-  const wallTorchDesignator = new BuildDesignator(
-    WALL_TORCH_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const wallTorchDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: WALL_TORCH_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(wallTorchDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(wallTorchDesignator),
+  });
   designators.push(wallTorchDesignator);
 
-  const roofDesignator = new BuildDesignator(
-    ROOF_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const roofDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: ROOF_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(roofDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(roofDesignator),
+  });
   designators.push(roofDesignator);
 
-  const floorDesignator = new BuildDesignator(
-    FLOOR_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const floorDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: FLOOR_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(floorDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(floorDesignator),
+  });
   designators.push(floorDesignator);
 
-  const furnaceDesignator = new BuildDesignator(
-    FURNACE_DESIGNATOR_CONFIG,
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const furnaceDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: FURNACE_DESIGNATOR_CONFIG,
     buildSiteInstancer,
-    scene,
-    () => onChanged(furnaceDesignator),
-    audio,
-  );
+    onChanged: () => notifyChanged(furnaceDesignator),
+  });
   designators.push(furnaceDesignator);
 
-  const ignoreRoofDesignator = new IgnoreRoofDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    ignoreRoofOverlay,
-    scene,
-    () => onChanged(ignoreRoofDesignator),
-    audio,
-  );
+  const ignoreRoofDesignator = new IgnoreRoofDesignator({
+    ...baseArgs,
+    overlay: ignoreRoofOverlay,
+    onChanged: () => notifyChanged(ignoreRoofDesignator),
+  });
   designators.push(ignoreRoofDesignator);
 
-  const deconstructDesignator = new DeconstructDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
-    [wallInstancer, floorInstancer, furnaceInstancer, deconstructOverlay],
-    scene,
-    () => onChanged(deconstructDesignator),
-    audio,
-  );
+  const deconstructDesignator = new DeconstructDesignator({
+    ...jobArgs,
+    instancers: [wallInstancer, floorInstancer, furnaceInstancer, deconstructOverlay],
+    onChanged: () => notifyChanged(deconstructDesignator),
+  });
   designators.push(deconstructDesignator);
 
-  const removeRoofDesignator = new DeconstructDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
-    [roofInstancer, deconstructOverlay, ignoreRoofOverlay],
-    scene,
-    () => onChanged(removeRoofDesignator),
-    audio,
-    {
-      kinds: [{ comp: 'Roof', kind: 'roof' }],
-      previewColor: 0xff8fd0,
-      tagIgnoreRoof: true,
-      addVerb: 'un-roof',
-      cancelVerb: 'cancel un-roof',
-    },
-  );
+  const removeRoofDesignator = new DeconstructDesignator({
+    ...jobArgs,
+    instancers: [roofInstancer, deconstructOverlay, ignoreRoofOverlay],
+    kinds: [{ comp: 'Roof', kind: 'roof' }],
+    previewColor: 0xff8fd0,
+    tagIgnoreRoof: true,
+    addVerb: 'un-roof',
+    cancelVerb: 'cancel un-roof',
+    onChanged: () => notifyChanged(removeRoofDesignator),
+  });
   designators.push(removeRoofDesignator);
 
-  const removeFloorDesignator = new DeconstructDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
-    [floorInstancer, deconstructOverlay],
-    scene,
-    () => onChanged(removeFloorDesignator),
-    audio,
-    {
-      kinds: [{ comp: 'Floor', kind: 'floor' }],
-      previewColor: 0xd4a14a,
-      addVerb: 'un-floor',
-      cancelVerb: 'cancel un-floor',
-    },
-  );
+  const removeFloorDesignator = new DeconstructDesignator({
+    ...jobArgs,
+    instancers: [floorInstancer, deconstructOverlay],
+    kinds: [{ comp: 'Floor', kind: 'floor' }],
+    previewColor: 0xd4a14a,
+    addVerb: 'un-floor',
+    cancelVerb: 'cancel un-floor',
+    onChanged: () => notifyChanged(removeFloorDesignator),
+  });
   designators.push(removeFloorDesignator);
 
-  const cancelDesignator = new CancelDesignator(
-    canvas,
-    camera,
-    tileMesh,
-    tileGrid,
-    world,
-    jobBoard,
+  const cancelDesignator = new CancelDesignator({
+    ...jobArgs,
     buildSiteInstancer,
-    [wallInstancer, roofInstancer, floorInstancer, furnaceInstancer, deconstructOverlay],
-    scene,
-    () => onChanged(cancelDesignator),
-    audio,
-  );
+    deconInstancers: [
+      wallInstancer,
+      roofInstancer,
+      floorInstancer,
+      furnaceInstancer,
+      deconstructOverlay,
+    ],
+    onChanged: () => notifyChanged(cancelDesignator),
+  });
   designators.push(cancelDesignator);
 
   return {
