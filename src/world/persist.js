@@ -84,6 +84,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} required
  * @property {number} delivered
  * @property {number} progress
+ * @property {number} [facing]
  */
 
 /**
@@ -153,6 +154,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} progress
  * @property {number} workTicksRemaining
  * @property {number} activeBillId
+ * @property {number} [facing]
  * @property {import('./recipes.js').Bill[]} [bills]
  * @property {number} [nextBillId]
  */
@@ -239,6 +241,7 @@ export function serializeState(tileGrid, world) {
       required: components.BuildSite.required,
       delivered: components.BuildSite.delivered,
       progress: components.BuildSite.progress,
+      facing: components.BuildSite.facing ?? 0,
     });
   }
   /** @type {SerializedWall[]} */
@@ -322,6 +325,7 @@ export function serializeState(tileGrid, world) {
       progress: components.Furnace.progress ?? 0,
       workTicksRemaining: components.Furnace.workTicksRemaining ?? 0,
       activeBillId: components.Furnace.activeBillId ?? 0,
+      facing: components.Furnace.facing ?? 0,
       bills: components.Bills.list.map((b) => ({ ...b })),
       nextBillId: components.Bills.nextBillId,
     });
@@ -523,6 +527,7 @@ export function hydrateBuildSites(world, grid, state) {
         delivered: s.delivered,
         buildJobId: 0,
         progress: s.progress ?? 0,
+        facing: s.facing ?? 0,
       },
       BuildSiteViz: {},
       TileAnchor: { i: s.i, j: s.j },
@@ -681,6 +686,7 @@ export function hydrateFurnaces(world, grid, board, state) {
         workJ: f.workJ,
         workTicksRemaining: f.workTicksRemaining ?? 0,
         activeBillId: f.activeBillId ?? 0,
+        facing: f.facing ?? 0,
       },
       FurnaceViz: {},
       Bills: {

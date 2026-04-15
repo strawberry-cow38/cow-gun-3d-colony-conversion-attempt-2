@@ -27,6 +27,7 @@ import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropIsReady, cropKindFor } from '../world/crops.js';
+import { FACING_OFFSETS } from '../world/facing.js';
 import { FOOD_NUTRITION, HUNGER_EAT_THRESHOLD, addItemToTile } from '../world/items.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -989,15 +990,22 @@ function finishBuild(world, grid, siteId, jobId, board, walkable) {
   } else if (site.kind === 'furnace') {
     // Pick work-spot BEFORE blocking the tile — findAdjacentWalkable checks
     // neighbors, and we want to accept adjacent tiles even if the furnace's
-    // own tile is about to become blocked. Fallback = the furnace tile itself;
-    // the bills poster will just skip bills that can't find a reachable spot.
-    const workSpot = findAdjacentWalkable(grid, walkable, anchor.i, anchor.j) ?? {
-      i: anchor.i,
-      j: anchor.j,
-    };
+    // own tile is about to become blocked. Prefer the tile in front of the
+    // chosen facing; fall back to any walkable cardinal neighbor, then to the
+    // furnace tile itself.
+    const facing = site.facing | 0;
+    const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
+    const fi = anchor.i + off.di;
+    const fj = anchor.j + off.dj;
+    const facingSpot = grid.inBounds(fi, fj) && walkable(grid, fi, fj) ? { i: fi, j: fj } : null;
+    const workSpot = facingSpot ??
+      findAdjacentWalkable(grid, walkable, anchor.i, anchor.j) ?? {
+        i: anchor.i,
+        j: anchor.j,
+      };
     grid.blockTile(anchor.i, anchor.j);
     world.spawn({
-      Furnace: { stuff, workI: workSpot.i, workJ: workSpot.j },
+      Furnace: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
       FurnaceViz: {},
       Bills: { list: [], nextBillId: 1 },
       TileAnchor: { i: anchor.i, j: anchor.j },

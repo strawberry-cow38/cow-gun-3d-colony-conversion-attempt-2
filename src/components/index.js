@@ -142,6 +142,7 @@ export function registerComponents(world) {
     delivered: 0,
     buildJobId: 0,
     progress: 0,
+    facing: 0,
   }));
   world.defineComponent('BuildSiteViz', () => ({}));
   world.defineComponent('Wall', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
@@ -173,6 +174,7 @@ export function registerComponents(world) {
     workJ: 0,
     workTicksRemaining: 0,
     activeBillId: 0,
+    facing: 0,
   }));
   world.defineComponent('FurnaceViz', () => ({}));
   world.defineComponent('Bills', () => ({

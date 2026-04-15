@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 
 export const FURNACE_FOOTPRINT = TILE_SIZE * 0.86;
 export const FURNACE_HEIGHT = 1.4 * UNITS_PER_METER;
@@ -18,6 +19,7 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _yAxis = new THREE.Vector3(0, 1, 0);
 
 /**
  * @param {THREE.Scene} scene
@@ -73,7 +75,6 @@ export function createFurnaceInstancer(scene, capacity = 64) {
    */
   function update(world, grid) {
     if (!dirty) return;
-    _quat.identity();
     _scale.set(1, 1, 1);
     slots.length = 0;
     let i = 0;
@@ -82,14 +83,19 @@ export function createFurnaceInstancer(scene, capacity = 64) {
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j);
+      const facing = components.Furnace.facing | 0;
+      const yaw = FACING_YAWS[facing] ?? 0;
+      _quat.setFromAxisAngle(_yAxis, yaw);
 
       _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       bodyMesh.setMatrixAt(i, _matrix);
       chimneyMesh.setMatrixAt(i, _matrix);
 
-      // Symmetric footprint — "front" is arbitrary, just pick +z.
-      _position.set(w.x, y + GLOW_Y, w.z + GLOW_FRONT_OFFSET);
+      // Glow sits on the "front" face — offset rotated by the same yaw so it
+      // tracks the furnace's actual facing direction.
+      const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
+      _position.set(w.x + off.di * GLOW_FRONT_OFFSET, y + GLOW_Y, w.z + off.dj * GLOW_FRONT_OFFSET);
       _matrix.compose(_position, _quat, _scale);
       glowMesh.setMatrixAt(i, _matrix);
 

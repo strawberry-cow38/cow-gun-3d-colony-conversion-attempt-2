@@ -25,6 +25,7 @@ import {
 } from '../systems/autoRoof.js';
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
@@ -166,6 +167,8 @@ export class BuildDesignator {
     this.active = false;
     /** @type {string} */
     this.currentStuff = DEFAULT_STUFF;
+    /** Furnace facing 0..3 (S/E/N/W). Cycled with R while the tool is active. */
+    this.currentFacing = 0;
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
     this.removing = false;
@@ -209,7 +212,16 @@ export class BuildDesignator {
 
   /** @param {KeyboardEvent} e */
   #onKey(e) {
-    if (e.code === 'Escape' && this.active) this.deactivate();
+    if (!this.active) return;
+    if (e.code === 'Escape') {
+      this.deactivate();
+      return;
+    }
+    if (e.code === 'KeyR' && this.config.kind === 'furnace') {
+      const step = e.shiftKey ? 3 : 1;
+      this.currentFacing = (this.currentFacing + step) % 4;
+      this.#renderPreview();
+    }
   }
 
   activate() {
@@ -454,6 +466,7 @@ export class BuildDesignator {
         delivered: 0,
         buildJobId: 0,
         progress: 0,
+        facing: kind === 'furnace' ? this.currentFacing : 0,
       },
       BuildSiteViz: {},
       TileAnchor: { i, j },
@@ -560,8 +573,17 @@ export class BuildDesignator {
       const cx = (x0 + x1) * 0.5;
       const cz = (z0 + z1) * 0.5;
       this.furnaceGhost.group.position.set(cx, y, cz);
+      this.furnaceGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.furnaceGhost.group.visible = !this.removing;
-      const spot = findAdjacentWalkable(grid, defaultWalkable, this.curTile.i, this.curTile.j);
+      // Work spot is the tile the front faces. If that tile is blocked or
+      // off-grid, fall back to any walkable cardinal neighbor so the player
+      // can still see *some* indicator (the build job will do the same fallback
+      // at completion).
+      const off = FACING_OFFSETS[this.currentFacing] ?? FACING_OFFSETS[0];
+      const fi = this.curTile.i + off.di;
+      const fj = this.curTile.j + off.dj;
+      let spot = grid.inBounds(fi, fj) && defaultWalkable(grid, fi, fj) ? { i: fi, j: fj } : null;
+      if (!spot) spot = findAdjacentWalkable(grid, defaultWalkable, this.curTile.i, this.curTile.j);
       if (spot && !this.removing) {
         renderTilePreview(this.workSpotPreview, grid, spot.i, spot.j, WORK_SPOT_COLOR);
       } else {
