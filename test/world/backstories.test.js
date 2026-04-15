@@ -18,9 +18,8 @@ describe('backstories', () => {
     const seq = [0.1, 0.0];
     const rng = () => seq.shift() ?? 0;
     const p = pickProfession('Col.', rng);
-    // First entry in the Col. specific list is "Retired from Fort Bragg".
     expect(p).toMatch(
-      /Fort Bragg|Blackwater|Desert Storm|ROTC|Military|Survivalist|Pentagon|Korean War|Marine|Airborne|VFW|Private Security/,
+      /Stateside Base|Private Military|Desert Storm|ROTC|Military Surplus|Survivalist|Pentagon|Korean War|Marine|Airborne|VFW|Private Security|National Guard|Drill Sergeant|Submarine|Control Tower/,
     );
   });
 
