@@ -88,6 +88,9 @@ export function createFurnacePanel(opts) {
   document.body.appendChild(root);
 
   let lastKey = '';
+  /** Fill div per bill-id for the currently-selected furnace, updated in-place each frame. */
+  /** @type {Map<number, HTMLDivElement>} */
+  const progressFills = new Map();
 
   function update() {
     const n = state.selectedFurnaces.size;
@@ -114,44 +117,61 @@ export function createFurnacePanel(opts) {
 
     const id = /** @type {number} */ (state.primaryFurnace);
     const bills = world.get(id, 'Bills');
+    const furnace = world.get(id, 'Furnace');
     if (!bills) {
       if (lastKey === 'unknown') return;
       lastKey = 'unknown';
       title.textContent = 'Furnace';
       billsWrap.replaceChildren();
+      progressFills.clear();
       return;
     }
     // Key fingerprints everything the panel renders. Bill rows cost a DOM
     // rebuild, so this guard matters — every frame otherwise replaceChildren's.
+    // `activeBillId` is in the key so starting/stopping a craft swaps the bar
+    // in/out; `workTicksRemaining` is NOT — the fill width is updated in
+    // place below so a rebuild isn't needed every tick.
     const billsKey = bills.list
       .map((b) => `${b.id}:${b.suspended ? 'S' : 'R'}:${b.countMode}:${b.target}:${b.done}`)
       .join('|');
-    const key = `one:${id}:${bills.nextBillId}:${billsKey}`;
-    if (key === lastKey) return;
-    lastKey = key;
-
-    addBtn.style.display = '';
-    title.textContent = 'Furnace · Bills';
-    billsWrap.replaceChildren();
-    if (bills.list.length === 0) {
-      const empty = document.createElement('div');
-      empty.textContent = 'No bills. Click "Add bill" to queue a recipe.';
-      empty.style.color = '#8e98a2';
-      empty.style.fontStyle = 'italic';
-      billsWrap.append(empty);
-      return;
+    const activeId = furnace?.activeBillId ?? 0;
+    const key = `one:${id}:${bills.nextBillId}:${activeId}:${billsKey}`;
+    if (key !== lastKey) {
+      lastKey = key;
+      addBtn.style.display = '';
+      title.textContent = 'Furnace · Bills';
+      billsWrap.replaceChildren();
+      progressFills.clear();
+      if (bills.list.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No bills. Click "Add bill" to queue a recipe.';
+        empty.style.color = '#8e98a2';
+        empty.style.fontStyle = 'italic';
+        billsWrap.append(empty);
+        return;
+      }
+      bills.list.forEach((bill, index) => {
+        billsWrap.append(renderBillRow(bills, bill, index, activeId));
+      });
     }
-    bills.list.forEach((bill, index) => {
-      billsWrap.append(renderBillRow(bills, bill, index));
-    });
+    if (furnace && activeId > 0) {
+      const fill = progressFills.get(activeId);
+      const activeBill = bills.list.find((b) => b.id === activeId);
+      const recipe = activeBill ? RECIPES[activeBill.recipeId] : null;
+      if (fill && recipe && recipe.workTicks > 0) {
+        const p = Math.max(0, Math.min(1, 1 - furnace.workTicksRemaining / recipe.workTicks));
+        fill.style.width = `${(p * 100).toFixed(1)}%`;
+      }
+    }
   }
 
   /**
    * @param {{ list: import('../world/recipes.js').Bill[], nextBillId: number }} bills
    * @param {import('../world/recipes.js').Bill} bill
    * @param {number} index
+   * @param {number} activeBillId
    */
-  function renderBillRow(bills, bill, index) {
+  function renderBillRow(bills, bill, index, activeBillId) {
     const row = document.createElement('div');
     Object.assign(row.style, {
       display: 'flex',
@@ -215,7 +235,28 @@ export function createFurnacePanel(opts) {
       }),
     );
 
-    row.append(head, ingLine, controls);
+    row.append(head, ingLine);
+    if (bill.id === activeBillId) {
+      const track = document.createElement('div');
+      Object.assign(track.style, {
+        height: '4px',
+        background: 'rgba(0, 0, 0, 0.5)',
+        borderRadius: '2px',
+        overflow: 'hidden',
+        marginTop: '1px',
+      });
+      const fill = document.createElement('div');
+      Object.assign(fill.style, {
+        height: '100%',
+        width: '0%',
+        background: 'rgba(255, 122, 40, 0.95)',
+        transition: 'width 120ms linear',
+      });
+      track.append(fill);
+      row.append(track);
+      progressFills.set(bill.id, fill);
+    }
+    row.append(controls);
     return row;
   }
 
