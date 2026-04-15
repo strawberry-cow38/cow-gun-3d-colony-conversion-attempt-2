@@ -14,7 +14,6 @@ describe('backstories', () => {
   });
 
   it('prefers Col.-specific professions when Col. rolls the specific branch', () => {
-    // rng() < 0.7 triggers the specific pool; use a low value to force it.
     const seq = [0.1, 0.0];
     const rng = () => seq.shift() ?? 0;
     const p = pickProfession('Col.', rng);
@@ -24,7 +23,6 @@ describe('backstories', () => {
   });
 
   it('falls back to generic pool when the Col. branch rolls generic', () => {
-    // First rng() >= 0.7 kicks to generic; second picks index.
     const seq = [0.9, 0.0];
     const rng = () => seq.shift() ?? 0;
     const p = pickProfession('Col.', rng);

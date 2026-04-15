@@ -311,15 +311,43 @@ const PROFESSIONS = [
 
 /**
  * @param {BackstoryEntry[]} pool
+ * @returns {{ generic: string[], specific: Map<string, string[]> }}
+ */
+function partition(pool) {
+  const generic = [];
+  /** @type {Map<string, string[]>} */
+  const specific = new Map();
+  for (const e of pool) {
+    if (!e.titles) {
+      generic.push(e.text);
+      continue;
+    }
+    for (const t of e.titles) {
+      let arr = specific.get(t);
+      if (!arr) {
+        arr = [];
+        specific.set(t, arr);
+      }
+      arr.push(e.text);
+    }
+  }
+  return { generic, specific };
+}
+
+const CHILDHOOD_POOLS = partition(CHILDHOODS);
+const PROFESSION_POOLS = partition(PROFESSIONS);
+
+/**
+ * @param {{ generic: string[], specific: Map<string, string[]> }} pools
  * @param {string} title
  * @param {() => number} rng
  */
-function pickFrom(pool, title, rng) {
-  const specific = pool.filter((e) => e.titles?.includes(title));
-  const useSpecific = specific.length > 0 && rng() < TITLE_MATCH_CHANCE;
-  if (useSpecific) return specific[Math.floor(rng() * specific.length)].text;
-  const generic = pool.filter((e) => !e.titles);
-  return generic[Math.floor(rng() * generic.length)].text;
+function pickFrom(pools, title, rng) {
+  const specific = pools.specific.get(title);
+  if (specific && rng() < TITLE_MATCH_CHANCE) {
+    return specific[Math.floor(rng() * specific.length)];
+  }
+  return pools.generic[Math.floor(rng() * pools.generic.length)];
 }
 
 /**
@@ -327,7 +355,7 @@ function pickFrom(pool, title, rng) {
  * @param {() => number} [rng]
  */
 export function pickChildhood(title, rng = Math.random) {
-  return pickFrom(CHILDHOODS, title, rng);
+  return pickFrom(CHILDHOOD_POOLS, title, rng);
 }
 
 /**
@@ -335,5 +363,5 @@ export function pickChildhood(title, rng = Math.random) {
  * @param {() => number} [rng]
  */
 export function pickProfession(title, rng = Math.random) {
-  return pickFrom(PROFESSIONS, title, rng);
+  return pickFrom(PROFESSION_POOLS, title, rng);
 }

@@ -275,26 +275,8 @@ export function createCowPanel(opts) {
 
     if (childhood || profession) {
       backstoryBlock.style.display = 'block';
-      childhoodLine.replaceChildren();
-      if (childhood) {
-        const tag = document.createElement('span');
-        Object.assign(tag.style, { color: '#8fa0af', fontWeight: '600' });
-        tag.textContent = 'Grew up: ';
-        const body = document.createElement('span');
-        Object.assign(body.style, { fontStyle: 'italic' });
-        body.textContent = childhood;
-        childhoodLine.append(tag, body);
-      }
-      professionLine.replaceChildren();
-      if (profession) {
-        const tag = document.createElement('span');
-        Object.assign(tag.style, { color: '#8fa0af', fontWeight: '600' });
-        tag.textContent = 'Worked as: ';
-        const body = document.createElement('span');
-        Object.assign(body.style, { fontStyle: 'italic' });
-        body.textContent = profession;
-        professionLine.append(tag, body);
-      }
+      fillBackstoryLine(childhoodLine, 'Grew up: ', childhood);
+      fillBackstoryLine(professionLine, 'Worked as: ', profession);
     } else {
       backstoryBlock.style.display = 'none';
     }
@@ -543,6 +525,23 @@ function row(label, value) {
   const frag = document.createDocumentFragment();
   frag.append(l, v);
   return frag;
+}
+
+/**
+ * @param {HTMLElement} line
+ * @param {string} label
+ * @param {string} text
+ */
+function fillBackstoryLine(line, label, text) {
+  line.replaceChildren();
+  if (!text) return;
+  const tag = document.createElement('span');
+  Object.assign(tag.style, { color: '#8fa0af', fontWeight: '600' });
+  tag.textContent = label;
+  const body = document.createElement('span');
+  Object.assign(body.style, { fontStyle: 'italic' });
+  body.textContent = text;
+  line.append(tag, body);
 }
 
 /**
