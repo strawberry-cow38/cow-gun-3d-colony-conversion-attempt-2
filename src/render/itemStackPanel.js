@@ -19,11 +19,12 @@ import { ITEM_INFO } from '../world/items.js';
  * @property {import('../boot/input.js').BootState} state
  * @property {import('../jobs/board.js').JobBoard} board
  * @property {() => void} onChange
+ * @property {(itemId: number, size: number) => void} [onInstall]
  */
 
 /** @param {ItemStackPanelOpts} opts */
 export function createItemStackPanel(opts) {
-  const { world, state, board, onChange } = opts;
+  const { world, state, board, onChange, onInstall } = opts;
 
   const root = document.createElement('div');
   root.id = 'item-stack-panel';
@@ -83,7 +84,33 @@ export function createItemStackPanel(opts) {
     toggleForbidden();
   });
 
-  root.append(title, meta, desc, forbidBtn);
+  const installBtn = document.createElement('button');
+  Object.assign(installBtn.style, {
+    display: 'none',
+    width: '100%',
+    padding: '4px 8px',
+    marginTop: '4px',
+    background: 'rgba(60, 70, 100, 0.85)',
+    border: '1px solid rgba(255, 216, 96, 0.55)',
+    borderRadius: '3px',
+    color: '#ffe19a',
+    font: 'inherit',
+    cursor: 'pointer',
+    textAlign: 'center',
+  });
+  installBtn.type = 'button';
+  installBtn.textContent = 'Install';
+  installBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!onInstall) return;
+    if (state.selectedItems.size !== 1) return;
+    const id = /** @type {number} */ (state.selectedItems.values().next().value);
+    const p = world.get(id, 'Painting');
+    if (!p) return;
+    onInstall(id, p.size | 0);
+  });
+
+  root.append(title, meta, desc, forbidBtn, installBtn);
   document.body.appendChild(root);
 
   function toggleForbidden() {
@@ -122,7 +149,8 @@ export function createItemStackPanel(opts) {
       ? 'Multiple item kinds selected.'
       : (kind && ITEM_INFO[kind]?.description) || '';
     const allForbidden = forbiddenCount === n;
-    const key = `${n}|${label}|${totalCount}/${totalCapacity}|${forbiddenCount}|${allForbidden ? 'F' : 'U'}`;
+    const canInstall = !!onInstall && n === 1 && !mixed && kind === 'painting';
+    const key = `${n}|${label}|${totalCount}/${totalCapacity}|${forbiddenCount}|${allForbidden ? 'F' : 'U'}|${canInstall ? 'I' : 'N'}`;
     if (key === lastKey) return;
     lastKey = key;
 
@@ -140,6 +168,7 @@ export function createItemStackPanel(opts) {
       forbidBtn.style.background = 'rgba(40, 40, 50, 0.8)';
       forbidBtn.style.borderColor = 'rgba(255, 255, 255, 0.22)';
     }
+    installBtn.style.display = canInstall ? 'block' : 'none';
   }
 
   return { update, root, toggleForbidden };

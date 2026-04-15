@@ -231,6 +231,7 @@ const {
   furnaceSelectionViz,
   easelInstancer,
   paintingInstancer,
+  wallArtInstancer,
   buildSiteInstancer,
   cropInstancer,
   cuttableMarkerInstancer,
@@ -566,6 +567,8 @@ const {
   deconstructDesignator,
   removeRoofDesignator,
   removeFloorDesignator,
+  installDesignator,
+  uninstallDesignator,
   cancelDesignator,
 } = setupDesignators({
   canvas,
@@ -603,6 +606,7 @@ const buildTab = createBuildTab({
   deconstructDesignator,
   removeRoofDesignator,
   removeFloorDesignator,
+  uninstallDesignator,
   cancelDesignator,
 });
 
@@ -615,6 +619,7 @@ const itemStackPanel = createItemStackPanel({
     itemSelectionViz.markDirty();
     updateHud();
   },
+  onInstall: (itemId, size) => installDesignator.activate(itemId, size),
 });
 
 const furnacePanel = createFurnacePanel({
@@ -742,6 +747,7 @@ installKeyboard({
   roofInstancer,
   floorInstancer,
   furnaceInstancer,
+  wallArtInstancer,
   buildSiteInstancer,
   wallInstancer,
   cropInstancer,

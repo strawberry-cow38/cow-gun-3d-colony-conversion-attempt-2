@@ -112,6 +112,19 @@
  *              Attribution fields are snapshots — `artistName` is frozen
  *              even if the cow dies or gets renamed. `quality` is a forward-
  *              compat framework field; always `'normal'` today.
+ *
+ * WallArt / WallArtViz
+ *              { face, size, title, palette[], shapes[], quality,
+ *                artistCowId, artistName, easelI, easelJ, startTick, finishTick,
+ *                uninstallJobId, progress }
+ *              The "installed" form of a painting: mounted flat against a wall
+ *              face on its TileAnchor tile. `face` is a FACING index (0..3,
+ *              S/E/N/W) pointing at the wall the art hangs on. `size` mirrors
+ *              Painting.size and spans that many tiles along the wall. All
+ *              Painting metadata is duplicated here so the WallArt can round-
+ *              trip without the original Item entity. `uninstallJobId > 0`
+ *              means a cow has been dispatched to pry it off the wall;
+ *              `progress` 0..1 drives in-progress visual feedback.
  */
 
 /**
@@ -245,4 +258,23 @@ export function registerComponents(world) {
     finishTick: 0,
   }));
   world.defineComponent('PaintingViz', () => ({}));
+  world.defineComponent('WallArt', () => ({
+    face: 0,
+    size: 1,
+    title: '',
+    /** @type {string[]} */
+    palette: [],
+    /** @type {{ type: string, x: number, y: number, w: number, h: number, color: number }[]} */
+    shapes: [],
+    quality: 'normal',
+    artistCowId: 0,
+    artistName: '',
+    easelI: 0,
+    easelJ: 0,
+    startTick: 0,
+    finishTick: 0,
+    uninstallJobId: 0,
+    progress: 0,
+  }));
+  world.defineComponent('WallArtViz', () => ({}));
 }

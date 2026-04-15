@@ -28,6 +28,7 @@ import {
   hydrateFurnaces,
   hydrateItems,
   hydratePaintings,
+  hydrateWallArt,
   hydrateRoofs,
   hydrateTileGrid,
   hydrateTorches,
@@ -431,6 +432,7 @@ async function loadGame(ctx) {
     hydrateFurnaces(world, tileGrid, jobBoard, migrated);
     hydrateEasels(world, tileGrid, jobBoard, migrated);
     hydratePaintings(world, tileGrid, migrated);
+    hydrateWallArt(world, tileGrid, migrated);
     ctx.rooms.rebuild();
     ctx.roomOverlay.markDirty();
     ctx.ignoreRoofOverlay.markDirty();
@@ -446,6 +448,7 @@ async function loadGame(ctx) {
     ctx.wallInstancer?.markDirty();
     ctx.cropInstancer.markDirty();
     ctx.furnaceInstancer?.markDirty();
+    ctx.wallArtInstancer?.markDirty();
     hydrateCows(world, migrated);
     // Job board was cleared above; any serialized cow job references are
     // stale. Reset so the brain re-picks from the fresh board.

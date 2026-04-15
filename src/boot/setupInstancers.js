@@ -37,6 +37,7 @@ import { createStockpileOverlay } from '../render/stockpileOverlay.js';
 import { createTilledOverlay } from '../render/tilledOverlay.js';
 import { createTorchInstancer } from '../render/torchInstancer.js';
 import { createTreeInstancer } from '../render/treeInstancer.js';
+import { createWallArtInstancer } from '../render/wallArtInstancer.js';
 import { createWallInstancer } from '../render/wallInstancer.js';
 
 /**
@@ -69,6 +70,7 @@ export function setupInstancers({ scene, audio, gridW, gridH }) {
     furnaceSelectionViz: createFurnaceSelectionViz(scene),
     easelInstancer: createEaselInstancer(scene, 64),
     paintingInstancer: createPaintingInstancer(scene, 128),
+    wallArtInstancer: createWallArtInstancer(scene, 128),
     buildSiteInstancer: createBuildSiteInstancer(scene, 1024),
     cropInstancer: createCropInstancer(scene, 1024),
     cuttableMarkerInstancer: createCuttableMarkerInstancer(scene, 256),

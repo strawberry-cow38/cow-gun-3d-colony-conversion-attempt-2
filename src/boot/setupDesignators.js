@@ -30,8 +30,10 @@ import { CutDesignator } from '../render/cutDesignator.js';
 import { DeconstructDesignator } from '../render/deconstructDesignator.js';
 import { FarmZoneDesignator } from '../render/farmZoneDesignator.js';
 import { IgnoreRoofDesignator } from '../render/ignoreRoofDesignator.js';
+import { InstallDesignator } from '../render/installDesignator.js';
 import { MineDesignator } from '../render/mineDesignator.js';
 import { StockpileDesignator } from '../render/stockpileDesignator.js';
+import { UninstallDesignator } from '../render/uninstallDesignator.js';
 
 /**
  * @param {{
@@ -243,6 +245,20 @@ export function setupDesignators({
   });
   designators.push(removeFloorDesignator);
 
+  const installDesignator = new InstallDesignator({
+    ...jobArgs,
+    scene,
+    onChanged: () => notifyChanged(installDesignator),
+  });
+  designators.push(installDesignator);
+
+  const uninstallDesignator = new UninstallDesignator({
+    ...jobArgs,
+    scene,
+    onChanged: () => notifyChanged(uninstallDesignator),
+  });
+  designators.push(uninstallDesignator);
+
   const cancelDesignator = new CancelDesignator({
     ...jobArgs,
     buildSiteInstancer,
@@ -276,6 +292,8 @@ export function setupDesignators({
     deconstructDesignator,
     removeRoofDesignator,
     removeFloorDesignator,
+    installDesignator,
+    uninstallDesignator,
     cancelDesignator,
   };
 }

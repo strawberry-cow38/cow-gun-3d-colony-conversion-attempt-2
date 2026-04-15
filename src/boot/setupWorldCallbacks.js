@@ -46,6 +46,7 @@ export function setupWorldCallbacks({
     furnaceInstancer,
     easelInstancer,
     paintingInstancer,
+    wallArtInstancer,
     buildSiteInstancer,
     deconstructOverlay,
     roomOverlay,
@@ -165,6 +166,7 @@ export function setupWorldCallbacks({
       itemInstancer.markDirty();
       itemSelectionViz.markDirty();
       paintingInstancer.markDirty();
+      wallArtInstancer.markDirty();
       buildSiteInstancer.markDirty();
     },
   };

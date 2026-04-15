@@ -15,3 +15,16 @@ export const FACING_OFFSETS = [
 ];
 
 export const FACING_YAWS = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
+
+/**
+ * Perpendicular step along a wall span for a given facing — size>1 wall art
+ * (and any future placeable that spans multiple wall tiles) extends in this
+ * direction. Facing south/north (visible from ±z) walks east-west; facing
+ * east/west (visible from ±x) walks north-south.
+ */
+export const FACING_SPAN_OFFSETS = [
+  { di: 1, dj: 0 },
+  { di: 0, dj: 1 },
+  { di: -1, dj: 0 },
+  { di: 0, dj: -1 },
+];

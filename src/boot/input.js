@@ -42,6 +42,7 @@ import { dispatch } from './hotkeys.js';
  * @property {{ markDirty: () => void } | null} [wallInstancer]
  * @property {{ markDirty: () => void }} cropInstancer
  * @property {{ markDirty: () => void } | null} [furnaceInstancer]
+ * @property {{ markDirty: () => void } | null} [wallArtInstancer]
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
  * @property {{ markDirty: () => void }} roomOverlay
  * @property {{ markDirty: () => void }} ignoreRoofOverlay

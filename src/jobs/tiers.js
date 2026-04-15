@@ -32,6 +32,8 @@ export const JOB_TIERS = {
   harvest: 2,
   deliver: 2,
   paint: 2,
+  install: 2,
+  uninstall: 2,
   haul: 3,
   supply: 3,
   wander: 4,

@@ -27,7 +27,7 @@ import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
 import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropIsReady, cropKindFor } from '../world/crops.js';
-import { FACING_OFFSETS } from '../world/facing.js';
+import { FACING_OFFSETS, FACING_SPAN_OFFSETS } from '../world/facing.js';
 import {
   FOOD_NUTRITION,
   HUNGER_EAT_THRESHOLD,
@@ -398,6 +398,26 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (
+                candidate &&
+                candidate.kind === 'install' &&
+                board.claim(candidate.id, id)
+              ) {
+                job.kind = 'install';
+                job.state = 'pathing-to-item';
+                job.payload = { ...candidate.payload, jobId: candidate.id };
+                path.steps = [];
+                path.index = 0;
+              } else if (
+                candidate &&
+                candidate.kind === 'uninstall' &&
+                board.claim(candidate.id, id)
+              ) {
+                job.kind = 'uninstall';
+                job.state = 'pathing';
+                job.payload = { ...candidate.payload, jobId: candidate.id };
+                path.steps = [];
+                path.index = 0;
               }
             }
 
@@ -432,6 +452,10 @@ export function makeCowBrainSystem(deps) {
           runHarvestJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'paint') {
           runPaintJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
+        } else if (job.kind === 'install') {
+          runInstallJob(world, job, path, pos, inv, grid, paths, board, deps);
+        } else if (job.kind === 'uninstall') {
+          runUninstallJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'haul' || job.kind === 'deliver' || job.kind === 'supply') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
@@ -1977,6 +2001,341 @@ function finishPaint(world, grid, cowId, easelId, easel, bills, tick, deps) {
     Position: { x: w.x, y: grid.getElevation(anchor.i, anchor.j), z: w.z },
   });
   deps.onItemChange();
+}
+
+/** Fixed work-tick cost for installing or uninstalling wall art. */
+const INSTALL_TICKS = 45;
+
+/**
+ * Install job state machine. Fetch the painting item from its tile, carry it
+ * to the workspot adjacent to the target wall, then swap it for a WallArt
+ * entity mounted on that wall face.
+ *
+ * The painting's metadata is stashed into `job.payload.art` at pickup time so
+ * the Item entity can be despawned without losing title/palette/attribution.
+ * On install we spawn a fresh WallArt from that snapshot.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runInstallJob(world, job, path, pos, inv, grid, paths, board, deps) {
+  const { jobId, itemId, anchorI, anchorJ, workI, workJ, face, size } =
+    /** @type {{ jobId: number, itemId: number, anchorI: number, anchorJ: number, workI: number, workJ: number, face: number, size: number }} */ (
+      job.payload
+    );
+
+  // Any wall in the span missing → abort. Restore the painting if we're
+  // already carrying its metadata so the player doesn't lose the artwork.
+  if (!allWallsIntact(grid, anchorI, anchorJ, face, size)) {
+    const carried = /** @type {any} */ (job.payload.art);
+    if (carried) {
+      spawnPaintingFromSnapshot(world, grid, pos, carried);
+      deps.onItemChange();
+    }
+    board.complete(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing-to-item') {
+    const item = world.get(itemId, 'Item');
+    const painting = world.get(itemId, 'Painting');
+    const anchor = world.get(itemId, 'TileAnchor');
+    if (!item || !painting || !anchor || item.forbidden === true) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i: anchor.i, j: anchor.j });
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking-to-item';
+    return;
+  }
+
+  if (job.state === 'walking-to-item') {
+    if (path.index >= path.steps.length) {
+      job.state = 'picking-up';
+      job.payload.ticksRemaining = PICKUP_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'picking-up') {
+    const remaining = (job.payload.ticksRemaining ?? PICKUP_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    if (remaining <= 0) {
+      const item = world.get(itemId, 'Item');
+      const painting = world.get(itemId, 'Painting');
+      if (!item || !painting || item.count <= 0) {
+        board.complete(jobId);
+        job.kind = 'none';
+        job.state = 'idle';
+        job.payload = {};
+        return;
+      }
+      // Snapshot painting metadata onto the job before despawning the Item
+      // so the WallArt spawn on completion can clone it all back.
+      job.payload.art = snapshotPainting(painting);
+      item.count -= 1;
+      if (item.count <= 0) world.despawn(itemId);
+      deps.onItemChange();
+      job.state = 'pathing-to-wall';
+    }
+    return;
+  }
+
+  if (job.state === 'pathing-to-wall') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i: workI, j: workJ });
+    if (!route || route.length === 0) {
+      const carried = /** @type {any} */ (job.payload.art);
+      if (carried) {
+        spawnPaintingFromSnapshot(world, grid, pos, carried);
+        deps.onItemChange();
+      }
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking-to-wall';
+    return;
+  }
+
+  if (job.state === 'walking-to-wall') {
+    if (path.index >= path.steps.length) {
+      job.state = 'installing';
+      job.payload.ticksRemaining = INSTALL_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'installing') {
+    const remaining = (job.payload.ticksRemaining ?? INSTALL_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    if (remaining > 0 && remaining % 15 === 0) {
+      deps.onCowHammer(pos);
+    }
+    if (remaining <= 0) {
+      const art = /** @type {any} */ (job.payload.art);
+      if (art) {
+        const w = tileToWorld(anchorI, anchorJ, grid.W, grid.H);
+        world.spawn({
+          WallArt: {
+            face,
+            size,
+            title: art.title,
+            palette: art.palette,
+            shapes: art.shapes,
+            quality: art.quality,
+            artistCowId: art.artistCowId,
+            artistName: art.artistName,
+            easelI: art.easelI,
+            easelJ: art.easelJ,
+            startTick: art.startTick,
+            finishTick: art.finishTick,
+            uninstallJobId: 0,
+            progress: 0,
+          },
+          WallArtViz: {},
+          TileAnchor: { i: anchorI, j: anchorJ },
+          Position: { x: w.x, y: grid.getElevation(anchorI, anchorJ), z: w.z },
+        });
+        deps.onItemChange();
+      }
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+    // Inventory is unused for the paint-carry — cow is empty-handed.
+    void inv;
+  }
+}
+
+/**
+ * Uninstall job state machine. Walk to the workspot of a WallArt, pry it off
+ * the wall, and spawn a painting Item at the workspot tile. The WallArt's
+ * metadata is preserved onto the new painting so the piece keeps its
+ * attribution + size across install/uninstall cycles.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {BrainDeps} deps
+ */
+function runUninstallJob(world, job, path, pos, grid, paths, board, deps) {
+  const { jobId, wallArtId, workI, workJ } =
+    /** @type {{ jobId: number, wallArtId: number, workI: number, workJ: number }} */ (
+      job.payload
+    );
+  const art = world.get(wallArtId, 'WallArt');
+  const anchor = world.get(wallArtId, 'TileAnchor');
+  if (!art || !anchor) {
+    board.complete(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i: workI, j: workJ });
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      job.state = 'prying';
+      job.payload.ticksRemaining = INSTALL_TICKS;
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'prying') {
+    const remaining = (job.payload.ticksRemaining ?? INSTALL_TICKS) - 1;
+    job.payload.ticksRemaining = remaining;
+    art.progress = 1 - remaining / INSTALL_TICKS;
+    if (remaining > 0 && remaining % 15 === 0) {
+      deps.onCowHammer(pos);
+    }
+    if (remaining <= 0) {
+      const snapshot = snapshotPainting({
+        size: art.size,
+        title: art.title,
+        palette: art.palette,
+        shapes: art.shapes,
+        quality: art.quality,
+        artistCowId: art.artistCowId,
+        artistName: art.artistName,
+        easelI: art.easelI,
+        easelJ: art.easelJ,
+        startTick: art.startTick,
+        finishTick: art.finishTick,
+      });
+      world.despawn(wallArtId);
+      const w = tileToWorld(workI, workJ, grid.W, grid.H);
+      const tempPos = { x: w.x, y: grid.getElevation(workI, workJ), z: w.z };
+      spawnPaintingFromSnapshot(world, grid, tempPos, snapshot);
+      deps.onItemChange();
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * True if every wall tile in the `size`-long span starting at (anchorI, anchorJ)
+ * extending in the FACING's perpendicular direction is still a built wall.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} anchorI @param {number} anchorJ
+ * @param {number} face @param {number} size
+ */
+function allWallsIntact(grid, anchorI, anchorJ, face, size) {
+  const step = FACING_SPAN_OFFSETS[face] ?? FACING_SPAN_OFFSETS[0];
+  for (let k = 0; k < size; k++) {
+    const wi = anchorI + step.di * k;
+    const wj = anchorJ + step.dj * k;
+    if (!grid.inBounds(wi, wj)) return false;
+    if (!grid.isWall(wi, wj)) return false;
+  }
+  return true;
+}
+
+/**
+ * Freeze a Painting component's metadata into a plain object so it survives
+ * the source entity's despawn. Palette/shapes arrays are shallow-copied so
+ * later mutation of the original can't leak into the snapshot.
+ *
+ * @param {{ size: number, title: string, palette: string[], shapes: any[], quality: string, artistCowId: number, artistName: string, easelI: number, easelJ: number, startTick: number, finishTick: number }} p
+ */
+function snapshotPainting(p) {
+  return {
+    size: p.size,
+    title: p.title,
+    palette: p.palette.slice(),
+    shapes: p.shapes.slice(),
+    quality: p.quality,
+    artistCowId: p.artistCowId,
+    artistName: p.artistName,
+    easelI: p.easelI,
+    easelJ: p.easelJ,
+    startTick: p.startTick,
+    finishTick: p.finishTick,
+  };
+}
+
+/**
+ * Spawn a painting Item at the nearest tile to `pos`, clothed in the snapshot's
+ * attribution + palette. Used when an install job aborts mid-flight (cow was
+ * carrying a painting and the wall went away) so the art isn't lost.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {ReturnType<typeof snapshotPainting>} snapshot
+ */
+function spawnPaintingFromSnapshot(world, grid, pos, snapshot) {
+  const tile = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+  const w = tileToWorld(tile.i, tile.j, grid.W, grid.H);
+  world.spawn({
+    Item: { kind: 'painting', count: 1, capacity: 1, forbidden: false },
+    Painting: { ...snapshot },
+    PaintingViz: {},
+    TileAnchor: { i: tile.i, j: tile.j },
+    Position: { x: w.x, y: grid.getElevation(tile.i, tile.j), z: w.z },
+  });
 }
 
 /**

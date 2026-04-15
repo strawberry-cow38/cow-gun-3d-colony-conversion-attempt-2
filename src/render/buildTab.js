@@ -58,6 +58,7 @@ import { colorToCss } from './dragSizeLabel.js';
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
  * @property {ToggleableDesignator} removeFloorDesignator
+ * @property {ToggleableDesignator} uninstallDesignator
  * @property {ToggleableDesignator} cancelDesignator
  */
 
@@ -208,6 +209,14 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to tear up floors only (walls/doors/roofs untouched)',
       activeColor: '#d4a14a',
       designator: opts.removeFloorDesignator,
+    },
+    {
+      id: 'uninstall',
+      label: 'Uninstall Art',
+      icon: '🖼️',
+      hotkeyHint: 'click a painting on a wall to pry it off and return it to storage',
+      activeColor: '#ff8fd0',
+      designator: opts.uninstallDesignator,
     },
     {
       id: 'cancel',

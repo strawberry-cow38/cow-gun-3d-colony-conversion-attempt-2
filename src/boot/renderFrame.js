@@ -95,6 +95,7 @@ export function createRenderFrame({
     furnaceSelectionViz,
     easelInstancer,
     paintingInstancer,
+    wallArtInstancer,
     buildSiteInstancer,
     cropInstancer,
     cuttableMarkerInstancer,
@@ -171,6 +172,7 @@ export function createRenderFrame({
     furnaceSelectionViz.update(world, tileGrid, state.selectedFurnaces);
     easelInstancer.update(world, tileGrid);
     paintingInstancer.update(world, tileGrid);
+    wallArtInstancer.update(world, tileGrid);
     roofCollapseParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);
