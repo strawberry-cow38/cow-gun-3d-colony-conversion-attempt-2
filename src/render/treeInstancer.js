@@ -23,6 +23,7 @@ const TRUNK_HEIGHT = 2.2 * UNITS_PER_METER;
 const TRUNK_RADIUS = 0.18 * UNITS_PER_METER;
 const CANOPY_RADIUS = 0.9 * UNITS_PER_METER;
 const CANOPY_HEIGHT = 1.6 * UNITS_PER_METER;
+const SPHERE_CANOPY_RADIUS = 0.9 * UNITS_PER_METER;
 
 const MARKER_HANDLE_LENGTH = 0.55 * UNITS_PER_METER;
 const MARKER_HANDLE_RADIUS = 0.05 * UNITS_PER_METER;
@@ -37,7 +38,7 @@ const MARKER_SPIN_RATE = 1.1; // rad/sec
 // Pre-bake per-kind THREE.Color instances so setColorAt doesn't re-unpack a
 // hex int on every instance write. Oak doubles as the fallback for unknown
 // kinds (legacy saves default to oak too).
-/** @type {Map<string, { trunk: THREE.Color, canopy: THREE.Color, trunkScale: number[], canopyScale: number[] }>} */
+/** @type {Map<string, { trunk: THREE.Color, canopy: THREE.Color, trunkScale: number[], canopyScale: number[], canopyShape: 'cone' | 'sphere' }>} */
 const TREE_DRAW = new Map();
 for (const kind of TREE_KINDS) {
   const v = TREE_VISUALS[kind];
@@ -47,6 +48,7 @@ for (const kind of TREE_KINDS) {
     canopy: new THREE.Color(v.canopyColor),
     trunkScale: v.trunkScale,
     canopyScale: v.canopyScale,
+    canopyShape: v.canopyShape,
   });
 }
 const FALLBACK_DRAW = /** @type {NonNullable<ReturnType<typeof TREE_DRAW.get>>} */ (
@@ -82,15 +84,25 @@ export function createTreeInstancer(scene, capacity = 2048) {
   trunkMesh.receiveShadow = true;
   scene.add(trunkMesh);
 
-  const canopyGeo = new THREE.ConeGeometry(CANOPY_RADIUS, CANOPY_HEIGHT, 7, 1);
-  canopyGeo.translate(0, TRUNK_HEIGHT + CANOPY_HEIGHT * 0.5, 0);
   const canopyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
-  const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, capacity);
-  canopyMesh.count = 0;
-  canopyMesh.frustumCulled = false;
-  canopyMesh.castShadow = true;
-  canopyMesh.receiveShadow = true;
-  scene.add(canopyMesh);
+
+  const canopyConeGeo = new THREE.ConeGeometry(CANOPY_RADIUS, CANOPY_HEIGHT, 7, 1);
+  canopyConeGeo.translate(0, TRUNK_HEIGHT + CANOPY_HEIGHT * 0.5, 0);
+  const canopyConeMesh = new THREE.InstancedMesh(canopyConeGeo, canopyMat, capacity);
+  canopyConeMesh.count = 0;
+  canopyConeMesh.frustumCulled = false;
+  canopyConeMesh.castShadow = true;
+  canopyConeMesh.receiveShadow = true;
+  scene.add(canopyConeMesh);
+
+  const canopySphereGeo = new THREE.SphereGeometry(SPHERE_CANOPY_RADIUS, 8, 6);
+  canopySphereGeo.translate(0, TRUNK_HEIGHT + SPHERE_CANOPY_RADIUS, 0);
+  const canopySphereMesh = new THREE.InstancedMesh(canopySphereGeo, canopyMat, capacity);
+  canopySphereMesh.count = 0;
+  canopySphereMesh.frustumCulled = false;
+  canopySphereMesh.castShadow = true;
+  canopySphereMesh.receiveShadow = true;
+  scene.add(canopySphereMesh);
 
   // Axe marker. Handle offset so the grip sits at y=0 and the head at the top.
   const markerCap = Math.min(capacity, 256);
@@ -130,13 +142,15 @@ export function createTreeInstancer(scene, capacity = 2048) {
    */
   function update(world, grid) {
     if (!dirty) return;
-    let i = 0;
+    let iTrunk = 0;
+    let iCone = 0;
+    let iSphere = 0;
     slotToEntity.length = 0;
     // _quat is shared with updateMarkers which spins it — reset to identity
     // so static trees render upright regardless of frame order.
     _quat.identity();
     for (const { id, components } of world.query(['Tree', 'TileAnchor', 'TreeViz'])) {
-      if (i >= capacity) break;
+      if (iTrunk >= capacity) break;
       const anchor = components.TileAnchor;
       const tree = components.Tree;
       const draw = TREE_DRAW.get(tree.kind) ?? FALLBACK_DRAW;
@@ -146,21 +160,31 @@ export function createTreeInstancer(scene, capacity = 2048) {
       _position.set(w.x, y, w.z);
       _trunkScale.set(draw.trunkScale[0] * g, draw.trunkScale[1] * g, draw.trunkScale[2] * g);
       _matrix.compose(_position, _quat, _trunkScale);
-      trunkMesh.setMatrixAt(i, _matrix);
-      trunkMesh.setColorAt(i, draw.trunk);
+      trunkMesh.setMatrixAt(iTrunk, _matrix);
+      trunkMesh.setColorAt(iTrunk, draw.trunk);
       _canopyScale.set(draw.canopyScale[0] * g, draw.canopyScale[1] * g, draw.canopyScale[2] * g);
       _matrix.compose(_position, _quat, _canopyScale);
-      canopyMesh.setMatrixAt(i, _matrix);
-      canopyMesh.setColorAt(i, draw.canopy);
-      slotToEntity[i] = id;
-      i++;
+      if (draw.canopyShape === 'sphere') {
+        canopySphereMesh.setMatrixAt(iSphere, _matrix);
+        canopySphereMesh.setColorAt(iSphere, draw.canopy);
+        iSphere++;
+      } else {
+        canopyConeMesh.setMatrixAt(iCone, _matrix);
+        canopyConeMesh.setColorAt(iCone, draw.canopy);
+        iCone++;
+      }
+      slotToEntity[iTrunk] = id;
+      iTrunk++;
     }
-    trunkMesh.count = i;
-    canopyMesh.count = i;
+    trunkMesh.count = iTrunk;
+    canopyConeMesh.count = iCone;
+    canopySphereMesh.count = iSphere;
     trunkMesh.instanceMatrix.needsUpdate = true;
-    canopyMesh.instanceMatrix.needsUpdate = true;
+    canopyConeMesh.instanceMatrix.needsUpdate = true;
+    canopySphereMesh.instanceMatrix.needsUpdate = true;
     if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
-    if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
+    if (canopyConeMesh.instanceColor) canopyConeMesh.instanceColor.needsUpdate = true;
+    if (canopySphereMesh.instanceColor) canopySphereMesh.instanceColor.needsUpdate = true;
     dirty = false;
   }
 
@@ -212,7 +236,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
 
   return {
     trunkMesh,
-    canopyMesh,
+    canopyConeMesh,
+    canopySphereMesh,
     update,
     updateMarkers,
     markDirty,

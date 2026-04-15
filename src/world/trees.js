@@ -31,6 +31,7 @@ export const TREE_GROWTH_TICKS = {
  *   canopyColor: number,
  *   trunkScale: [number, number, number],
  *   canopyScale: [number, number, number],
+ *   canopyShape: 'cone' | 'sphere',
  * }>}
  */
 export const TREE_VISUALS = {
@@ -39,24 +40,28 @@ export const TREE_VISUALS = {
     canopyColor: 0x9fcc64,
     trunkScale: [0.75, 1.15, 0.75],
     canopyScale: [0.85, 1.0, 0.85],
+    canopyShape: 'sphere',
   },
   pine: {
     trunkColor: 0x4a2f1c,
     canopyColor: 0x1d4d2a,
-    trunkScale: [0.9, 0.75, 0.9],
+    trunkScale: [1.35, 1.125, 1.35],
     canopyScale: [0.75, 1.6, 0.75],
+    canopyShape: 'cone',
   },
   oak: {
     trunkColor: 0x5a3820,
     canopyColor: 0x2e6f3a,
     trunkScale: [1.3, 1.1, 1.3],
     canopyScale: [1.3, 1.05, 1.3],
+    canopyShape: 'sphere',
   },
   maple: {
     trunkColor: 0x7d5a3c,
     canopyColor: 0xc8632a,
     trunkScale: [1.0, 1.0, 1.0],
     canopyScale: [1.1, 1.0, 1.1],
+    canopyShape: 'sphere',
   },
 };
 
