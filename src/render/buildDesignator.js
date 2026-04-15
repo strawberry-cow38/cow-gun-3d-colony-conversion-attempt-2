@@ -212,7 +212,9 @@ export class BuildDesignator {
     // the cursor so the player can see footprint AND facing-implied workspot
     // before committing.
     this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
-    this.workSpotPreview = FACING_KINDS.has(config.kind) ? buildPreview(scene, WORK_SPOT_COLOR) : null;
+    this.workSpotPreview = FACING_KINDS.has(config.kind)
+      ? buildPreview(scene, WORK_SPOT_COLOR)
+      : null;
 
     canvas.addEventListener('mousedown', (e) => this.#onDown(e), true);
     addEventListener('mousemove', (e) => this.#onMove(e));

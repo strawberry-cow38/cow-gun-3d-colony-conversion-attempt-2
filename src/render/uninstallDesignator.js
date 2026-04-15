@@ -150,8 +150,7 @@ export class UninstallDesignator {
       this.#hidePreview();
       return;
     }
-    const color =
-      hit.art.uninstallJobId > 0 ? PREVIEW_COLOR_INVALID : PREVIEW_COLOR_VALID;
+    const color = hit.art.uninstallJobId > 0 ? PREVIEW_COLOR_INVALID : PREVIEW_COLOR_VALID;
     const step = FACING_SPAN_OFFSETS[hit.face] ?? FACING_SPAN_OFFSETS[0];
     const first = { i: hit.anchor.i, j: hit.anchor.j };
     const last = {
@@ -245,11 +244,21 @@ function renderSpanPreview(preview, grid, a, b, color) {
   }
   y += WALL_HEIGHT + PREVIEW_CLEARANCE;
   const p = preview.positions;
-  p[0] = x0; p[1] = y; p[2] = z0;
-  p[3] = x1; p[4] = y; p[5] = z0;
-  p[6] = x1; p[7] = y; p[8] = z1;
-  p[9] = x0; p[10] = y; p[11] = z1;
-  p[12] = x0; p[13] = y; p[14] = z0;
+  p[0] = x0;
+  p[1] = y;
+  p[2] = z0;
+  p[3] = x1;
+  p[4] = y;
+  p[5] = z0;
+  p[6] = x1;
+  p[7] = y;
+  p[8] = z1;
+  p[9] = x0;
+  p[10] = y;
+  p[11] = z1;
+  p[12] = x0;
+  p[13] = y;
+  p[14] = z0;
   preview.geo.attributes.position.needsUpdate = true;
   /** @type {THREE.LineBasicMaterial} */
   (preview.line.material).color.setHex(color);
@@ -269,11 +278,21 @@ function renderTilePreview(preview, grid, i, j, color) {
   const z1 = w.z + TILE_SIZE * 0.5;
   const y = grid.getElevation(i, j) + PREVIEW_CLEARANCE;
   const p = preview.positions;
-  p[0] = x0; p[1] = y; p[2] = z0;
-  p[3] = x1; p[4] = y; p[5] = z0;
-  p[6] = x1; p[7] = y; p[8] = z1;
-  p[9] = x0; p[10] = y; p[11] = z1;
-  p[12] = x0; p[13] = y; p[14] = z0;
+  p[0] = x0;
+  p[1] = y;
+  p[2] = z0;
+  p[3] = x1;
+  p[4] = y;
+  p[5] = z0;
+  p[6] = x1;
+  p[7] = y;
+  p[8] = z1;
+  p[9] = x0;
+  p[10] = y;
+  p[11] = z1;
+  p[12] = x0;
+  p[13] = y;
+  p[14] = z0;
   preview.geo.attributes.position.needsUpdate = true;
   /** @type {THREE.LineBasicMaterial} */
   (preview.line.material).color.setHex(color);

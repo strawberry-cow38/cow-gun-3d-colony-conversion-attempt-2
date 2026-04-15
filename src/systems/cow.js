@@ -1157,8 +1157,9 @@ function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, 
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
   const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'} */ (
-    DECON_COMP_BY_KIND[/** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'} */ (kind)] ??
-      'Wall'
+    DECON_COMP_BY_KIND[
+      /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'} */ (kind)
+    ] ?? 'Wall'
   );
   const tag = world.get(entityId, compName);
   const boardJob = board.get(jobId);
@@ -1595,11 +1596,12 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
       job.state === 'walking-to-item' ||
       job.state === 'picking-up')
   ) {
-    const station = typeof furnaceId === 'number'
-      ? world.get(furnaceId, 'Furnace')
-      : typeof easelId === 'number'
-        ? world.get(easelId, 'Easel')
-        : null;
+    const station =
+      typeof furnaceId === 'number'
+        ? world.get(furnaceId, 'Furnace')
+        : typeof easelId === 'number'
+          ? world.get(easelId, 'Easel')
+          : null;
     if (station && station.activeBillId > 0) {
       board.complete(jobId);
       job.kind = 'none';
@@ -1806,9 +1808,10 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
             }
           }
         } else if (toSupply && (typeof furnaceId === 'number' || typeof easelId === 'number')) {
-          const station = typeof furnaceId === 'number'
-            ? world.get(furnaceId, 'Furnace')
-            : world.get(/** @type {number} */ (easelId), 'Easel');
+          const station =
+            typeof furnaceId === 'number'
+              ? world.get(furnaceId, 'Furnace')
+              : world.get(/** @type {number} */ (easelId), 'Easel');
           for (const stack of inv.items) {
             if (station && stack.kind === kind) {
               // Matching ingredient → deposit into station.stored so the
@@ -1879,7 +1882,7 @@ function runPaintJob(world, cowId, job, path, pos, grid, paths, walkable, board,
   }
 
   // Artist lock: if another cow already owns this craft, give up the claim.
-  const lock = (boardJob.payload.lockedCowId | 0) || (easel.artistCowId | 0);
+  const lock = boardJob.payload.lockedCowId | 0 || easel.artistCowId | 0;
   if (lock > 0 && lock !== cowId) {
     board.release(jobId);
     job.kind = 'none';
@@ -1979,7 +1982,8 @@ function finishPaint(world, grid, cowId, easelId, easel, bills, tick, deps) {
   const size = PAINTING_SIZE_BY_RECIPE[bill.recipeId] ?? 1;
   const seed = (tick * 1000 + cowId) | 0;
   const spec = generatePainting(seed, size);
-  const artistName = /** @type {{ name?: string } | null} */ (world.get(cowId, 'Brain'))?.name ?? 'cow';
+  const artistName =
+    /** @type {{ name?: string } | null} */ (world.get(cowId, 'Brain'))?.name ?? 'cow';
   const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
   world.spawn({
     Item: { kind: 'painting', count: 1, capacity: 1, forbidden: false },
@@ -2199,9 +2203,7 @@ function runInstallJob(world, job, path, pos, inv, grid, paths, board, deps) {
  */
 function runUninstallJob(world, job, path, pos, grid, paths, board, deps) {
   const { jobId, wallArtId, workI, workJ } =
-    /** @type {{ jobId: number, wallArtId: number, workI: number, workJ: number }} */ (
-      job.payload
-    );
+    /** @type {{ jobId: number, wallArtId: number, workI: number, workJ: number }} */ (job.payload);
   const art = world.get(wallArtId, 'WallArt');
   const anchor = world.get(wallArtId, 'TileAnchor');
   if (!art || !anchor) {

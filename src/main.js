@@ -26,9 +26,7 @@ import { CowSelector } from './render/cowSelector.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createEaselPanel, createFurnacePanel } from './render/furnacePanel.js';
-import { StationSelector } from './render/stationSelector.js';
 import { ItemSelector } from './render/itemSelector.js';
-import { WallArtSelector } from './render/wallArtSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
 import { TilePicker } from './render/picker.js';
@@ -36,8 +34,10 @@ import { createPrioritizeMenu } from './render/prioritizeMenu.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
+import { StationSelector } from './render/stationSelector.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
+import { WallArtSelector } from './render/wallArtSelector.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
@@ -523,9 +523,6 @@ new ItemSelector(
   selectItemsMany,
 );
 
-// Click-on-painting → queue uninstall. Raycasts the WallArt mesh directly so
-// players don't have to enable the uninstall build tool first. Capture-phase
-// listener wins against the tile picker when the click lands on the painting.
 new WallArtSelector({
   canvas,
   camera,

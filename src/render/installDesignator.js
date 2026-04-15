@@ -17,13 +17,9 @@
 import * as THREE from 'three';
 import { defaultWalkable } from '../sim/pathfinding.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
-import { FACING_OFFSETS, FACING_SPAN_OFFSETS, FACING_YAWS } from '../world/facing.js';
-import { createWallArtGhost } from './wallArtInstancer.js';
+import { FACING_OFFSETS, FACING_SPAN_OFFSETS } from '../world/facing.js';
+import { computeWallArtTransform, createWallArtGhost } from './wallArtInstancer.js';
 
-const WALL_HEIGHT = 3 * UNITS_PER_METER;
-const MOUNT_Y = WALL_HEIGHT * 0.55;
-const PROUD_OFFSET = 0.15 * UNITS_PER_METER;
-const BASE_WIDTH_PER_TILE = TILE_SIZE * 0.82;
 const _ndc = new THREE.Vector2();
 const _euler = new THREE.Euler();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -203,30 +199,16 @@ export class InstallDesignator {
     const plan = this.#validatePlacement(this.hoverTile);
     const color = plan ? PREVIEW_COLOR_VALID : PREVIEW_COLOR_INVALID;
     const face = this.currentFacing;
-    const step = FACING_SPAN_OFFSETS[face];
     const offset = FACING_OFFSETS[face];
-    const anchorI = this.hoverTile.i - offset.di;
-    const anchorJ = this.hoverTile.j - offset.dj;
-    // Mirror wallArtInstancer's placement math so the ghost sits exactly
-    // where the finished painting will be — proud of the wall face, at
-    // eye-ish height, oriented by the current facing.
-    const midI = anchorI + step.di * ((this.size - 1) * 0.5);
-    const midJ = anchorJ + step.dj * ((this.size - 1) * 0.5);
-    const w = tileToWorld(midI, midJ, this.tileGrid.W, this.tileGrid.H);
-    const pushOut = TILE_SIZE * 0.5 + PROUD_OFFSET;
-    const baseY = this.tileGrid.inBounds(anchorI, anchorJ)
-      ? this.tileGrid.getElevation(anchorI, anchorJ)
-      : 0;
-    this.ghost.group.position.set(
-      w.x + offset.di * pushOut,
-      baseY + MOUNT_Y,
-      w.z + offset.dj * pushOut,
-    );
-    _euler.set(0, FACING_YAWS[face] ?? 0, 0);
+    const anchor = {
+      i: this.hoverTile.i - offset.di,
+      j: this.hoverTile.j - offset.dj,
+    };
+    const t = computeWallArtTransform(anchor, face, this.size, this.tileGrid);
+    this.ghost.group.position.set(t.x, t.y, t.z);
+    _euler.set(0, t.yaw, 0);
     this.ghost.group.quaternion.setFromEuler(_euler);
-    const width = BASE_WIDTH_PER_TILE * this.size;
-    const heightScale = 1 + (this.size - 1) * 0.15;
-    this.ghost.group.scale.set(width, heightScale, 1);
+    this.ghost.group.scale.set(t.width, t.heightScale, 1);
     this.ghost.frameMat.color.setHex(color);
     this.ghost.group.visible = true;
     renderTilePreview(
@@ -286,11 +268,21 @@ function renderTilePreview(preview, grid, i, j, color) {
   const z1 = w.z + TILE_SIZE * 0.5;
   const y = grid.getElevation(i, j) + PREVIEW_CLEARANCE;
   const p = preview.positions;
-  p[0] = x0; p[1] = y; p[2] = z0;
-  p[3] = x1; p[4] = y; p[5] = z0;
-  p[6] = x1; p[7] = y; p[8] = z1;
-  p[9] = x0; p[10] = y; p[11] = z1;
-  p[12] = x0; p[13] = y; p[14] = z0;
+  p[0] = x0;
+  p[1] = y;
+  p[2] = z0;
+  p[3] = x1;
+  p[4] = y;
+  p[5] = z0;
+  p[6] = x1;
+  p[7] = y;
+  p[8] = z1;
+  p[9] = x0;
+  p[10] = y;
+  p[11] = z1;
+  p[12] = x0;
+  p[13] = y;
+  p[14] = z0;
   preview.geo.attributes.position.needsUpdate = true;
   /** @type {THREE.LineBasicMaterial} */
   (preview.line.material).color.setHex(color);

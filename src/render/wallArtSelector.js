@@ -1,17 +1,7 @@
 /**
- * Click-to-uninstall a painting on the wall.
- *
- * Raycasts the wallArtInstancer's frame + canvas InstancedMeshes. A left-click
- * on either directly queues an uninstall job for that WallArt — no build-tab
- * tool toggle needed. The toggleable `UninstallDesignator` stays around for
- * players who want to queue many uninstalls from a distance by clicking floor
- * tiles; this is the direct "click the painting" path master kept asking for.
- *
- * Uses `capture: true` so it wins against the tile picker. On a hit we
- * stopImmediatePropagation to prevent the designator layer from also firing.
- *
- * Cancelling: clicking a painting with an open uninstall job completes that
- * job (releases the cow if she's not mid-work) and clears the queue flag.
+ * Click-to-uninstall a painting on the wall. Raycasts the wallArtInstancer's
+ * meshes and queues an uninstall job on hit; re-click cancels if unclaimed.
+ * Capture-phase so we can stopImmediatePropagation and beat the tile picker.
  */
 
 import * as THREE from 'three';
@@ -65,13 +55,10 @@ export class WallArtSelector {
     if (!art || !anchor) return;
 
     if (art.uninstallJobId > 0) {
-      // Already queued. Cancel only if no cow has claimed it yet — once a
-      // cow is walking/prying, yanking the job out from under her would leave
-      // her stuck in a job state machine whose target no longer exists on
-      // the board. Claimed jobs stay queued; the player can re-click after
-      // the cow finishes, or not.
-      const job = this.board.jobs.find((j) => j.id === art.uninstallJobId && !j.completed);
-      if (job && job.claimedBy === null) {
+      // Only cancel if unclaimed — yanking a job from a cow mid-pry would
+      // strand her in a state machine whose target is gone.
+      const job = this.board.get(art.uninstallJobId);
+      if (job && !job.completed && job.claimedBy === null) {
         this.board.complete(job.id);
         art.uninstallJobId = 0;
         this.audio?.play('toggle_off');
@@ -84,8 +71,6 @@ export class WallArtSelector {
 
     const workSpot = this.#findWorkSpot(anchor, art.face | 0, Math.max(1, art.size | 0));
     if (!workSpot) {
-      // No reachable viewer tile — nothing to queue. Play the negative cue so
-      // the player knows the click registered but can't proceed.
       this.audio?.play('deny');
       e.stopImmediatePropagation();
       return;
@@ -100,14 +85,6 @@ export class WallArtSelector {
     e.stopImmediatePropagation();
   }
 
-  /**
-   * Mirrors UninstallDesignator.#findWorkSpot — first walkable adjacent tile
-   * on the face side across the span.
-   *
-   * @param {{ i: number, j: number }} anchor
-   * @param {number} face
-   * @param {number} size
-   */
   #findWorkSpot(anchor, face, size) {
     const grid = this.tileGrid;
     const step = FACING_SPAN_OFFSETS[face] ?? FACING_SPAN_OFFSETS[0];

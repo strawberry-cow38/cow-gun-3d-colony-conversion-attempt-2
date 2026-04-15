@@ -21,6 +21,33 @@ const BASE_WIDTH_PER_TILE = TILE_SIZE * 0.82;
 const BASE_HEIGHT = 0.7 * UNITS_PER_METER;
 const FRAME_COLOR = 0x4a2d18;
 
+/**
+ * Shared placement math used by both the instanced render path and the
+ * install-designator ghost, so the preview matches where the painting lands.
+ *
+ * @param {{ i: number, j: number }} anchor
+ * @param {number} face
+ * @param {number} size
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ */
+export function computeWallArtTransform(anchor, face, size, grid) {
+  const step = FACING_SPAN_OFFSETS[face] ?? FACING_SPAN_OFFSETS[0];
+  const offset = FACING_OFFSETS[face] ?? FACING_OFFSETS[0];
+  const midI = anchor.i + step.di * ((size - 1) * 0.5);
+  const midJ = anchor.j + step.dj * ((size - 1) * 0.5);
+  const w = tileToWorld(midI, midJ, grid.W, grid.H);
+  const pushOut = TILE_SIZE * 0.5 + PROUD_OFFSET;
+  const baseY = grid.inBounds(anchor.i, anchor.j) ? grid.getElevation(anchor.i, anchor.j) : 0;
+  return {
+    x: w.x + offset.di * pushOut,
+    y: baseY + MOUNT_Y,
+    z: w.z + offset.dj * pushOut,
+    yaw: FACING_YAWS[face] ?? 0,
+    width: BASE_WIDTH_PER_TILE * size,
+    heightScale: 1 + (size - 1) * 0.15,
+  };
+}
+
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
@@ -60,7 +87,7 @@ export function createWallArtInstancer(scene, capacity = 32) {
   scene.add(canvasMesh);
 
   let dirty = true;
-  /** @type {number[]} instance slot → WallArt entity id (for click-picking). */
+  /** @type {number[]} instance slot → WallArt entity id. */
   const slotToEntity = [];
 
   /**
@@ -76,29 +103,11 @@ export function createWallArtInstancer(scene, capacity = 32) {
       const a = components.TileAnchor;
       const art = components.WallArt;
       const size = Math.max(1, art.size | 0);
-      const face = art.face | 0;
-      const step = FACING_SPAN_OFFSETS[face] ?? FACING_SPAN_OFFSETS[0];
-      const offset = FACING_OFFSETS[face] ?? FACING_OFFSETS[0];
-      // Center across the span (size tiles) and push outward from the wall
-      // face by half a tile + a proud offset so the slab sits in front of
-      // the wall mesh instead of clipping into it.
-      const midI = a.i + step.di * ((size - 1) * 0.5);
-      const midJ = a.j + step.dj * ((size - 1) * 0.5);
-      const w = tileToWorld(midI, midJ, grid.W, grid.H);
-      const pushOut = TILE_SIZE * 0.5 + PROUD_OFFSET;
-      const baseY = grid.getElevation(a.i, a.j);
-      _position.set(
-        w.x + offset.di * pushOut,
-        baseY + MOUNT_Y,
-        w.z + offset.dj * pushOut,
-      );
-      _euler.set(0, FACING_YAWS[face] ?? 0, 0);
+      const t = computeWallArtTransform(a, art.face | 0, size, grid);
+      _position.set(t.x, t.y, t.z);
+      _euler.set(0, t.yaw, 0);
       _quat.setFromEuler(_euler);
-      // Width scales with span; height bumps slightly with size so huge
-      // paintings read tall too.
-      const width = BASE_WIDTH_PER_TILE * size;
-      const heightScale = 1 + (size - 1) * 0.15;
-      _scale.set(width, heightScale, 1);
+      _scale.set(t.width, t.heightScale, 1);
       _matrix.compose(_position, _quat, _scale);
       frameMesh.setMatrixAt(count, _matrix);
       canvasMesh.setMatrixAt(count, _matrix);
@@ -130,18 +139,12 @@ export function createWallArtInstancer(scene, capacity = 32) {
 }
 
 /**
- * Translucent frame+canvas group used by the install designator as a ghost
- * preview. Positioned/oriented by the designator to match where the painting
- * would land on the wall — same midI/midJ + pushOut + FACING_YAWS math as the
- * instancer's per-frame update, so what you see is what you get.
+ * Translucent frame+canvas preview group. Caller positions it via
+ * `computeWallArtTransform` so the ghost lands where the painting will.
  *
  * @param {THREE.Scene} scene
- * @param {number} [maxSize]  preview is scaled in-place, so geometry is built
- *   at size=1 and scaled up; maxSize just clamps the box proportions used for
- *   raycast bookkeeping (unused right now but kept for parity with instancer).
  */
-export function createWallArtGhost(scene, maxSize = 4) {
-  void maxSize;
+export function createWallArtGhost(scene) {
   const group = new THREE.Group();
   group.visible = false;
   group.frustumCulled = false;
@@ -159,10 +162,7 @@ export function createWallArtGhost(scene, maxSize = 4) {
     depthWrite: false,
     roughness: 0.75,
   });
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(1, BASE_HEIGHT, FRAME_THICKNESS),
-    frameMat,
-  );
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1, BASE_HEIGHT, FRAME_THICKNESS), frameMat);
   const canvas = new THREE.Mesh(
     new THREE.BoxGeometry(1, BASE_HEIGHT * 0.86, FRAME_THICKNESS * 1.1),
     canvasMat,

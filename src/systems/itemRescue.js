@@ -79,7 +79,10 @@ export function makeItemRescueSystem(grid, onRelocated) {
         list.push({ id, item: components.Item, anchor: a });
       }
 
-      for (const list of byTile.values()) {
+      // Snapshot before spilling: the whole-entity branch below inserts new
+      // keys into byTile, and Map iterators visit late-added entries.
+      const tileLists = [...byTile.values()];
+      for (const list of tileLists) {
         const multi = list.length > 1;
         const over = list.some((e) => e.item.count > maxStack(e.item.kind));
         if (!multi && !over) continue;
@@ -131,10 +134,8 @@ export function makeItemRescueSystem(grid, onRelocated) {
               target.existing.item.count += chunk;
               spill.sourceItem.count -= chunk;
             } else if (chunk === spill.sourceItem.count) {
-              // Whole-entity relocation: move the existing entity so per-entity
-              // components (e.g. Painting metadata) survive. Spawning a new
-              // bare Item would drop those and the player would lose their art.
-              // Count stays the same since the entity itself migrates.
+              // Whole-entity move preserves per-entity components (Painting
+              // etc.) that a fresh spawn would drop. Count is unchanged.
               const sourceAnchor = world.get(spill.sourceId, 'TileAnchor');
               const sourcePos = world.get(spill.sourceId, 'Position');
               if (sourceAnchor && sourcePos) {
