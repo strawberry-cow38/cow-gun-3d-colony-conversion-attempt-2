@@ -320,6 +320,7 @@ export function makeCowBrainSystem(deps) {
                   furnaceId: candidate.payload.furnaceId,
                   fromFurnaceId: candidate.payload.fromFurnaceId,
                   kind: candidate.payload.kind,
+                  siteId: candidate.payload.siteId,
                 };
                 path.steps = [];
                 path.index = 0;
@@ -1471,8 +1472,9 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     fromFurnaceId,
     fromI,
     fromJ,
+    siteId,
   } =
-    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, kind?: string }} */ (
+    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, siteId?: number, kind?: string }} */ (
       job.payload
     );
   const kind = /** @type {string | undefined} */ (job.payload.kind);
@@ -1612,8 +1614,15 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         job.payload = {};
         return;
       }
-      // Grab as many units as fit in the remaining 60kg capacity.
-      const added = inventoryAdd(inv, item.kind, item.count);
+      // Cap pickup so cows don't overshoot. Build sites: only take what's
+      // still needed (leftover would have to re-haul anyway). Elsewhere:
+      // grab as many units as fit in the remaining 60kg capacity.
+      let requested = item.count;
+      if (toBuildSite && typeof siteId === 'number') {
+        const site = world.get(siteId, 'BuildSite');
+        if (site) requested = Math.min(requested, Math.max(0, site.required - site.delivered));
+      }
+      const added = inventoryAdd(inv, item.kind, requested);
       item.count -= added;
       if (item.count <= 0 && typeof itemId === 'number') world.despawn(itemId);
       deps.onItemChange();
@@ -1655,35 +1664,41 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     const remaining = (job.payload.ticksRemaining ?? DROP_TICKS) - 1;
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
-      // Cows only ever carry a single kind per haul trip (picking-up fills
-      // one stack), so stack[0] is the whole payload.
-      const carried = inv.items[0];
-      if (carried && carried.count > 0) {
-        const kind = carried.kind;
-        const count = carried.count;
+      if (inv.items.length > 0) {
+        // Iterate every stack the cow is carrying. The job expects one
+        // `kind` (supply: recipe ingredient; build: site.requiredKind);
+        // non-matching stacks spill onto the drop tile so they re-enter
+        // the haul pool instead of polluting the furnace or site.
         if (toBuildSite) {
-          // Delivery: feed units into the BuildSite up to its remaining need.
-          // Overflow (site nearly done) falls back to the tile so it re-enters
-          // the haul pool.
-          const siteId = findBuildSiteAt(world, toI, toJ);
-          const site = siteId !== null ? world.get(siteId, 'BuildSite') : null;
-          if (site) {
-            const need = Math.max(0, site.required - site.delivered);
-            const deliver = Math.min(count, need);
-            site.delivered += deliver;
-            const leftover = count - deliver;
-            if (leftover > 0) addItemsToTile(world, grid, kind, leftover, toI, toJ);
-          } else {
-            addItemsToTile(world, grid, kind, count, toI, toJ);
+          const activeSiteId =
+            typeof siteId === 'number' ? siteId : findBuildSiteAt(world, toI, toJ);
+          const site = activeSiteId !== null ? world.get(activeSiteId, 'BuildSite') : null;
+          for (const stack of inv.items) {
+            if (site && stack.kind === site.requiredKind) {
+              const need = Math.max(0, site.required - site.delivered);
+              const deliver = Math.min(stack.count, need);
+              site.delivered += deliver;
+              const leftover = stack.count - deliver;
+              if (leftover > 0) addItemsToTile(world, grid, stack.kind, leftover, toI, toJ);
+            } else {
+              addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
+            }
           }
         } else if (toSupply && typeof furnaceId === 'number') {
-          // Deposit straight into the furnace's internal storage — never
-          // lands on the tile, so the haul poster can't yank it back.
           const furnace = world.get(furnaceId, 'Furnace');
-          if (furnace) stackAdd(furnace.stored, kind, count);
-          else addItemsToTile(world, grid, kind, count, toI, toJ);
+          for (const stack of inv.items) {
+            if (furnace && stack.kind === kind) {
+              // Matching ingredient → deposit into furnace.stored so the
+              // haul poster can't yank it back to the stockpile.
+              stackAdd(furnace.stored, stack.kind, stack.count);
+            } else {
+              addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
+            }
+          }
         } else {
-          addItemsToTile(world, grid, kind, count, toI, toJ);
+          for (const stack of inv.items) {
+            addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
+          }
         }
         inv.items.length = 0;
         deps.onItemChange();

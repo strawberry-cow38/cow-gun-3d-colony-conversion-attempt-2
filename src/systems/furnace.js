@@ -31,7 +31,7 @@ import {
   findAndReserveSlot,
   findNearestAvailableItem,
 } from '../jobs/haul.js';
-import { stackAdd, stackCount, stackRemove } from '../world/items.js';
+import { addItemsToTile, stackAdd, stackCount, stackRemove } from '../world/items.js';
 import { RECIPES } from '../world/recipes.js';
 
 /**
@@ -94,6 +94,25 @@ export function makeFurnaceSystem(board, grid, opts) {
       for (const { id: furnaceId, components } of world.query(['Furnace', 'Bills', 'TileAnchor'])) {
         const furnace = components.Furnace;
         const bills = components.Bills;
+
+        // Expel stored stacks no active bill needs (covers stray cargo from
+        // aborted hauls, removed bills, suspended-everything). Spills onto
+        // the work spot so the haul poster picks it back up as a normal
+        // tile item.
+        const needed = new Set();
+        for (const bill of bills.list) {
+          if (bill.suspended) continue;
+          const recipe = RECIPES[bill.recipeId];
+          if (!recipe) continue;
+          for (const ing of recipe.ingredients) needed.add(ing.kind);
+        }
+        for (let i = furnace.stored.length - 1; i >= 0; i--) {
+          const stack = furnace.stored[i];
+          if (!needed.has(stack.kind)) {
+            addItemsToTile(world, grid, stack.kind, stack.count, furnace.workI, furnace.workJ);
+            furnace.stored.splice(i, 1);
+          }
+        }
 
         // Pass A: drain outputs into stockpile via haul-from-furnace jobs.
         for (const out of furnace.outputs) {
