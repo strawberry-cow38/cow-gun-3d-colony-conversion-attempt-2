@@ -16,8 +16,6 @@ import { UNITS_PER_METER } from '../world/coords.js';
 import { nameFontFor } from '../world/traits.js';
 import { jitterForGlyph } from './handwriting.js';
 
-const TAG_FONT_FALLBACK = "system-ui, -apple-system, 'Segoe UI', sans-serif";
-
 const HEAD_OFFSET = 2.2 * UNITS_PER_METER;
 const TAG_HEIGHT_WORLD = 0.7 * UNITS_PER_METER;
 const FADE_START = 30 * UNITS_PER_METER;
@@ -37,14 +35,15 @@ export function createCowNameTags(scene) {
   const tags = new Map();
   let visible = true;
 
-  // Tag textures drawn before Caveat/Great Vibes finish downloading render in
-  // the fallback stack. Bump fontVersion once loads resolve so the next update
-  // regenerates every affected tag.
+  // Tag textures drawn before the handwriting fonts finish downloading render
+  // in the fallback stack. Bump fontVersion once loads resolve so the next
+  // update regenerates every affected tag.
   let fontVersion = 0;
   if (typeof document !== 'undefined' && document.fonts) {
     Promise.all([
       document.fonts.load("700 72px 'Caveat'"),
       document.fonts.load("700 72px 'Great Vibes'"),
+      document.fonts.load("400 72px 'Rock Salt'"),
     ])
       .then(() => {
         fontVersion++;
@@ -66,7 +65,7 @@ export function createCowNameTags(scene) {
     for (const { id, components } of world.query(['Cow', 'Position', 'Brain', 'Identity'])) {
       alive.add(id);
       const name = components.Brain.name ?? `#${id}`;
-      const family = nameFontFor(components.Identity.traits, TAG_FONT_FALLBACK);
+      const family = nameFontFor(components.Identity.traits);
       const key = `${id}|${name}|${family}|${fontVersion}`;
       let tag = tags.get(id);
       if (!tag || tag.key !== key) {

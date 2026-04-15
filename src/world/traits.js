@@ -31,7 +31,7 @@ const TRAIT_DEFS = {
     label: 'Messy',
     description: 'Scrawls their name in a hurried, jagged hand. Leaves crumbs everywhere.',
     chipColor: '#d48a4a',
-    nameFont: "'Caveat', 'Bradley Hand', 'Comic Sans MS', cursive",
+    nameFont: "'Rock Salt', 'Bradley Hand', 'Comic Sans MS', cursive",
     conflicts: ['snobby'],
   },
   snobby: {
@@ -72,14 +72,20 @@ export function rollTraits() {
 }
 
 /**
+ * Default handwriting font for untraited colonists. Caveat is a tidy, legible
+ * hand — a neutral baseline that Messy (Rock Salt) and Snobby (Great Vibes)
+ * deviate away from.
+ */
+const DEFAULT_NAME_FONT = "'Caveat', 'Bradley Hand', 'Segoe Script', cursive";
+
+/**
  * Resolve the css font-family for a colonist's name based on their traits.
- * First matching trait wins; falls back to the default UI font when none
- * apply.
+ * First matching trait wins; falls back to the default handwriting font.
  *
  * @param {string[]} traits
  * @param {string} [fallback]
  */
-export function nameFontFor(traits, fallback = 'inherit') {
+export function nameFontFor(traits, fallback = DEFAULT_NAME_FONT) {
   for (const t of traits) {
     const def = TRAIT_DEFS[/** @type {TraitId} */ (t)];
     if (def?.nameFont) return def.nameFont;
