@@ -1,0 +1,93 @@
+/**
+ * Colonist trait registry.
+ *
+ * Traits are small personality markers attached to an Identity. Each trait
+ * has a visible chip in the info UI and may drive gameplay effects — for
+ * now only `nameFont` (handwriting rendering) is wired, but the shape is
+ * extensible so future traits can tweak job priorities, stat modifiers,
+ * social compatibility, etc.
+ *
+ * Traits are rolled at spawn. A colonist carries 0..MAX_TRAITS_PER_COLONIST
+ * of them. The spawner draws without replacement and respects `conflicts`
+ * so contradictory pairs can't co-occur.
+ */
+
+/**
+ * @typedef {'messy' | 'snobby'} TraitId
+ *
+ * @typedef TraitDef
+ * @property {TraitId} id
+ * @property {string} label        short label shown on the chip
+ * @property {string} description  long-form explanation for hover/click
+ * @property {string} chipColor    css color for the chip accent
+ * @property {string} nameFont     css font-family stack applied when the colonist's name renders
+ * @property {TraitId[]} [conflicts] ids that can't co-occur with this trait
+ */
+
+/** @type {Record<TraitId, TraitDef>} */
+const TRAIT_DEFS = {
+  messy: {
+    id: 'messy',
+    label: 'Messy',
+    description: 'Scrawls their name in a hurried, jagged hand. Leaves crumbs everywhere.',
+    chipColor: '#d48a4a',
+    nameFont: "'Caveat', 'Bradley Hand', 'Comic Sans MS', cursive",
+    conflicts: ['snobby'],
+  },
+  snobby: {
+    id: 'snobby',
+    label: 'Snobby',
+    description: 'Signs their name in elegant cursive. Looks down on instant coffee.',
+    chipColor: '#b79cd9',
+    nameFont: "'Great Vibes', 'Snell Roundhand', 'Apple Chancery', cursive",
+    conflicts: ['messy'],
+  },
+};
+
+const ALL_TRAIT_IDS = /** @type {TraitId[]} */ (Object.keys(TRAIT_DEFS));
+export const MAX_TRAITS_PER_COLONIST = 2;
+
+/**
+ * Roll 0..MAX random traits, respecting conflicts. Returns trait ids in
+ * registry order (deterministic-ish for UI stability).
+ *
+ * 40% chance of one trait, 15% chance of two, 45% chance of none.
+ */
+export function rollTraits() {
+  const r = Math.random();
+  const target = r < 0.45 ? 0 : r < 0.85 ? 1 : 2;
+  if (target === 0) return [];
+
+  const pool = [...ALL_TRAIT_IDS];
+  /** @type {TraitId[]} */
+  const picked = [];
+  while (picked.length < target && pool.length > 0) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const cand = pool.splice(idx, 1)[0];
+    const def = TRAIT_DEFS[cand];
+    const clashes = (def.conflicts ?? []).some((c) => picked.includes(c));
+    if (!clashes) picked.push(cand);
+  }
+  return ALL_TRAIT_IDS.filter((t) => picked.includes(t));
+}
+
+/**
+ * Resolve the css font-family for a colonist's name based on their traits.
+ * First matching trait wins; falls back to the default UI font when none
+ * apply.
+ *
+ * @param {string[]} traits
+ * @param {string} [fallback]
+ */
+export function nameFontFor(traits, fallback = 'inherit') {
+  for (const t of traits) {
+    const def = TRAIT_DEFS[/** @type {TraitId} */ (t)];
+    if (def?.nameFont) return def.nameFont;
+  }
+  return fallback;
+}
+
+/** @param {string} id */
+export function traitDef(id) {
+  return TRAIT_DEFS[/** @type {TraitId} */ (id)] ?? null;
+}

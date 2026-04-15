@@ -9,6 +9,7 @@
  */
 
 import { randomBirthTickForAge } from '../sim/calendar.js';
+import { rollTraits } from './traits.js';
 
 /** @typedef {'male' | 'female' | 'nonbinary'} Gender */
 
@@ -37,7 +38,7 @@ const HAIR_COLORS = [
 
 /**
  * @param {number} currentTick
- * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string }}
+ * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[] }}
  */
 export function rollCowIdentity(currentTick) {
   const gender = /** @type {Gender} */ (Math.random() < 0.5 ? 'female' : 'male');
@@ -45,7 +46,8 @@ export function rollCowIdentity(currentTick) {
   const heightCm = Math.round(range.min + Math.random() * (range.max - range.min));
   const hairColor = HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)];
   const birthTick = randomBirthTickForAge(ADULT_MIN_AGE, ADULT_MAX_AGE, currentTick);
-  return { gender, birthTick, heightCm, hairColor };
+  const traits = rollTraits();
+  return { gender, birthTick, heightCm, hairColor, traits };
 }
 
 /** @param {Gender} gender */

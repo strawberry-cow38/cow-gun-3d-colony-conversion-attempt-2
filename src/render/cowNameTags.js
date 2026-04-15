@@ -13,6 +13,9 @@
 
 import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
+import { nameFontFor } from '../world/traits.js';
+
+const TAG_FONT_FALLBACK = "system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 const HEAD_OFFSET = 2.2 * UNITS_PER_METER;
 const TAG_HEIGHT_WORLD = 0.7 * UNITS_PER_METER;
@@ -28,10 +31,25 @@ const _delta = new THREE.Vector3();
  */
 export function createCowNameTags(scene) {
   /**
-   * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, texture: THREE.CanvasTexture, name: string }>}
+   * @type {Map<number, { sprite: THREE.Sprite, material: THREE.SpriteMaterial, texture: THREE.CanvasTexture, key: string }>}
    */
   const tags = new Map();
   let visible = true;
+
+  // Tag textures drawn before Caveat/Great Vibes finish downloading render in
+  // the fallback stack. Bump fontVersion once loads resolve so the next update
+  // regenerates every affected tag.
+  let fontVersion = 0;
+  if (typeof document !== 'undefined' && document.fonts) {
+    Promise.all([
+      document.fonts.load("700 72px 'Caveat'"),
+      document.fonts.load("700 72px 'Great Vibes'"),
+    ])
+      .then(() => {
+        fontVersion++;
+      })
+      .catch(() => {});
+  }
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -44,13 +62,15 @@ export function createCowNameTags(scene) {
     camera.getWorldDirection(_camFwd);
 
     const alive = new Set();
-    for (const { id, components } of world.query(['Cow', 'Position', 'Brain'])) {
+    for (const { id, components } of world.query(['Cow', 'Position', 'Brain', 'Identity'])) {
       alive.add(id);
       const name = components.Brain.name ?? `#${id}`;
+      const family = nameFontFor(components.Identity.traits, TAG_FONT_FALLBACK);
+      const key = `${name}|${family}|${fontVersion}`;
       let tag = tags.get(id);
-      if (!tag || tag.name !== name) {
+      if (!tag || tag.key !== key) {
         if (tag) disposeTag(scene, tag);
-        tag = makeTag(scene, name);
+        tag = makeTag(scene, name, family, key);
         tags.set(id, tag);
       }
 
@@ -104,9 +124,11 @@ export function createCowNameTags(scene) {
 /**
  * @param {THREE.Scene} scene
  * @param {string} name
+ * @param {string} family
+ * @param {string} key
  */
-function makeTag(scene, name) {
-  const { canvas, aspect } = renderTextToCanvas(name);
+function makeTag(scene, name, family, key) {
+  const { canvas, aspect } = renderTextToCanvas(name, family);
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -123,7 +145,7 @@ function makeTag(scene, name) {
   sprite.scale.set(TAG_HEIGHT_WORLD * aspect, TAG_HEIGHT_WORLD, 1);
   sprite.renderOrder = 10;
   scene.add(sprite);
-  return { sprite, material, texture, name };
+  return { sprite, material, texture, key };
 }
 
 /**
@@ -138,13 +160,15 @@ function disposeTag(scene, tag) {
 
 /**
  * @param {string} name
+ * @param {string} family
  */
-function renderTextToCanvas(name) {
+function renderTextToCanvas(name, family) {
   const pad = 24;
   const fontPx = 72;
+  const font = `700 ${fontPx}px ${family}`;
   const measureCanvas = document.createElement('canvas');
   const measureCtx = /** @type {CanvasRenderingContext2D} */ (measureCanvas.getContext('2d'));
-  measureCtx.font = `bold ${fontPx}px system-ui, -apple-system, Segoe UI, sans-serif`;
+  measureCtx.font = font;
   const metrics = measureCtx.measureText(name);
   const textWidth = Math.ceil(metrics.width);
   const width = Math.max(128, textWidth + pad * 2);
@@ -155,7 +179,7 @@ function renderTextToCanvas(name) {
   canvas.height = height;
   const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
   ctx.clearRect(0, 0, width, height);
-  ctx.font = `bold ${fontPx}px system-ui, -apple-system, Segoe UI, sans-serif`;
+  ctx.font = font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';

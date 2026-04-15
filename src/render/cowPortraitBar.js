@@ -16,6 +16,7 @@
  * DOM unless something moved.
  */
 
+import { nameFontFor } from '../world/traits.js';
 import { thoughtFor } from './cowThoughtText.js';
 
 /**
@@ -71,11 +72,11 @@ export function createCowPortraitBar(opts) {
   function update() {
     const focusedId = focusedCowId();
     const alive = new Set();
-    for (const { id, components } of world.query(['Cow', 'Brain', 'Job'])) {
+    for (const { id, components } of world.query(['Cow', 'Brain', 'Job', 'Identity'])) {
       alive.add(id);
       let card = cards.get(id);
       if (!card) {
-        card = makeCard(id, components.Brain.name, onSelect, onFocus);
+        card = makeCard(id, components.Brain.name, components.Identity.traits, onSelect, onFocus);
         root.appendChild(card.el);
         cards.set(id, card);
       }
@@ -118,11 +119,12 @@ export function createCowPortraitBar(opts) {
 /**
  * @param {number} id
  * @param {string} initialName
+ * @param {string[]} traits
  * @param {(id: number, additive: boolean) => void} onSelect
  * @param {(id: number) => void} onFocus
  * @returns {{ el: HTMLDivElement, avatar: HTMLDivElement, nameEl: HTMLDivElement, activityEl: HTMLDivElement, name: string, activity: string, styleKey: string }}
  */
-function makeCard(id, initialName, onSelect, onFocus) {
+function makeCard(id, initialName, traits, onSelect, onFocus) {
   const el = document.createElement('div');
   Object.assign(el.style, {
     display: 'flex',
@@ -176,6 +178,7 @@ function makeCard(id, initialName, onSelect, onFocus) {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    fontFamily: nameFontFor(traits),
   });
   nameEl.textContent = initialName;
 

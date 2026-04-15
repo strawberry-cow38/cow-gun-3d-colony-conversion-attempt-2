@@ -7,6 +7,7 @@
  */
 
 import { ageYears, formatSimBirthday, tickToSimDate } from '../sim/calendar.js';
+import { nameFontFor, traitDef } from '../world/traits.js';
 
 /**
  * @typedef {Object} CowPanelOpts
@@ -100,31 +101,78 @@ export function createCowPanel(opts) {
     color: '#d8dfe6',
   });
 
-  root.append(header, stats);
+  const traitsWrap = document.createElement('div');
+  Object.assign(traitsWrap.style, {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '4px',
+    marginTop: '8px',
+  });
+
+  const traitDetail = document.createElement('div');
+  Object.assign(traitDetail.style, {
+    marginTop: '6px',
+    padding: '6px 8px',
+    background: 'rgba(255, 255, 255, 0.06)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '3px',
+    fontSize: '11px',
+    color: '#c8d0d8',
+    lineHeight: '1.35',
+    display: 'none',
+  });
+
+  root.append(header, stats, traitsWrap, traitDetail);
   document.body.appendChild(root);
 
   /**
-   * Bookkeeping for change-detection so we don't rewrite DOM every frame.
-   * @type {{ key: string }}
+   * `pinnedTrait` sticks the detail open across hovers so the tooltip isn't
+   * purely ephemeral on touch devices.
+   *
+   * @type {{ key: string, pinnedTrait: string | null }}
    */
-  const last = { key: '' };
+  const last = { key: '', pinnedTrait: null };
+
+  function hidePanel() {
+    root.style.display = 'none';
+    last.key = '';
+    last.pinnedTrait = null;
+    showTraitDetail(null);
+  }
+
+  /** @param {string | null} id */
+  function showTraitDetail(id) {
+    if (!id) {
+      traitDetail.style.display = 'none';
+      traitDetail.textContent = '';
+      return;
+    }
+    const def = traitDef(id);
+    if (!def) {
+      traitDetail.style.display = 'none';
+      traitDetail.textContent = '';
+      return;
+    }
+    traitDetail.style.display = 'block';
+    traitDetail.replaceChildren();
+    const head = document.createElement('div');
+    Object.assign(head.style, { fontWeight: '700', color: def.chipColor, marginBottom: '2px' });
+    head.textContent = def.label;
+    const body = document.createElement('div');
+    body.textContent = def.description;
+    traitDetail.append(head, body);
+  }
 
   function update() {
     const id = state.primaryCow;
     if (id === null || state.selectedCows.size !== 1) {
-      if (root.style.display !== 'none') {
-        root.style.display = 'none';
-        last.key = '';
-      }
+      if (root.style.display !== 'none') hidePanel();
       return;
     }
     const identity = world.get(id, 'Identity');
     const brain = world.get(id, 'Brain');
     if (!identity || !brain) {
-      if (root.style.display !== 'none') {
-        root.style.display = 'none';
-        last.key = '';
-      }
+      if (root.style.display !== 'none') hidePanel();
       return;
     }
     const tick = getTick() + (state.tickOffset ?? 0);
@@ -132,10 +180,15 @@ export function createCowPanel(opts) {
     const birthDate = tickToSimDate(identity.birthTick);
     const birthday = formatSimBirthday(birthDate);
     const birthYear = birthDate.getUTCFullYear();
-    const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}`;
+    const traits = identity.traits;
+    const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}`;
     if (key === last.key) {
       if (root.style.display === 'none') root.style.display = 'block';
       return;
+    }
+    if (last.pinnedTrait && !traits.includes(last.pinnedTrait)) {
+      last.pinnedTrait = null;
+      showTraitDetail(null);
     }
     last.key = key;
     root.style.display = 'block';
@@ -143,6 +196,7 @@ export function createCowPanel(opts) {
     avatar.textContent = initialsOf(brain.name);
     avatar.style.background = hueForName(brain.name);
     nameEl.textContent = brain.name;
+    nameEl.style.fontFamily = nameFontFor(traits);
     genderEl.textContent = `${genderLabel(identity.gender)} · ${age} yrs`;
 
     stats.replaceChildren(
@@ -150,6 +204,30 @@ export function createCowPanel(opts) {
       row('Height', `${identity.heightCm} cm`),
       hairRow('Hair', identity.hairColor),
     );
+
+    traitsWrap.replaceChildren();
+    if (traits.length === 0) {
+      const empty = document.createElement('div');
+      Object.assign(empty.style, { fontSize: '11px', color: '#7a8590', fontStyle: 'italic' });
+      empty.textContent = 'no notable traits';
+      traitsWrap.appendChild(empty);
+    } else {
+      for (const tid of traits) {
+        const def = traitDef(tid);
+        if (!def) continue;
+        const chip = makeTraitChip(def, () => {
+          last.pinnedTrait = last.pinnedTrait === tid ? null : tid;
+          showTraitDetail(last.pinnedTrait);
+        });
+        chip.addEventListener('mouseenter', () => {
+          if (!last.pinnedTrait) showTraitDetail(tid);
+        });
+        chip.addEventListener('mouseleave', () => {
+          if (!last.pinnedTrait) showTraitDetail(null);
+        });
+        traitsWrap.appendChild(chip);
+      }
+    }
   }
 
   return { update, root };
@@ -190,6 +268,45 @@ function row(label, value) {
   const frag = document.createDocumentFragment();
   frag.append(l, v);
   return frag;
+}
+
+/**
+ * @param {import('../world/traits.js').TraitDef} def
+ * @param {() => void} onActivate
+ */
+function makeTraitChip(def, onActivate) {
+  const chip = document.createElement('button');
+  Object.assign(chip.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '2px 8px',
+    background: 'rgba(255, 255, 255, 0.06)',
+    border: `1px solid ${def.chipColor}`,
+    borderRadius: '10px',
+    color: '#e6e6e6',
+    font: 'inherit',
+    fontSize: '11px',
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+  });
+  chip.title = def.description;
+  const dot = document.createElement('span');
+  Object.assign(dot.style, {
+    display: 'inline-block',
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    background: def.chipColor,
+  });
+  const label = document.createElement('span');
+  label.textContent = def.label;
+  chip.append(dot, label);
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onActivate();
+  });
+  return chip;
 }
 
 /**

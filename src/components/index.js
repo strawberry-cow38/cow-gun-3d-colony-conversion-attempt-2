@@ -17,7 +17,7 @@
  *                                    spawn/hydrate so fresh cows evaluate once.
  *                                    `name` is authoritative — Identity mirrors
  *                                    it so colonist UI has one record to read.
- * Identity    { name, gender, birthTick, heightCm, hairColor }
+ * Identity    { name, gender, birthTick, heightCm, hairColor, traits }
  *                                    Demographic card for a colonist. Gender
  *                                    enum is 'male' | 'female' | 'nonbinary' —
  *                                    the last is reserved for future robot
@@ -26,6 +26,10 @@
  *                                    be negative (colonists older than the
  *                                    colony). Age is derived on read via
  *                                    calendar.ageYears so it advances live.
+ *                                    `traits` is 0..N trait ids (see
+ *                                    world/traits.js) — small personality
+ *                                    markers that drive per-colonist visual
+ *                                    quirks and, eventually, gameplay stats.
  * Job         { kind, state, payload } kind='none' = idle
  * Path        { steps, index }       current path; index >= steps.length = arrived
  *
@@ -161,6 +165,8 @@ export function registerComponents(world) {
     birthTick: 0,
     heightCm: 170,
     hairColor: '#4a2f20',
+    /** @type {string[]} */
+    traits: [],
   }));
   world.defineComponent('Job', () => ({
     kind: 'none',

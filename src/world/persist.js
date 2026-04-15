@@ -41,6 +41,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} birthTick
  * @property {number} heightCm
  * @property {string} hairColor
+ * @property {string[]} traits
  */
 
 /**
@@ -267,6 +268,7 @@ export function serializeState(tileGrid, world) {
         birthTick: components.Identity.birthTick,
         heightCm: components.Identity.heightCm,
         hairColor: components.Identity.hairColor,
+        traits: [...components.Identity.traits],
       },
     });
   }
@@ -559,6 +561,7 @@ export function hydrateCows(world, state) {
         birthTick: id.birthTick,
         heightCm: id.heightCm,
         hairColor: id.hairColor,
+        traits: Array.isArray(id.traits) ? [...id.traits] : [],
       },
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
