@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { World } from '../../src/ecs/world.js';
+
+const GEN_MAX = 0xffff;
 
 describe('World', () => {
   it('spawns and reads components', () => {
@@ -93,6 +95,32 @@ describe('World', () => {
     expect(w.entityCount).toBe(1);
     w.despawn(e);
     expect(w.entityCount).toBe(0);
+  });
+
+  it('retires a slot once its generation counter saturates', () => {
+    const w = new World();
+    w.defineComponent('A', () => ({}));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Burn the first slot's generation down to max by cycling spawn/despawn
+    // until only that slot is on freeSlots. Brand-new slots start at gen=1
+    // and each reuse bumps by one until it hits GEN_MAX, after which the
+    // slot should retire (not recycle).
+    let cycles = 0;
+    let lastSlotIndex = -1;
+    while (cycles < GEN_MAX + 2) {
+      const id = w.spawn({ A: {} });
+      lastSlotIndex = id & 0xffff;
+      // Stop only after we've seen a second-slot allocation, which means the
+      // first slot retired and we're now growing the table.
+      if (lastSlotIndex !== 0) break;
+      w.despawn(id);
+      cycles++;
+    }
+    expect(cycles).toBeGreaterThanOrEqual(GEN_MAX);
+    expect(lastSlotIndex).toBe(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it('DEV-mode: spreading a query throws on any later access (wrapper contract)', () => {

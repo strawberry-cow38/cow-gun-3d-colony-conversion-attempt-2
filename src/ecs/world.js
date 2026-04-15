@@ -38,6 +38,8 @@ export class World {
     this.slots = [];
     /** Free slot indices for recycling. */
     this.freeSlots = [];
+    /** One-shot flag so the rollover warning fires once per session. */
+    this.rolloverWarned = false;
   }
 
   /**
@@ -108,7 +110,19 @@ export class World {
     const slotIndex = id & SLOT_MASK;
     const gen = (id >>> SLOT_BITS) & SLOT_MASK;
     this.slots[slotIndex] = { gen, archetype: null, row: -1 };
-    this.freeSlots.push(slotIndex);
+    // gen is 16 bits and bumps on each recycle. If the just-despawned gen was
+    // at SLOT_MASK the next reuse would wrap to 0 and start aliasing stale
+    // ids that cached a gen=0 entity in some prior life. Retire the slot
+    // instead — max leak is SLOT_MASK slots worth of header objects (~1MB),
+    // capped by construction.
+    if (gen < SLOT_MASK) {
+      this.freeSlots.push(slotIndex);
+    } else if (!this.rolloverWarned) {
+      this.rolloverWarned = true;
+      console.warn(
+        `[ecs] slot ${slotIndex} retired (generation saturated at ${SLOT_MASK}); future despawns on saturated slots will also retire silently`,
+      );
+    }
   }
 
   /**
