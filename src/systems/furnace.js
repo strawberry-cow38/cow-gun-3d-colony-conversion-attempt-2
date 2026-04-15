@@ -72,9 +72,15 @@ export function makeFurnaceSystem(board, grid, opts) {
         }
       }
 
-      // Stock by kind for `untilHave` ceilings: loose + stockpile Items plus
-      // every furnace's outputs (a finished ingot "counts" even before it's
-      // hauled out).
+      // Stock by kind for `untilHave` ceilings. Counts everything that will
+      // end up in the player's reserves without additional crafting:
+      //   - loose + stockpile Items (forbidden excluded)
+      //   - cow inventories (in-transit hauls)
+      //   - every furnace's `outputs` (finished, waiting for a haul-out job)
+      //   - every furnace's in-flight craft (will produce `recipe.outputCount`
+      //     more units when the timer hits zero)
+      // Skipping the last two lets the idle branch greenlight a redundant
+      // craft while the colony is already on track to hit the target.
       /** @type {Map<string, number>} */
       const stockByKind = new Map();
       for (const { components } of world.query(['Item', 'TileAnchor'])) {
@@ -82,9 +88,25 @@ export function makeFurnaceSystem(board, grid, opts) {
         if (it.forbidden) continue;
         stockByKind.set(it.kind, (stockByKind.get(it.kind) ?? 0) + it.count);
       }
-      for (const { components } of world.query(['Furnace'])) {
-        for (const s of components.Furnace.outputs) {
+      for (const { components } of world.query(['Inventory'])) {
+        for (const s of components.Inventory.items) {
           stockByKind.set(s.kind, (stockByKind.get(s.kind) ?? 0) + s.count);
+        }
+      }
+      for (const { components } of world.query(['Furnace', 'Bills'])) {
+        const f = components.Furnace;
+        for (const s of f.outputs) {
+          stockByKind.set(s.kind, (stockByKind.get(s.kind) ?? 0) + s.count);
+        }
+        if (f.activeBillId > 0) {
+          const activeBill = components.Bills.list.find((b) => b.id === f.activeBillId);
+          const recipe = activeBill ? RECIPES[activeBill.recipeId] : null;
+          if (recipe) {
+            stockByKind.set(
+              recipe.outputKind,
+              (stockByKind.get(recipe.outputKind) ?? 0) + recipe.outputCount,
+            );
+          }
         }
       }
 
