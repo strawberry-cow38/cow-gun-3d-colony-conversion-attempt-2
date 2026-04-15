@@ -33,11 +33,11 @@ const BUTTERFLY_FADE = 1.2; // seconds of fade-in and fade-out at life edges
 const BUTTERFLY_PEAK_POP = 28;
 
 // --- Fireflies -------------------------------------------------------------
-const MAX_FIREFLIES = 80;
+const MAX_FIREFLIES = 640;
 const FIREFLY_LIFE = 6;
 const FIREFLY_SIZE = 0.5 * UNITS_PER_METER;
 const FIREFLY_FADE = 0.8;
-const FIREFLY_PEAK_POP = 32;
+const FIREFLY_PEAK_POP = 256;
 
 // --- Falling leaves --------------------------------------------------------
 const MAX_LEAVES = 48;

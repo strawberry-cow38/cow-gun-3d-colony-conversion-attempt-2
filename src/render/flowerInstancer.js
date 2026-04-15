@@ -129,7 +129,7 @@ function buildPetalTexture() {
 export function createFlowerInstancer(scene, capacity = 2048) {
   const geo = buildCrossPlaneGeometry();
   const texture = buildPetalTexture();
-  const mat = new THREE.MeshBasicMaterial({
+  const mat = new THREE.MeshLambertMaterial({
     map: texture,
     color: 0xffffff,
     transparent: true,
