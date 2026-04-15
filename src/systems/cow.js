@@ -111,12 +111,18 @@ export function makeCowBrainSystem(deps) {
     name: 'cowBrain',
     tier: 'every',
     run(world, ctx) {
+      // Drop completed jobs before the stale-claim scan so we don't iterate
+      // a pile of tombstones every tick. No caller relies on byId keeping a
+      // completed job lookup-able — post-complete code reads job.completed
+      // (true) either way; after reap it gets null, same semantics.
+      board.reap();
+
       // Release claims held by cows that no longer consider the job theirs
       // (e.g. the player reassigned the cow to a move via RMB mid-chop).
       // Goes through board.release() so version bumps and other idle cows
       // get a chance to pick up the freshly-freed job.
       for (const j of board.jobs) {
-        if (j.claimedBy === null || j.completed) continue;
+        if (j.claimedBy === null) continue;
         const cowJob = world.get(j.claimedBy, 'Job');
         if (!cowJob || cowJob.kind !== j.kind || cowJob.payload.jobId !== j.id) {
           board.release(j.id);

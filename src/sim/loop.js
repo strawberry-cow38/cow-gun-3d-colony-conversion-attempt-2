@@ -68,7 +68,14 @@ export class SimLoop {
       const maxSteps = MAX_STEPS_PER_FRAME * Math.max(1, Math.ceil(this.speed));
       let steps = 0;
       while (this.accumulator >= SIM_DT && steps < maxSteps) {
-        this.step(SIM_DT, this.tick);
+        // One bad tick shouldn't brick the whole RAF — log, advance past the
+        // broken state, and keep ticking. The alternative (uncaught throw)
+        // leaves the page frozen with no recovery path.
+        try {
+          this.step(SIM_DT, this.tick);
+        } catch (err) {
+          console.error('[sim] step threw at tick', this.tick, err);
+        }
         this.tick++;
         this.accumulator -= SIM_DT;
         steps++;
@@ -80,7 +87,11 @@ export class SimLoop {
       this.measuredHz = tickWindow.length;
 
       const alpha = this.accumulator / SIM_DT;
-      this.render(alpha);
+      try {
+        this.render(alpha);
+      } catch (err) {
+        console.error('[sim] render threw', err);
+      }
       this.rafId = requestAnimationFrame(frame);
     };
     this.rafId = requestAnimationFrame(frame);
