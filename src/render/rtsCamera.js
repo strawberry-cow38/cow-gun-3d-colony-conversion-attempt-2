@@ -5,7 +5,7 @@
  * - WASD / arrow keys    → pan focus point along ground plane
  * - Middle-click drag    → orbit (yaw + pitch)
  * - Mouse wheel          → zoom (change distance from focus)
- * - One-finger drag      → pan (drag-the-world: finger right = view shifts right)
+ * - One-finger drag      → pan (RTS-style: finger right = camera moves right)
  * - Two-finger pinch     → zoom
  * - Two-finger drag      → orbit (yaw + pitch)
  *
@@ -189,13 +189,13 @@ export class RtsCamera {
         if (!now || !before) return;
         const dx = now.x - before.x;
         const dy = now.y - before.y;
-        // Drag-the-world: finger right/down should shift the view in the same
-        // direction, so focus moves opposite along the camera's ground basis.
+        // RTS-style: finger right/down pushes the camera in that screen
+        // direction (same convention as WASD).
         const cos = Math.cos(this.yaw);
         const sin = Math.sin(this.yaw);
         const scale = this.distance * this.touchPanScale;
-        this.focus.x += (-dx * cos + dy * sin) * scale;
-        this.focus.z += (dx * sin + dy * cos) * scale;
+        this.focus.x += (dx * cos + dy * sin) * scale;
+        this.focus.z += (-dx * sin + dy * cos) * scale;
       } else if (this.touches.size >= 2) {
         const arr = [...this.touches.values()].slice(0, 2);
         const prevArr = [...prev.values()].slice(0, 2);
