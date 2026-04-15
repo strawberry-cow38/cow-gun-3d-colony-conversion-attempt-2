@@ -21,6 +21,9 @@
  * @property {string} description  long-form explanation for hover/click
  * @property {string} chipColor    css color for the chip accent
  * @property {string} nameFont     css font-family stack applied when the colonist's name renders
+ * @property {number} [nameFontScale] multiplier on the rendered font size (default 1). Rock
+ *                                    Salt's glyphs are ~2× Caveat's at the same px, so Messy
+ *                                    uses 0.5 to match visual weight across traits.
  * @property {TraitId[]} [conflicts] ids that can't co-occur with this trait
  */
 
@@ -32,6 +35,7 @@ const TRAIT_DEFS = {
     description: 'Scrawls their name in a hurried, jagged hand. Leaves crumbs everywhere.',
     chipColor: '#d48a4a',
     nameFont: "'Rock Salt', 'Bradley Hand', 'Comic Sans MS', cursive",
+    nameFontScale: 0.5,
     conflicts: ['snobby'],
   },
   snobby: {
@@ -91,6 +95,21 @@ export function nameFontFor(traits, fallback = DEFAULT_NAME_FONT) {
     if (def?.nameFont) return def.nameFont;
   }
   return fallback;
+}
+
+/**
+ * Size multiplier for the handwriting font — lets traits compensate for
+ * font-metric differences (Rock Salt renders much taller than Caveat at the
+ * same px size). First matching trait wins; default is 1.
+ *
+ * @param {string[]} traits
+ */
+export function nameFontScaleFor(traits) {
+  for (const t of traits) {
+    const def = TRAIT_DEFS[/** @type {TraitId} */ (t)];
+    if (def?.nameFontScale) return def.nameFontScale;
+  }
+  return 1;
 }
 
 /** @param {string} id */

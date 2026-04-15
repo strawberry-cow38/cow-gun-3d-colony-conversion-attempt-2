@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
-import { nameFontFor } from '../world/traits.js';
+import { nameFontFor, nameFontScaleFor } from '../world/traits.js';
 import { jitterForGlyph } from './handwriting.js';
 
 const HEAD_OFFSET = 2.2 * UNITS_PER_METER;
@@ -66,11 +66,12 @@ export function createCowNameTags(scene) {
       alive.add(id);
       const name = components.Brain.name ?? `#${id}`;
       const family = nameFontFor(components.Identity.traits);
-      const key = `${id}|${name}|${family}|${fontVersion}`;
+      const scale = nameFontScaleFor(components.Identity.traits);
+      const key = `${id}|${name}|${family}|${scale}|${fontVersion}`;
       let tag = tags.get(id);
       if (!tag || tag.key !== key) {
         if (tag) disposeTag(scene, tag);
-        tag = makeTag(scene, id, name, family, key);
+        tag = makeTag(scene, id, name, family, scale, key);
         tags.set(id, tag);
       }
 
@@ -126,10 +127,11 @@ export function createCowNameTags(scene) {
  * @param {number} cowId
  * @param {string} name
  * @param {string} family
+ * @param {number} scale
  * @param {string} key
  */
-function makeTag(scene, cowId, name, family, key) {
-  const { canvas, aspect } = renderTextToCanvas(cowId, name, family);
+function makeTag(scene, cowId, name, family, scale, key) {
+  const { canvas, aspect } = renderTextToCanvas(cowId, name, family, scale);
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -163,12 +165,13 @@ function disposeTag(scene, tag) {
  * @param {number} cowId
  * @param {string} name
  * @param {string} family
+ * @param {number} scale
  */
-function renderTextToCanvas(cowId, name, family) {
+function renderTextToCanvas(cowId, name, family, scale) {
   // Extra horizontal pad beyond the default so ±4° rotated letters at the
   // string edges don't clip — a 72px tall glyph at 4° needs ~5px of overhang.
   const pad = 32;
-  const fontPx = 72;
+  const fontPx = Math.round(72 * scale);
   const font = `700 ${fontPx}px ${family}`;
   const measureCanvas = document.createElement('canvas');
   const measureCtx = /** @type {CanvasRenderingContext2D} */ (measureCanvas.getContext('2d'));

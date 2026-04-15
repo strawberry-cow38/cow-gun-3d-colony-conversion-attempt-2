@@ -7,7 +7,7 @@
  */
 
 import { ageYears, formatSimBirthday, tickToSimDate } from '../sim/calendar.js';
-import { nameFontFor, traitDef } from '../world/traits.js';
+import { nameFontFor, nameFontScaleFor, traitDef } from '../world/traits.js';
 import { writeJitteredName } from './handwriting.js';
 
 /**
@@ -197,6 +197,7 @@ export function createCowPanel(opts) {
     avatar.textContent = initialsOf(brain.name);
     avatar.style.background = hueForName(brain.name);
     nameEl.style.fontFamily = nameFontFor(traits);
+    nameEl.style.fontSize = `${14 * nameFontScaleFor(traits)}px`;
     writeJitteredName(nameEl, id, brain.name);
     genderEl.textContent = `${genderLabel(identity.gender)} · ${age} yrs`;
 

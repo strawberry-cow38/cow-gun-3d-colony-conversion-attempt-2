@@ -16,7 +16,7 @@
  * DOM unless something moved.
  */
 
-import { nameFontFor } from '../world/traits.js';
+import { nameFontFor, nameFontScaleFor } from '../world/traits.js';
 import { thoughtFor } from './cowThoughtText.js';
 import { writeJitteredName } from './handwriting.js';
 
@@ -180,6 +180,7 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     fontFamily: nameFontFor(traits),
+    fontSize: `${11 * nameFontScaleFor(traits)}px`,
   });
   writeJitteredName(nameEl, id, initialName);
 
