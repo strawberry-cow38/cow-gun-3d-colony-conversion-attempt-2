@@ -1,5 +1,6 @@
 /**
- * Portrait strip along the top-right of the screen.
+ * Portrait strip along the top-left of the screen (under the debug HUD when
+ * it's open).
  *
  * One card per live cow: a colored disc with two-letter initials, the cow's
  * name, and the current activity text (same phrasing as the floating thought
@@ -35,14 +36,14 @@ export function createCowPortraitBar(opts) {
   Object.assign(root.style, {
     position: 'fixed',
     top: '8px',
-    right: '8px',
+    left: '8px',
     display: 'flex',
     flexWrap: 'wrap',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     gap: '6px',
     padding: '0',
     margin: '0',
-    maxWidth: 'min(640px, calc(100vw - 420px))',
+    maxWidth: 'min(640px, calc(100vw - 320px))',
     zIndex: '40',
     pointerEvents: 'none',
   });

@@ -25,8 +25,9 @@ const SAPLING_TARGET_FRACTION = 0.01 * TREE_DENSITY_MULT;
 const SAPLING_SPAWN_PER_RUN = 3;
 
 /** Saplings must be at least this many tiles from any wall/door/torch/floor/
- * roof/stockpile/farmzone/tilled tile so they never sprout on top of a
- * colony. Radius 2 ≈ a 5×5 neighborhood. */
+ * roof/stockpile/farmzone/tilled tile or pending blueprint, so they never
+ * sprout on top of a colony or over a half-built wall. Radius 2 ≈ a 5×5
+ * neighborhood. */
 const SAPLING_SAFE_RADIUS = 2;
 
 /**
@@ -134,6 +135,15 @@ export function makeSaplingSpawnSystem({ grid, onSpawn }) {
         const t = worldToTileClamp(p.x, p.z, grid.W, grid.H);
         cowTiles.add(t.j * grid.W + t.i);
       }
+      // Blueprints aren't on the grid bitmaps yet (the BuildSite is an entity
+      // that lives until a cow finishes the build), so collect their tiles
+      // here and let the safe-radius check exclude them.
+      /** @type {Set<number>} */
+      const blueprintTiles = new Set();
+      for (const { components } of world.query(['BuildSite', 'TileAnchor'])) {
+        const a = components.TileAnchor;
+        blueprintTiles.add(a.j * grid.W + a.i);
+      }
       let placed = 0;
       let attempts = 0;
       const maxAttempts = SAPLING_SPAWN_PER_RUN * 16;
@@ -144,7 +154,7 @@ export function makeSaplingSpawnSystem({ grid, onSpawn }) {
         if (!isTreeBiome(grid, i, j)) continue;
         if (grid.isBlocked(i, j)) continue;
         if (cowTiles.has(j * grid.W + i)) continue;
-        if (nearColonyFootprint(grid, i, j, SAPLING_SAFE_RADIUS)) continue;
+        if (nearColonyFootprint(grid, i, j, SAPLING_SAFE_RADIUS, blueprintTiles)) continue;
         const kind = randomTreeKind();
         if (spawnTree(world, grid, i, j, { kind, growth: 0 }) !== -1) placed++;
       }
@@ -158,8 +168,9 @@ export function makeSaplingSpawnSystem({ grid, onSpawn }) {
  * @param {number} i
  * @param {number} j
  * @param {number} radius
+ * @param {Set<number>} [blueprintTiles] tile indices of pending BuildSites
  */
-function nearColonyFootprint(grid, i, j, radius) {
+function nearColonyFootprint(grid, i, j, radius, blueprintTiles) {
   const i0 = Math.max(0, i - radius);
   const i1 = Math.min(grid.W - 1, i + radius);
   const j0 = Math.max(0, j - radius);
@@ -175,7 +186,8 @@ function nearColonyFootprint(grid, i, j, radius) {
         grid.floor[k] !== 0 ||
         grid.stockpile[k] !== 0 ||
         grid.farmZone[k] !== 0 ||
-        grid.tilled[k] !== 0
+        grid.tilled[k] !== 0 ||
+        blueprintTiles?.has(k)
       ) {
         return true;
       }
