@@ -9,6 +9,7 @@
  */
 
 import { randomBirthTickForAge } from '../sim/calendar.js';
+import { pickChildhood, pickProfession } from './backstories.js';
 import { pickCowSurname } from './cowNames.js';
 import { rollTraits } from './traits.js';
 
@@ -67,7 +68,7 @@ const HAIR_COLORS = [
 /**
  * @param {number} currentTick
  * @param {string} firstName
- * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[], firstName: string, surname: string, title: Title }}
+ * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[], firstName: string, surname: string, title: Title, childhood: string, profession: string }}
  */
 export function rollCowIdentity(currentTick, firstName) {
   const gender = /** @type {Gender} */ (Math.random() < 0.5 ? 'female' : 'male');
@@ -78,7 +79,20 @@ export function rollCowIdentity(currentTick, firstName) {
   const traits = rollTraits();
   const surname = pickCowSurname();
   const title = rollTitle(gender);
-  return { gender, birthTick, heightCm, hairColor, traits, firstName, surname, title };
+  const childhood = pickChildhood(title);
+  const profession = pickProfession(title);
+  return {
+    gender,
+    birthTick,
+    heightCm,
+    hairColor,
+    traits,
+    firstName,
+    surname,
+    title,
+    childhood,
+    profession,
+  };
 }
 
 /**

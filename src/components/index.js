@@ -18,7 +18,7 @@
  *                                    `name` is authoritative — Identity mirrors
  *                                    it so colonist UI has one record to read.
  * Identity    { name, firstName, surname, title, gender, birthTick,
- *                heightCm, hairColor, traits }
+ *                heightCm, hairColor, traits, childhood, profession }
  *                                    Demographic card for a colonist. `name`
  *                                    is the composed display string
  *                                    ("Dr. Bessie Moonfield"); the part
@@ -193,6 +193,8 @@ export function registerComponents(world) {
     hairColor: '#4a2f20',
     /** @type {string[]} */
     traits: [],
+    childhood: '',
+    profession: '',
   }));
   world.defineComponent('Job', () => ({
     kind: 'none',

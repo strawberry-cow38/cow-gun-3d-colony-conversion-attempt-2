@@ -551,6 +551,43 @@ describe('migration runner', () => {
     expect(out.furnaces).toEqual([]);
   });
 
+  it('rolls childhood + profession onto existing cows in the v30→v31 bump', () => {
+    const v30 = {
+      version: 30,
+      tileGrid: { W: 1, H: 1, elevation: [0], biome: [0], stockpile: [0] },
+      cows: [
+        {
+          name: 'Dr. Bessie Moonfield',
+          drafted: false,
+          position: { x: 0, y: 0, z: 0 },
+          hunger: 1,
+          job: { kind: 'none', state: 'idle', payload: {} },
+          path: { steps: [], index: 0 },
+          inventory: { items: [] },
+          identity: {
+            gender: 'female',
+            birthTick: -1000000,
+            heightCm: 170,
+            hairColor: '#4a2f20',
+            traits: [],
+            firstName: 'Bessie',
+            surname: 'Moonfield',
+            title: 'Dr.',
+          },
+          opinions: { scores: {}, last: {}, chats: 0 },
+        },
+      ],
+      trees: [],
+      items: [],
+    };
+    const out = runMigrations(v30);
+    expect(out.version).toBe(CURRENT_VERSION);
+    expect(typeof out.cows[0].identity.childhood).toBe('string');
+    expect(out.cows[0].identity.childhood.length).toBeGreaterThan(0);
+    expect(typeof out.cows[0].identity.profession).toBe('string');
+    expect(out.cows[0].identity.profession.length).toBeGreaterThan(0);
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

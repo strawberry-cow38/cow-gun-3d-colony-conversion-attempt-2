@@ -45,6 +45,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {string} firstName
  * @property {string} surname
  * @property {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.' | 'Col.'} title
+ * @property {string} childhood
+ * @property {string} profession
  */
 
 /**
@@ -293,6 +295,8 @@ export function serializeState(tileGrid, world) {
         firstName: components.Identity.firstName,
         surname: components.Identity.surname,
         title: components.Identity.title,
+        childhood: components.Identity.childhood ?? '',
+        profession: components.Identity.profession ?? '',
       },
       opinions: { scores: {}, last: {}, chats: 0 },
     };
@@ -622,6 +626,8 @@ export function hydrateCows(world, state) {
         heightCm: id.heightCm,
         hairColor: id.hairColor,
         traits: Array.isArray(id.traits) ? [...id.traits] : [],
+        childhood: id.childhood ?? '',
+        profession: id.profession ?? '',
       },
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },

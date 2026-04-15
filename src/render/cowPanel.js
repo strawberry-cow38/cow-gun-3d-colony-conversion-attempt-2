@@ -107,6 +107,23 @@ export function createCowPanel(opts) {
     color: '#d8dfe6',
   });
 
+  const backstoryBlock = document.createElement('div');
+  Object.assign(backstoryBlock.style, {
+    marginTop: '8px',
+    padding: '6px 8px',
+    background: 'rgba(255, 255, 255, 0.04)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '3px',
+    fontSize: '11px',
+    color: '#c8d0d8',
+    lineHeight: '1.4',
+    display: 'none',
+  });
+  const childhoodLine = document.createElement('div');
+  const professionLine = document.createElement('div');
+  Object.assign(professionLine.style, { marginTop: '3px' });
+  backstoryBlock.append(childhoodLine, professionLine);
+
   const traitsWrap = document.createElement('div');
   Object.assign(traitsWrap.style, {
     display: 'flex',
@@ -140,7 +157,7 @@ export function createCowPanel(opts) {
   tabBar.append(bioTab, socialTab);
 
   const bioBody = document.createElement('div');
-  bioBody.append(stats, traitsWrap, traitDetail);
+  bioBody.append(stats, backstoryBlock, traitsWrap, traitDetail);
 
   const socialBody = document.createElement('div');
   Object.assign(socialBody.style, { fontSize: '12px', color: '#d8dfe6' });
@@ -228,7 +245,9 @@ export function createCowPanel(opts) {
     const birthday = formatSimBirthday(birthDate);
     const birthYear = birthDate.getUTCFullYear();
     const traits = identity.traits;
-    const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}`;
+    const childhood = identity.childhood ?? '';
+    const profession = identity.profession ?? '';
+    const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}|${childhood}|${profession}`;
     if (activeTab === 'social') renderSocial(id);
     if (key === last.key) {
       if (root.style.display === 'none') root.style.display = 'block';
@@ -253,6 +272,32 @@ export function createCowPanel(opts) {
       row('Height', `${identity.heightCm} cm`),
       hairRow('Hair', identity.hairColor),
     );
+
+    if (childhood || profession) {
+      backstoryBlock.style.display = 'block';
+      childhoodLine.replaceChildren();
+      if (childhood) {
+        const tag = document.createElement('span');
+        Object.assign(tag.style, { color: '#8fa0af', fontWeight: '600' });
+        tag.textContent = 'Grew up: ';
+        const body = document.createElement('span');
+        Object.assign(body.style, { fontStyle: 'italic' });
+        body.textContent = childhood;
+        childhoodLine.append(tag, body);
+      }
+      professionLine.replaceChildren();
+      if (profession) {
+        const tag = document.createElement('span');
+        Object.assign(tag.style, { color: '#8fa0af', fontWeight: '600' });
+        tag.textContent = 'Worked as: ';
+        const body = document.createElement('span');
+        Object.assign(body.style, { fontStyle: 'italic' });
+        body.textContent = profession;
+        professionLine.append(tag, body);
+      }
+    } else {
+      backstoryBlock.style.display = 'none';
+    }
 
     traitsWrap.replaceChildren();
     if (traits.length === 0) {
