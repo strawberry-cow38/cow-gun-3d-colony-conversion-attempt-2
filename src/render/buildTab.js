@@ -1,18 +1,18 @@
 /**
- * Build tab: bottom-left toolbar that replaces the old per-designator
- * keyboard shortcuts (C/B/V/M). One button per designateable kind (chop,
- * stockpile, wall, door). Click toggles the designator on/off; active buttons
- * highlight in the designator's preview color so the UI matches the in-world
- * drag rectangle. Escape still exits whichever mode is active.
+ * Build palette: RimWorld-style nested picker anchored at bottom-left.
+ *
+ *   [Build]  →  clicking opens a column of Categories above the button.
+ *   Clicking a category opens a second column (to the right of the category
+ *   column) with the designator buttons for that category. Clicking a
+ *   designator activates it. Escape closes the whole palette.
  *
  * Button state is re-read every render frame via the designator's public
- * `.active` flag — no plumbing through the designator's onStateChanged, which
- * keeps the tab decoupled from the 4-way mutual-exclusion wiring in main.js.
+ * `.active` flag — no plumbing through onStateChanged, which keeps the tab
+ * decoupled from the mutual-exclusion wiring in main.js.
  *
- * Material ("stuff") picker: wall/door/roof buttons get a right-click popup
- * that lists materials from the stuff registry. Click a material to swap
- * what future placements of this kind will be made of. A swatch strip at the
- * bottom of the button reflects the currently-selected material.
+ * Material ("stuff") / crop picker: wall/door/roof/floor/farm buttons get a
+ * right-click popup. The swatch strip on the button reflects the current
+ * stuff/crop.
  */
 
 import { CROP_KINDS, CROP_VISUALS } from '../world/crops.js';
@@ -32,12 +32,37 @@ import { colorToCss } from './dragSizeLabel.js';
  * @property {string} icon - emoji rendered as the button's primary glyph
  * @property {string} hotkeyHint - shown in the tooltip so old muscle-memory still helps
  * @property {string} activeColor - CSS color applied when the designator is active
+ * @property {string} categoryId - which category column this entry lives under
  * @property {ToggleableDesignator} designator
  * @property {boolean} [stuffed] - if true, right-click opens the material picker and
  *   the button shows a swatch reflecting the designator's currentStuff
  * @property {boolean} [croppable] - if true, right-click opens the crop-kind picker
  *   and the button shows a swatch reflecting the designator's currentCrop
  */
+
+/**
+ * @typedef {Object} BuildCategory
+ * @property {string} id
+ * @property {string} label
+ * @property {string} icon
+ */
+
+/**
+ * Categories are declarative: add a row here to get a new tab. An entry lands
+ * in a tab by matching on `categoryId`. Empty categories render as a greyed-
+ * out tab so the palette can advertise upcoming buckets before their contents
+ * exist (e.g. furniture sits here while beds/chairs/tables are still TBD).
+ *
+ * @type {BuildCategory[]}
+ */
+const CATEGORIES = [
+  { id: 'orders', label: 'Orders', icon: '📋' },
+  { id: 'zones', label: 'Zones', icon: '📐' },
+  { id: 'structure', label: 'Structure', icon: '🏗️' },
+  { id: 'furniture', label: 'Furniture', icon: '🪑' },
+  { id: 'production', label: 'Production', icon: '⚙️' },
+  { id: 'lighting', label: 'Lighting', icon: '💡' },
+];
 
 /**
  * @typedef {Object} BuildTabOpts
@@ -66,12 +91,14 @@ import { colorToCss } from './dragSizeLabel.js';
 export function createBuildTab(opts) {
   /** @type {BuildTabEntry[]} */
   const entries = [
+    // Orders — mark/unmark actions on existing world tiles/objects.
     {
       id: 'chop',
       label: 'Chop',
       icon: '🪓',
       hotkeyHint: 'mark mature trees for felling (≥50% grown)',
       activeColor: '#ffae4a',
+      categoryId: 'orders',
       designator: opts.chopDesignator,
     },
     {
@@ -81,6 +108,7 @@ export function createBuildTab(opts) {
       hotkeyHint:
         'snip saplings, unripe crops, brush — yields whatever they\u2019re currently worth',
       activeColor: '#9fdc5a',
+      categoryId: 'orders',
       designator: opts.cutDesignator,
     },
     {
@@ -89,14 +117,63 @@ export function createBuildTab(opts) {
       icon: '⛏️',
       hotkeyHint: 'mark boulders for mining',
       activeColor: '#bad9ff',
+      categoryId: 'orders',
       designator: opts.mineDesignator,
     },
+    {
+      id: 'deconstruct',
+      label: 'Demolish',
+      icon: '🔨',
+      hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
+      activeColor: '#ff4a4a',
+      categoryId: 'orders',
+      designator: opts.deconstructDesignator,
+    },
+    {
+      id: 'remove-roof',
+      label: 'Un-roof',
+      icon: '🏚️',
+      hotkeyHint: 'drag to remove roofs only (leaves the walls under them standing)',
+      activeColor: '#ff8fd0',
+      categoryId: 'orders',
+      designator: opts.removeRoofDesignator,
+    },
+    {
+      id: 'remove-floor',
+      label: 'Un-floor',
+      icon: '🪵',
+      hotkeyHint: 'drag to tear up floors only (walls/doors/roofs untouched)',
+      activeColor: '#d4a14a',
+      categoryId: 'orders',
+      designator: opts.removeFloorDesignator,
+    },
+    {
+      id: 'uninstall',
+      label: 'Uninstall Art',
+      icon: '🖼️',
+      hotkeyHint: 'click a painting on a wall to pry it off and return it to storage',
+      activeColor: '#ff8fd0',
+      categoryId: 'orders',
+      designator: opts.uninstallDesignator,
+    },
+    {
+      id: 'cancel',
+      label: 'Cancel',
+      icon: '❌',
+      hotkeyHint: 'drag to cancel blueprints + pending demolition (refunds delivered resources)',
+      activeColor: '#ffe24a',
+      categoryId: 'orders',
+      designator: opts.cancelDesignator,
+    },
+
+    // Zones — area designations.
     {
       id: 'stockpile',
       label: 'Stockpile',
       icon: '📦',
       hotkeyHint: 'designate storage tiles',
       activeColor: '#90d0ff',
+      categoryId: 'zones',
       designator: opts.stockpileDesignator,
     },
     {
@@ -105,15 +182,28 @@ export function createBuildTab(opts) {
       icon: '🌾',
       hotkeyHint: 'designate growing zones (right-click for crop kind)',
       activeColor: '#6fe2a0',
+      categoryId: 'zones',
       designator: opts.farmZoneDesignator,
       croppable: true,
     },
+    {
+      id: 'no-roof',
+      label: 'No Roof',
+      icon: '🚫',
+      hotkeyHint: 'drag to mark tiles the auto-roofer should skip',
+      activeColor: '#d060ff',
+      categoryId: 'zones',
+      designator: opts.ignoreRoofDesignator,
+    },
+
+    // Structure — permanent building pieces.
     {
       id: 'wall',
       label: 'Wall',
       icon: '🧱',
       hotkeyHint: 'build walls (right-click for material)',
       activeColor: '#e9d477',
+      categoryId: 'structure',
       designator: opts.wallDesignator,
       stuffed: true,
     },
@@ -123,24 +213,9 @@ export function createBuildTab(opts) {
       icon: '🚪',
       hotkeyHint: 'click a tile to place a door (right-click for material)',
       activeColor: '#ffb070',
+      categoryId: 'structure',
       designator: opts.doorDesignator,
       stuffed: true,
-    },
-    {
-      id: 'torch',
-      label: 'Torch',
-      icon: '🔥',
-      hotkeyHint: 'click a tile to place a torch',
-      activeColor: '#ffb84a',
-      designator: opts.torchDesignator,
-    },
-    {
-      id: 'wall-torch',
-      label: 'Wall Torch',
-      icon: '🕯️',
-      hotkeyHint: 'click a tile next to a wall to mount a torch on it',
-      activeColor: '#ffd070',
-      designator: opts.wallTorchDesignator,
     },
     {
       id: 'roof',
@@ -149,6 +224,7 @@ export function createBuildTab(opts) {
       hotkeyHint:
         'drag to designate roofs (free; right-click for material — walls must match to support)',
       activeColor: '#c0a080',
+      categoryId: 'structure',
       designator: opts.roofDesignator,
       stuffed: true,
     },
@@ -159,15 +235,19 @@ export function createBuildTab(opts) {
       hotkeyHint:
         'drag to designate floors — cows walk at full speed on floors, 85% off them (right-click for material)',
       activeColor: '#bf9a6a',
+      categoryId: 'structure',
       designator: opts.floorDesignator,
       stuffed: true,
     },
+
+    // Production — crafting / creation stations.
     {
       id: 'furnace',
       label: 'Furnace',
       icon: '🏭',
       hotkeyHint: 'click a tile to place a furnace (15 stone)',
       activeColor: '#d2785a',
+      categoryId: 'production',
       designator: opts.furnaceDesignator,
     },
     {
@@ -176,55 +256,28 @@ export function createBuildTab(opts) {
       icon: '🎨',
       hotkeyHint: 'click a tile to place an easel (8 wood) — R rotates facing',
       activeColor: '#d8b26a',
+      categoryId: 'production',
       designator: opts.easelDesignator,
     },
+
+    // Lighting.
     {
-      id: 'no-roof',
-      label: 'No Roof',
-      icon: '🚫',
-      hotkeyHint: 'drag to mark tiles the auto-roofer should skip',
-      activeColor: '#d060ff',
-      designator: opts.ignoreRoofDesignator,
+      id: 'torch',
+      label: 'Torch',
+      icon: '🔥',
+      hotkeyHint: 'click a tile to place a torch',
+      activeColor: '#ffb84a',
+      categoryId: 'lighting',
+      designator: opts.torchDesignator,
     },
     {
-      id: 'deconstruct',
-      label: 'Demolish',
-      icon: '🔨',
-      hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
-      activeColor: '#ff4a4a',
-      designator: opts.deconstructDesignator,
-    },
-    {
-      id: 'remove-roof',
-      label: 'Un-roof',
-      icon: '🏚️',
-      hotkeyHint: 'drag to remove roofs only (leaves the walls under them standing)',
-      activeColor: '#ff8fd0',
-      designator: opts.removeRoofDesignator,
-    },
-    {
-      id: 'remove-floor',
-      label: 'Un-floor',
-      icon: '🪵',
-      hotkeyHint: 'drag to tear up floors only (walls/doors/roofs untouched)',
-      activeColor: '#d4a14a',
-      designator: opts.removeFloorDesignator,
-    },
-    {
-      id: 'uninstall',
-      label: 'Uninstall Art',
-      icon: '🖼️',
-      hotkeyHint: 'click a painting on a wall to pry it off and return it to storage',
-      activeColor: '#ff8fd0',
-      designator: opts.uninstallDesignator,
-    },
-    {
-      id: 'cancel',
-      label: 'Cancel',
-      icon: '❌',
-      hotkeyHint: 'drag to cancel blueprints + pending demolition (refunds delivered resources)',
-      activeColor: '#ffe24a',
-      designator: opts.cancelDesignator,
+      id: 'wall-torch',
+      label: 'Wall Torch',
+      icon: '🕯️',
+      hotkeyHint: 'click a tile next to a wall to mount a torch on it',
+      activeColor: '#ffd070',
+      categoryId: 'lighting',
+      designator: opts.wallTorchDesignator,
     },
   ];
 
@@ -235,32 +288,102 @@ export function createBuildTab(opts) {
     bottom: '10px',
     left: '10px',
     display: 'flex',
+    alignItems: 'flex-end',
     gap: '6px',
-    padding: '6px',
-    background: 'rgba(14, 18, 24, 0.82)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: '6px',
     zIndex: '40',
     userSelect: 'none',
   });
 
-  const header = document.createElement('div');
-  Object.assign(header.style, {
+  // Root "Build" button — always visible, toggles the category column.
+  const buildButton = document.createElement('button');
+  buildButton.type = 'button';
+  buildButton.title = 'Build — open construction palette';
+  Object.assign(buildButton.style, {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    padding: '0 6px 0 4px',
-    color: '#b5c0cc',
-    font: "600 11px/1 system-ui, -apple-system, 'Segoe UI', sans-serif",
-    letterSpacing: '0.5px',
-    textTransform: 'uppercase',
-    borderRight: '1px solid rgba(255, 255, 255, 0.12)',
+    justifyContent: 'center',
+    gap: '2px',
+    width: '68px',
+    height: '54px',
+    padding: '4px',
+    background: 'rgba(14, 18, 24, 0.92)',
+    color: '#e6e6e6',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '6px',
+    font: "600 11px/1.1 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+    transition: 'border-color 80ms linear, background-color 80ms linear',
   });
-  header.textContent = 'Build';
-  root.appendChild(header);
+  const buildIcon = document.createElement('div');
+  buildIcon.textContent = '🔨';
+  Object.assign(buildIcon.style, { fontSize: '22px', lineHeight: '1' });
+  const buildLabel = document.createElement('div');
+  buildLabel.textContent = 'Build';
+  buildButton.append(buildIcon, buildLabel);
+  root.appendChild(buildButton);
 
+  // Category column — sits to the right of the Build button, grows upward.
+  const categoryColumn = makeColumn('Build');
+  categoryColumn.style.display = 'none';
+  root.appendChild(categoryColumn);
+
+  // Designator column — sits to the right of the category column.
+  const designatorColumn = makeColumn('');
+  designatorColumn.style.display = 'none';
+  root.appendChild(designatorColumn);
+
+  // Placeholder shown in the designator column when the active category has
+  // no entries yet (e.g. Furniture while beds/chairs/tables are TBD). Sits
+  // alongside the real designator buttons and is shown/hidden by syncPanels.
+  const emptyPlaceholder = document.createElement('div');
+  Object.assign(emptyPlaceholder.style, {
+    padding: '10px 8px',
+    color: '#8a95a3',
+    font: "italic 500 11px/1.3 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    textAlign: 'center',
+    minWidth: '172px',
+    display: 'none',
+  });
+  emptyPlaceholder.textContent = 'Nothing here yet';
+  designatorColumn.body.appendChild(emptyPlaceholder);
+
+  // Count how many entries live under each category so the category tab can
+  // render greyed-out when empty and the designator column can fall back to
+  // the "nothing here yet" placeholder.
+  const entryCounts = /** @type {Record<string, number>} */ ({});
+  for (const cat of CATEGORIES) entryCounts[cat.id] = 0;
+  for (const e of entries) {
+    if (e.categoryId in entryCounts) entryCounts[e.categoryId]++;
+  }
+
+  /** @type {{ id: string, el: HTMLButtonElement, empty: boolean }[]} */
+  const categoryButtons = [];
+  for (const cat of CATEGORIES) {
+    const empty = entryCounts[cat.id] === 0;
+    const btn = makeCategoryButton(cat, empty);
+    categoryColumn.body.appendChild(btn);
+    categoryButtons.push({ id: cat.id, el: btn, empty });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      btn.blur();
+      if (state.openCategoryId === cat.id) {
+        state.openCategoryId = null;
+      } else {
+        state.openCategoryId = cat.id;
+      }
+      syncPanels();
+    });
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+  }
+
+  // One designator button per entry; placed in the designator column body,
+  // but only shown when its category is the active one.
   const buttons = entries.map((entry) => {
     const btn = makeButton(entry);
-    root.appendChild(btn.el);
+    designatorColumn.body.appendChild(btn.el);
+    btn.el.style.display = 'none';
     return {
       ...entry,
       ...btn,
@@ -270,7 +393,50 @@ export function createBuildTab(opts) {
     };
   });
 
-  document.body.appendChild(root);
+  const state = {
+    /** @type {boolean} */
+    open: false,
+    /** @type {string | null} */
+    openCategoryId: null,
+  };
+
+  buildButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    buildButton.blur();
+    state.open = !state.open;
+    if (!state.open) state.openCategoryId = null;
+    syncPanels();
+  });
+  buildButton.addEventListener('mousedown', (e) => e.stopPropagation());
+
+  // Escape closes the palette. The existing cancel/designator escape is on
+  // the document in designator-land; our handler fires first when the palette
+  // is open so escape doesn't also deactivate whatever designator was chosen.
+  addEventListener('keydown', (e) => {
+    if (e.code !== 'Escape') return;
+    if (!state.open && !state.openCategoryId) return;
+    state.open = false;
+    state.openCategoryId = null;
+    syncPanels();
+  });
+
+  function syncPanels() {
+    categoryColumn.style.display = state.open ? 'flex' : 'none';
+    designatorColumn.style.display = state.open && state.openCategoryId ? 'flex' : 'none';
+    // Category header reflects the active pick so the user always knows which
+    // column the designators belong to.
+    const activeCat = CATEGORIES.find((c) => c.id === state.openCategoryId);
+    designatorColumn.header.textContent = activeCat ? activeCat.label : '';
+    for (const cb of categoryButtons) {
+      applyCategoryActive(cb.el, cb.id === state.openCategoryId, cb.empty);
+    }
+    for (const b of buttons) {
+      b.el.style.display = b.categoryId === state.openCategoryId ? 'flex' : 'none';
+    }
+    const activeEmpty = state.openCategoryId !== null && entryCounts[state.openCategoryId] === 0;
+    emptyPlaceholder.style.display = activeEmpty ? 'block' : 'none';
+    applyBuildActive(buildButton, state.open);
+  }
 
   function update() {
     for (const b of buttons) {
@@ -298,7 +464,89 @@ export function createBuildTab(opts) {
     }
   }
 
+  document.body.appendChild(root);
+  syncPanels();
+
   return { update, root };
+}
+
+/**
+ * @param {string} title
+ * @returns {HTMLDivElement & { header: HTMLDivElement, body: HTMLDivElement }}
+ */
+function makeColumn(title) {
+  const col = /** @type {HTMLDivElement & { header: HTMLDivElement, body: HTMLDivElement }} */ (
+    document.createElement('div')
+  );
+  Object.assign(col.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    padding: '6px',
+    background: 'rgba(14, 18, 24, 0.88)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    borderRadius: '6px',
+    alignSelf: 'flex-end',
+  });
+  const header = document.createElement('div');
+  Object.assign(header.style, {
+    color: '#b5c0cc',
+    font: "600 10px/1 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase',
+    padding: '2px 2px 4px 2px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+    marginBottom: '2px',
+    minHeight: '12px',
+  });
+  header.textContent = title;
+  col.appendChild(header);
+  const body = document.createElement('div');
+  Object.assign(body.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  });
+  col.appendChild(body);
+  col.header = header;
+  col.body = body;
+  return col;
+}
+
+/**
+ * @param {BuildCategory} cat
+ * @param {boolean} empty
+ * @returns {HTMLButtonElement}
+ */
+function makeCategoryButton(cat, empty) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.title = empty ? `${cat.label} category (nothing here yet)` : `${cat.label} category`;
+  Object.assign(el.style, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    width: '128px',
+    height: '34px',
+    padding: '4px 8px',
+    background: 'rgba(30, 36, 44, 0.85)',
+    color: empty ? '#8a95a3' : '#e6e6e6',
+    border: '1px solid rgba(255, 255, 255, 0.14)',
+    borderRadius: '4px',
+    font: "600 12px/1 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    cursor: 'pointer',
+    boxSizing: 'border-box',
+    textAlign: 'left',
+    opacity: empty ? '0.55' : '1',
+    transition: 'border-color 80ms linear, background-color 80ms linear',
+  });
+  const icon = document.createElement('span');
+  icon.textContent = cat.icon;
+  Object.assign(icon.style, { fontSize: '18px', lineHeight: '1' });
+  const label = document.createElement('span');
+  label.textContent = cat.label;
+  el.append(icon, label);
+  return el;
 }
 
 /**
@@ -310,47 +558,51 @@ function makeButton(entry) {
   el.title = `${entry.label} — ${entry.hotkeyHint}`;
   Object.assign(el.style, {
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: '2px',
-    width: '64px',
-    height: '54px',
-    padding: '4px',
+    gap: '8px',
+    width: '172px',
+    minHeight: '40px',
+    padding: '4px 8px',
     background: 'rgba(30, 36, 44, 0.85)',
     color: '#e6e6e6',
     border: '1px solid rgba(255, 255, 255, 0.14)',
     borderRadius: '4px',
-    font: "600 10px/1.1 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    font: "600 12px/1.15 system-ui, -apple-system, 'Segoe UI', sans-serif",
     cursor: 'pointer',
     boxSizing: 'border-box',
+    textAlign: 'left',
     transition: 'border-color 80ms linear, background-color 80ms linear',
   });
 
-  const icon = document.createElement('div');
+  const icon = document.createElement('span');
   icon.textContent = entry.icon;
-  Object.assign(icon.style, {
-    fontSize: '22px',
-    lineHeight: '1',
+  Object.assign(icon.style, { fontSize: '20px', lineHeight: '1', flex: '0 0 auto' });
+
+  const textCol = document.createElement('span');
+  Object.assign(textCol.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: '1 1 auto',
+    minWidth: '0',
   });
-
-  const label = document.createElement('div');
+  const label = document.createElement('span');
   label.textContent = entry.label;
+  textCol.appendChild(label);
 
-  el.append(icon, label);
+  el.append(icon, textCol);
 
   /** @type {HTMLElement | null} */
   let swatch = null;
   if (entry.stuffed || entry.croppable) {
     swatch = document.createElement('div');
     Object.assign(swatch.style, {
-      width: '26px',
-      height: '4px',
-      marginTop: '1px',
-      borderRadius: '2px',
+      width: '14px',
+      height: '14px',
+      borderRadius: '3px',
       background: '#ffffff',
       border: '1px solid rgba(0, 0, 0, 0.35)',
       boxSizing: 'border-box',
+      flex: '0 0 auto',
     });
     el.appendChild(swatch);
   }
@@ -486,8 +738,8 @@ function openPopupPicker({ anchor, entries, selectedId, onSelect }) {
   // screen, so the menu grows up and to the right).
   const rect = anchor.getBoundingClientRect();
   const menuHeight = menu.getBoundingClientRect().height;
-  menu.style.left = `${rect.left}px`;
-  menu.style.top = `${rect.top - menuHeight - 4}px`;
+  menu.style.left = `${rect.right + 6}px`;
+  menu.style.top = `${rect.top - menuHeight + rect.height}px`;
   openPicker = menu;
   // Defer the dismiss-on-outside handler so the contextmenu click that
   // opened the menu doesn't immediately close it.
@@ -566,5 +818,34 @@ function applyActiveStyle(el, active, accent) {
     el.style.borderColor = 'rgba(255, 255, 255, 0.14)';
     el.style.background = 'rgba(30, 36, 44, 0.85)';
     el.style.boxShadow = 'none';
+  }
+}
+
+/**
+ * @param {HTMLElement} el
+ * @param {boolean} active
+ * @param {boolean} empty
+ */
+function applyCategoryActive(el, active, empty) {
+  if (active) {
+    el.style.borderColor = '#b5c0cc';
+    el.style.background = empty ? 'rgba(36, 42, 52, 0.9)' : 'rgba(52, 62, 78, 0.92)';
+  } else {
+    el.style.borderColor = 'rgba(255, 255, 255, 0.14)';
+    el.style.background = 'rgba(30, 36, 44, 0.85)';
+  }
+}
+
+/**
+ * @param {HTMLElement} el
+ * @param {boolean} active
+ */
+function applyBuildActive(el, active) {
+  if (active) {
+    el.style.borderColor = '#ffd070';
+    el.style.background = 'rgba(52, 48, 24, 0.95)';
+  } else {
+    el.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+    el.style.background = 'rgba(14, 18, 24, 0.92)';
   }
 }
