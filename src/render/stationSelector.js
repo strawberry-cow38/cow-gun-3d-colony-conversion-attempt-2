@@ -27,8 +27,9 @@ export class StationSelector {
    * @param {import('../ecs/world.js').World} world
    * @param {'Furnace' | 'Easel' | 'Stove'} compName
    * @param {(id: number | null, additive: boolean) => void} onSelect
+   * @param {{ isDesignatorActive?: () => boolean }} [opts]
    */
-  constructor(dom, camera, getTileMesh, grid, world, compName, onSelect) {
+  constructor(dom, camera, getTileMesh, grid, world, compName, onSelect, opts = {}) {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
@@ -36,6 +37,7 @@ export class StationSelector {
     this.world = world;
     this.compName = compName;
     this.onSelect = onSelect;
+    this.isDesignatorActive = opts.isDesignatorActive ?? (() => false);
     this.raycaster = new THREE.Raycaster();
     dom.addEventListener('click', (e) => this.#handleClick(e), { capture: true });
   }
@@ -43,6 +45,7 @@ export class StationSelector {
   /** @param {MouseEvent} e */
   #handleClick(e) {
     if (e.button !== 0) return;
+    if (this.isDesignatorActive()) return;
     const rect = this.dom.getBoundingClientRect();
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;

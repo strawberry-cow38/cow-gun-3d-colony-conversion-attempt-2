@@ -289,9 +289,11 @@ export function setupDesignators({
   const deactivateAllTools = () => {
     for (const d of designators) if (d.active) d.deactivate();
   };
+  const isAnyToolActive = () => designators.some((d) => d.active);
 
   return {
     deactivateAllTools,
+    isAnyToolActive,
     chopDesignator,
     cutDesignator,
     mineDesignator,

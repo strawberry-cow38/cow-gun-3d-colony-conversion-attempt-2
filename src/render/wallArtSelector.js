@@ -24,9 +24,10 @@ export class WallArtSelector {
    *   world: import('../ecs/world.js').World,
    *   jobBoard: import('../jobs/board.js').JobBoard,
    *   audio?: { play: (kind: string) => void },
+   *   isDesignatorActive?: () => boolean,
    * }} opts
    */
-  constructor({ canvas, camera, instancer, tileGrid, world, jobBoard, audio }) {
+  constructor({ canvas, camera, instancer, tileGrid, world, jobBoard, audio, isDesignatorActive }) {
     this.dom = canvas;
     this.camera = camera;
     this.instancer = instancer;
@@ -34,6 +35,7 @@ export class WallArtSelector {
     this.world = world;
     this.board = jobBoard;
     this.audio = audio;
+    this.isDesignatorActive = isDesignatorActive ?? (() => false);
     this.raycaster = new THREE.Raycaster();
     canvas.addEventListener('click', (e) => this.#onClick(e), { capture: true });
   }
@@ -41,6 +43,7 @@ export class WallArtSelector {
   /** @param {MouseEvent} e */
   #onClick(e) {
     if (e.button !== 0) return;
+    if (this.isDesignatorActive()) return;
     const rect = this.dom.getBoundingClientRect();
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;

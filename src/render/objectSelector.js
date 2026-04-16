@@ -29,9 +29,20 @@ export class ObjectSelector {
    *   hitboxes: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
    *   onSelect: (id: number | null, additive: boolean) => void,
    *   onSelectMany: (ids: number[]) => void,
+   *   isDesignatorActive?: () => boolean,
    * }} opts
    */
-  constructor({ canvas, camera, tileMesh, grid, world, hitboxes, onSelect, onSelectMany }) {
+  constructor({
+    canvas,
+    camera,
+    tileMesh,
+    grid,
+    world,
+    hitboxes,
+    onSelect,
+    onSelectMany,
+    isDesignatorActive,
+  }) {
     this.dom = canvas;
     this.camera = camera;
     this.getTileMesh = tileMesh;
@@ -40,6 +51,7 @@ export class ObjectSelector {
     this.hitboxes = hitboxes;
     this.onSelect = onSelect;
     this.onSelectMany = onSelectMany;
+    this.isDesignatorActive = isDesignatorActive ?? (() => false);
     canvas.addEventListener('click', (e) => this.#onClick(e), { capture: true });
     canvas.addEventListener('dblclick', (e) => this.#onDouble(e), { capture: true });
   }
@@ -47,6 +59,7 @@ export class ObjectSelector {
   /** @param {MouseEvent} e */
   #onClick(e) {
     if (e.button !== 0) return;
+    if (this.isDesignatorActive()) return;
     const id = pickEntityFromEvent(e, this.dom, this.camera, this.hitboxes);
     if (id === null) {
       // Still check whether the click landed on terrain at all — on a tile
@@ -63,6 +76,7 @@ export class ObjectSelector {
   /** @param {MouseEvent} e */
   #onDouble(e) {
     if (e.button !== 0) return;
+    if (this.isDesignatorActive()) return;
     const id = pickEntityFromEvent(e, this.dom, this.camera, this.hitboxes);
     if (id === null) return;
     const entry = objectTypeFor(this.world, id);

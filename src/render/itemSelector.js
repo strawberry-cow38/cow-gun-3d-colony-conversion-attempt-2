@@ -28,8 +28,9 @@ export class ItemSelector {
    * @param {import('../ecs/world.js').World} world
    * @param {(id: number | null, additive: boolean) => void} onSelect
    * @param {(ids: number[]) => void} onSelectMany
+   * @param {{ isDesignatorActive?: () => boolean }} [opts]
    */
-  constructor(dom, camera, getTileMesh, grid, world, onSelect, onSelectMany) {
+  constructor(dom, camera, getTileMesh, grid, world, onSelect, onSelectMany, opts = {}) {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
@@ -37,6 +38,7 @@ export class ItemSelector {
     this.world = world;
     this.onSelect = onSelect;
     this.onSelectMany = onSelectMany;
+    this.isDesignatorActive = opts.isDesignatorActive ?? (() => false);
     dom.addEventListener('click', (e) => this.#handleClick(e), { capture: true });
     dom.addEventListener('dblclick', (e) => this.#handleDouble(e), { capture: true });
   }
@@ -44,6 +46,7 @@ export class ItemSelector {
   /** @param {MouseEvent} e */
   #handleClick(e) {
     if (e.button !== 0) return;
+    if (this.isDesignatorActive()) return;
     const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
     if (!tile) {
       if (!e.shiftKey) this.onSelect(null, false);
@@ -61,6 +64,7 @@ export class ItemSelector {
   /** @param {MouseEvent} e */
   #handleDouble(e) {
     if (e.button !== 0) return;
+    if (this.isDesignatorActive()) return;
     const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
     if (!tile) return;
     const id = this.#itemAt(tile.i, tile.j);

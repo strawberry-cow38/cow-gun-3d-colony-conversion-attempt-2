@@ -411,7 +411,15 @@ const selectCow = (id, additive) => {
   updateHud();
 };
 
-new CowSelector(canvas, camera, cowHitboxes, () => state.tileMesh, world, selectCow);
+// Designators are wired later; late-bind the getter so any armed build tool
+// suppresses world-object click selection.
+/** @type {() => boolean} */
+let isDesignatorArmedImpl = () => false;
+const isDesignatorArmed = () => isDesignatorArmedImpl();
+
+new CowSelector(canvas, camera, cowHitboxes, () => state.tileMesh, world, selectCow, {
+  isDesignatorActive: isDesignatorArmed,
+});
 
 /**
  * Shared item-selection callback. Stacks + cows are mutually exclusive — a
@@ -571,6 +579,7 @@ new StationSelector(
   world,
   'Furnace',
   selectFurnace,
+  { isDesignatorActive: isDesignatorArmed },
 );
 new StationSelector(
   canvas,
@@ -580,6 +589,7 @@ new StationSelector(
   world,
   'Easel',
   selectEasel,
+  { isDesignatorActive: isDesignatorArmed },
 );
 new StationSelector(
   canvas,
@@ -589,6 +599,7 @@ new StationSelector(
   world,
   'Stove',
   selectStove,
+  { isDesignatorActive: isDesignatorArmed },
 );
 
 new ItemSelector(
@@ -599,6 +610,7 @@ new ItemSelector(
   world,
   selectItem,
   selectItemsMany,
+  { isDesignatorActive: isDesignatorArmed },
 );
 
 new WallArtSelector({
@@ -609,6 +621,7 @@ new WallArtSelector({
   world,
   jobBoard,
   audio,
+  isDesignatorActive: isDesignatorArmed,
 });
 
 /**
@@ -669,6 +682,7 @@ new ObjectSelector({
   hitboxes: objectHitboxes,
   onSelect: selectObject,
   onSelectMany: selectObjectsMany,
+  isDesignatorActive: isDesignatorArmed,
 });
 
 new TilePicker(
@@ -708,10 +722,12 @@ new CowMoveCommand(
   scene,
   prioritizeMenu,
   audio,
+  { isDesignatorActive: isDesignatorArmed },
 );
 
 const {
   deactivateAllTools,
+  isAnyToolActive,
   chopDesignator,
   cutDesignator,
   mineDesignator,
@@ -745,6 +761,7 @@ const {
   instancers,
   updateHud,
 });
+isDesignatorArmedImpl = isAnyToolActive;
 
 // Right-click in the world viewport drops whatever tool the player had
 // armed. Button popovers (stuff/crop picker) call stopPropagation on their

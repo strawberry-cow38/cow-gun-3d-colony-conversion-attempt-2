@@ -54,6 +54,7 @@ export class CowMoveCommand {
    * @param {THREE.Scene} scene
    * @param {{ show: (x: number, y: number, items: { label: string, onPick?: () => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
    * @param {{ play: (kind: string) => void }} [audio]
+   * @param {{ isDesignatorActive?: () => boolean }} [opts]
    */
   constructor(
     dom,
@@ -68,6 +69,7 @@ export class CowMoveCommand {
     scene,
     contextMenu,
     audio,
+    opts = {},
   ) {
     this.dom = dom;
     this.camera = camera;
@@ -80,6 +82,7 @@ export class CowMoveCommand {
     this.getSelectedCows = getSelectedCows;
     this.contextMenu = contextMenu;
     this.audio = audio;
+    this.isDesignatorActive = opts.isDesignatorActive ?? (() => false);
     this.raycaster = new THREE.Raycaster();
 
     this.rmbDown = false;
@@ -101,6 +104,7 @@ export class CowMoveCommand {
   /** @param {MouseEvent} e */
   #onDown(e) {
     if (e.button !== 2) return;
+    if (this.isDesignatorActive()) return;
     const ids = [...this.getSelectedCows()];
     if (ids.length === 0) return;
     const tile = this.#pickTile(e);

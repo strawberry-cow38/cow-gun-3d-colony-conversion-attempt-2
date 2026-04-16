@@ -36,7 +36,7 @@ export class CowSelector {
    *                                         mesh swaps don't strand a stale ref.
    * @param {import('../ecs/world.js').World} world
    * @param {(entityId: number | null, additive: boolean) => void} onSelect
-   * @param {{ pickRadius?: number }} [opts]
+   * @param {{ pickRadius?: number, isDesignatorActive?: () => boolean }} [opts]
    */
   constructor(dom, camera, hitboxes, getTileMesh, world, onSelect, opts = {}) {
     this.dom = dom;
@@ -46,12 +46,14 @@ export class CowSelector {
     this.world = world;
     this.onSelect = onSelect;
     this.pickRadius = opts.pickRadius ?? TILE_SIZE * 1.5;
+    this.isDesignatorActive = opts.isDesignatorActive ?? (() => false);
     this.raycaster = new THREE.Raycaster();
     dom.addEventListener('click', (e) => this.#handle(e), { capture: true });
   }
 
   /** @param {MouseEvent} e */
   #handle(e) {
+    if (this.isDesignatorActive()) return;
     const additive = e.shiftKey;
     const rect = this.dom.getBoundingClientRect();
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
