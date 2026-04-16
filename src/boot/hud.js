@@ -199,14 +199,13 @@ export function createHud(ctx) {
     const sunPct = Math.round(ctx.timeOfDay.getSunLightPercent() * 100);
     const roofsHidden = state.roofsVisible === false;
     const lines = [
-      'phase 4: trees + chop + stacks + eat',
       `grid: ${gridW}x${gridH}  tiles=${gridW * gridH}`,
       `sim: tick=${loop.tick}  Hz=${loop.measuredHz.toFixed(0)}/${30 * loop.speed}  speed=${loop.speed}x  steps/frame=${loop.lastSteps}`,
       `render: ${ctx.getFps().toFixed(0)} fps`,
       `entities: ${world.entityCount}  cows=${countComp(world, 'Cow')}  trees=${countComp(world, 'Tree')}  ${itemCountsStr()}`,
       `paths: hits=${pathCache.hits} misses=${pathCache.misses}  jobs=${jobBoard.openCount}`,
       `time: ${ctx.timeOfDay.getHHMM()}  weather: ${ctx.weather.getCurrent()}  sun-light: ${sunPct}%`,
-      `rooms: ${ctx.rooms.rooms.size}  roofs: ${roofsHidden ? 'hidden' : 'shown'} (V)`,
+      `rooms: ${ctx.rooms.rooms.size}  roofs: ${roofsHidden ? 'hidden' : 'shown'}`,
       pickStr,
       ...cowLines,
       '',
@@ -233,19 +232,7 @@ export function createHud(ctx) {
       lines.push('** FOLLOW MODE — click a cow to lock onto them (F to disable) **');
     }
     const draftedCount = countDrafted(world);
-    lines.push(
-      `drafted: ${draftedCount}`,
-      'WASD/arrows = pan (hold Shift = 2x), MMB-drag = orbit, wheel = zoom',
-      'LMB = select, Shift+LMB = add/toggle, RMB = move-to, Shift+RMB = queue',
-      'build tab (bottom-left) = chop / stockpile / wall / door / torch / wall-torch / roof / no-roof  (Esc to exit)',
-      'V = toggle roof visibility (peek into rooms)',
-      'F = forbid/allow selected stacks (else toggle follow; tracks selected cow, Q/E cycle, WASD releases),  H = first-person',
-      'R = draft/release selected cow(s)  (drafted cows stand still + take player orders)',
-      'P = toggle debug menu  (also disables the debug-only keys below)',
-      'N = spawn cow,  G = drop stone,  J = drop food  (at last clicked tile)',
-      'K = save, L = load',
-      'T = time +2h (Shift+T = -2h),  Y = cycle weather,  1/2/3/4 = sim speed (1/2/3/6x)',
-    );
+    lines.push(`drafted: ${draftedCount}`);
     hud.innerText = lines.join('\n');
   }
 
