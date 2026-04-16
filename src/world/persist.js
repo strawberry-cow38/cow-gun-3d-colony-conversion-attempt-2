@@ -32,6 +32,7 @@
  * always upgrade cleanly.
  */
 
+import { bedFootprintTiles } from './bed.js';
 import { tileToWorld } from './coords.js';
 import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { stoveFootprintTiles } from './stove.js';
@@ -253,6 +254,18 @@ function sanitizeSkillLevels(levels) {
  * @property {{ kind: string, count: number }[]} [stored]
  * @property {import('./recipes.js').Bill[]} [bills]
  * @property {number} [nextBillId]
+ */
+
+/**
+ * @typedef SerializedBed
+ * @property {number} i
+ * @property {number} j
+ * @property {string} stuff
+ * @property {boolean} decon
+ * @property {number} progress
+ * @property {number} facing
+ * @property {number} ownerId
+ * @property {number} occupantId
  */
 
 /**
@@ -613,6 +626,20 @@ export function serializeState(tileGrid, world) {
       nextBillId: components.Bills.nextBillId,
     });
   }
+  /** @type {SerializedBed[]} */
+  const beds = [];
+  for (const { components } of world.query(['Bed', 'TileAnchor'])) {
+    beds.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      stuff: components.Bed.stuff ?? 'wood',
+      decon: components.Bed.deconstructJobId > 0,
+      progress: components.Bed.progress ?? 0,
+      facing: components.Bed.facing ?? 0,
+      ownerId: components.Bed.ownerId ?? 0,
+      occupantId: components.Bed.occupantId ?? 0,
+    });
+  }
   /** @type {SerializedPainting[]} */
   const paintings = [];
   for (const { components } of world.query(['Painting', 'Item', 'TileAnchor'])) {
@@ -687,6 +714,7 @@ export function serializeState(tileGrid, world) {
     furnaces,
     easels,
     stoves,
+    beds,
     paintings,
     wallArt,
   };
@@ -1181,6 +1209,41 @@ export function hydrateStoves(world, grid, board, state) {
 /**
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ beds?: SerializedBed[] }} state
+ */
+export function hydrateBeds(world, grid, board, state) {
+  const beds = state.beds ?? [];
+  for (const b of beds) {
+    if (!grid.inBounds(b.i, b.j)) continue;
+    const facing = b.facing ?? 0;
+    const footprint = bedFootprintTiles({ i: b.i, j: b.j }, facing);
+    if (footprint.some((t) => !grid.inBounds(t.i, t.j))) continue;
+    const w = tileToWorld(b.i, b.j, grid.W, grid.H);
+    const id = world.spawn({
+      Bed: {
+        deconstructJobId: 0,
+        progress: b.progress ?? 0,
+        stuff: b.stuff ?? 'wood',
+        facing,
+        ownerId: b.ownerId ?? 0,
+        occupantId: b.occupantId ?? 0,
+      },
+      BedViz: {},
+      TileAnchor: { i: b.i, j: b.j },
+      Position: { x: w.x, y: grid.getElevation(b.i, b.j), z: w.z },
+    });
+    if (b.decon) {
+      const job = board.post('deconstruct', { entityId: id, kind: 'bed', i: b.i, j: b.j });
+      const rec = world.get(id, 'Bed');
+      if (rec) rec.deconstructJobId = job.id;
+    }
+  }
+}
+
+/**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
  * @param {{ paintings?: SerializedPainting[] }} state
  */
 export function hydratePaintings(world, grid, state) {
@@ -1248,7 +1311,7 @@ export function hydrateWallArt(world, grid, state) {
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[], easels: SerializedEasel[], stoves: SerializedStove[], paintings: SerializedPainting[], wallArt: SerializedWallArt[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[], easels: SerializedEasel[], stoves: SerializedStove[], beds: SerializedBed[], paintings: SerializedPainting[], wallArt: SerializedWallArt[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

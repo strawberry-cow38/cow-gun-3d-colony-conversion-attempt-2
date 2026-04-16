@@ -24,10 +24,12 @@ import {
   structureWithinChebyshev,
 } from '../systems/autoRoof.js';
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
+import { bedFootprintTiles } from '../world/bed.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
+import { createBedGhost } from './bedInstancer.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
 import { createStoveGhost } from './stoveInstancer.js';
@@ -37,12 +39,15 @@ const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
 const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 const WORK_SPOT_COLOR = 0x7cffb0;
 
-/** Station kinds that have a facing (R-cycles) and a work-spot preview. */
-const FACING_KINDS = new Set(['furnace', 'easel', 'stove']);
+/** Station kinds that have a facing (R-cycles during placement). */
+const FACING_KINDS = new Set(['furnace', 'easel', 'stove', 'bed']);
+/** Facing kinds that also have a "work here" tile preview. Beds don't — cows
+ * just climb onto the mattress, there's no adjacent stand tile. */
+const WORK_SPOT_KINDS = new Set(['furnace', 'easel', 'stove']);
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove' | 'bed'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -151,6 +156,17 @@ export const STOVE_DESIGNATOR_CONFIG = {
   requiredKind: 'stone',
 };
 
+/** @type {BuildDesignatorConfig} */
+export const BED_DESIGNATOR_CONFIG = {
+  kind: 'bed',
+  previewColorAdd: 0x8fbcdb,
+  addVerb: 'bed',
+  cancelVerb: 'cancel bed',
+  singlePlace: true,
+  required: 8,
+  requiredKind: 'wood',
+};
+
 export class BuildDesignator {
   /**
    * `deconstructOverlay` is the dirty-flag sink for the door-on-wall path:
@@ -226,7 +242,8 @@ export class BuildDesignator {
     // before committing.
     this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
     this.stoveGhost = config.kind === 'stove' ? createStoveGhost(scene) : null;
-    this.workSpotPreview = FACING_KINDS.has(config.kind)
+    this.bedGhost = config.kind === 'bed' ? createBedGhost(scene) : null;
+    this.workSpotPreview = WORK_SPOT_KINDS.has(config.kind)
       ? buildPreview(scene, WORK_SPOT_COLOR)
       : null;
 
@@ -453,6 +470,38 @@ export class BuildDesignator {
       });
       return true;
     }
+    const isBed = kind === 'bed';
+    if (isBed) {
+      const footprint = bedFootprintTiles({ i, j }, this.currentFacing);
+      for (const t of footprint) {
+        if (!this.tileGrid.inBounds(t.i, t.j)) return false;
+        if (this.tileGrid.isBlocked(t.i, t.j)) return false;
+        if (this.tileGrid.isDoor(t.i, t.j)) return false;
+        if (this.tileGrid.isTorch(t.i, t.j)) return false;
+        if (this.tileGrid.isStockpile(t.i, t.j)) return false;
+        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof' && k !== 'floor') !== null) {
+          return false;
+        }
+      }
+      // Beds stay walkable (cows need to lie on them), so no blockTile here.
+      const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
+      this.world.spawn({
+        BuildSite: {
+          kind,
+          stuff: 'wood',
+          requiredKind: this.config.requiredKind ?? 'wood',
+          required: this.config.required ?? 1,
+          delivered: 0,
+          buildJobId: 0,
+          progress: 0,
+          facing: this.currentFacing,
+        },
+        BuildSiteViz: {},
+        TileAnchor: { i, j },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+      });
+      return true;
+    }
     if (isRoof) {
       if (this.tileGrid.isRoof(i, j)) return false;
       if (!hasRoofSupport(this.tileGrid, this.world, i, j)) return false;
@@ -578,7 +627,9 @@ export class BuildDesignator {
     const id =
       kind === 'stove'
         ? this.#findStoveSiteCovering(i, j)
-        : this.#findSiteAt(i, j, (k) => k === kind);
+        : kind === 'bed'
+          ? this.#findBedSiteCovering(i, j)
+          : this.#findSiteAt(i, j, (k) => k === kind);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
@@ -617,6 +668,19 @@ export class BuildDesignator {
     return null;
   }
 
+  /** @param {number} i @param {number} j */
+  #findBedSiteCovering(i, j) {
+    for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+      const site = components.BuildSite;
+      if (site.kind !== 'bed') continue;
+      const anchor = components.TileAnchor;
+      for (const t of bedFootprintTiles(anchor, site.facing | 0)) {
+        if (t.i === i && t.j === j) return id;
+      }
+    }
+    return null;
+  }
+
   #renderPreview() {
     if (!this.startTile || !this.curTile) {
       this.#hidePreview();
@@ -629,6 +693,12 @@ export class BuildDesignator {
     let j1;
     if (this.config.kind === 'stove') {
       const fp = stoveFootprintTiles(this.curTile, this.currentFacing);
+      i0 = Math.min(...fp.map((t) => t.i));
+      i1 = Math.max(...fp.map((t) => t.i));
+      j0 = Math.min(...fp.map((t) => t.j));
+      j1 = Math.max(...fp.map((t) => t.j));
+    } else if (this.config.kind === 'bed') {
+      const fp = bedFootprintTiles(this.curTile, this.currentFacing);
       i0 = Math.min(...fp.map((t) => t.i));
       i1 = Math.max(...fp.map((t) => t.i));
       j0 = Math.min(...fp.map((t) => t.j));
@@ -690,6 +760,13 @@ export class BuildDesignator {
       this.stoveGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.stoveGhost.group.visible = !this.removing;
     }
+    if (this.bedGhost) {
+      const anchor = this.curTile;
+      const aw = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
+      this.bedGhost.group.position.set(aw.x, grid.getElevation(anchor.i, anchor.j), aw.z);
+      this.bedGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
+      this.bedGhost.group.visible = !this.removing;
+    }
     if (this.workSpotPreview) {
       // Work spot is the tile the front faces. If that tile is blocked or
       // off-grid, fall back to any walkable cardinal neighbor so the player
@@ -713,6 +790,7 @@ export class BuildDesignator {
     if (this.radiusRing) this.radiusRing.line.visible = false;
     if (this.furnaceGhost) this.furnaceGhost.group.visible = false;
     if (this.stoveGhost) this.stoveGhost.group.visible = false;
+    if (this.bedGhost) this.bedGhost.group.visible = false;
     if (this.workSpotPreview) this.workSpotPreview.line.visible = false;
   }
 

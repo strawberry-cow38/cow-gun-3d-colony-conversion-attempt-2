@@ -978,7 +978,12 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
       const someoneInFootprint = stoveTiles
         ? stoveTiles.some((t) => cowOnTileExcluding(world, grid, t.i, t.j, builderId))
         : anchor && cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId);
-      if (site.kind !== 'roof' && site.kind !== 'floor' && someoneInFootprint) {
+      if (
+        site.kind !== 'roof' &&
+        site.kind !== 'floor' &&
+        site.kind !== 'bed' &&
+        someoneInFootprint
+      ) {
         // One tick of pad keeps progress visually pegged at 99% and the audio
         // tap firing at the same cadence; we re-check next tick.
         job.payload.ticksRemaining = 1;
@@ -1138,6 +1143,15 @@ function finishBuild(world, grid, siteId, jobId, board, walkable) {
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });
+  } else if (site.kind === 'bed') {
+    const facing = site.facing | 0;
+    // Bed stays walkable (cows lie on it); no grid.blockTile.
+    world.spawn({
+      Bed: { stuff, facing },
+      BedViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
   } else {
     grid.setWall(anchor.i, anchor.j, 1);
     world.spawn({
@@ -1211,6 +1225,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   furnace: 'Furnace',
   easel: 'Easel',
   stove: 'Stove',
+  bed: 'Bed',
 });
 
 /**
@@ -1231,11 +1246,12 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
 function runDeconstructJob(world, cowId, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
-  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'|'Stove'} */ (
-    DECON_COMP_BY_KIND[
-      /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'|'stove'} */ (kind)
-    ] ?? 'Wall'
-  );
+  const compName =
+    /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'|'Stove'|'Bed'} */ (
+      DECON_COMP_BY_KIND[
+        /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'|'stove'|'bed'} */ (kind)
+      ] ?? 'Wall'
+    );
   const tag = world.get(entityId, compName);
   const boardJob = board.get(jobId);
   // Entity gone (already deconstructed / cancelled) OR board job marked done →
@@ -1377,6 +1393,9 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
         }
       }
     }
+  } else if (kind === 'bed') {
+    // 8 wood → 50% refund = 4.
+    for (let k = 0; k < 4; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   } else {
     const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
     for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);

@@ -21,8 +21,9 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { doorOrientationAt } from '../world/doorOrientation.js';
-import { FACING_YAWS } from '../world/facing.js';
+import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { getStuff } from '../world/stuff.js';
+import { BED_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { BASE_LIFT as FLOOR_LIFT } from './floorInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
 import {
@@ -157,6 +158,25 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
 
         _scale.set(STOVE_CHIMNEY_WIDTH, STOVE_CHIMNEY_HEIGHT, STOVE_CHIMNEY_WIDTH);
         _position.set(w.x, y + STOVE_BODY_HEIGHT, w.z);
+        _matrix.compose(_position, _quat, _scale);
+        mesh.setMatrixAt(n, _matrix);
+        _color.setHex(baseHex);
+        mesh.setColorAt(n, _color);
+        n++;
+        continue;
+      }
+
+      if (site.kind === 'bed') {
+        const facing = site.facing | 0;
+        const yaw = FACING_YAWS[facing] ?? 0;
+        _quat.setFromAxisAngle(Y_AXIS, yaw);
+        // Anchor sits at the foot; center of body lies half a tile further
+        // along the facing axis so the 2-tile blueprint spans both tiles.
+        const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
+        const cx = w.x + off.di * (TILE_SIZE / 2);
+        const cz = w.z + off.dj * (TILE_SIZE / 2);
+        _scale.set(BED_WIDTH, BED_HEIGHT, BED_LENGTH);
+        _position.set(cx, y, cz);
         _matrix.compose(_position, _quat, _scale);
         mesh.setMatrixAt(n, _matrix);
         _color.setHex(baseHex);

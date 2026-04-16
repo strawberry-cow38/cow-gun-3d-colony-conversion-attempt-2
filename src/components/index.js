@@ -372,6 +372,17 @@ export function registerComponents(world) {
     stored: [],
   }));
   world.defineComponent('EaselViz', () => ({}));
+  world.defineComponent('Bed', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    stuff: 'wood',
+    facing: 0,
+    /** Assigned sleeper; 0 = unclaimed. Set on first sleep (phase 3). */
+    ownerId: 0,
+    /** Currently occupying cow; 0 = empty. Updated by sleep job (phase 3). */
+    occupantId: 0,
+  }));
+  world.defineComponent('BedViz', () => ({}));
   world.defineComponent('Stove', () => ({
     deconstructJobId: 0,
     progress: 0,

@@ -19,6 +19,7 @@ import { CURRENT_VERSION } from '../world/migrations/index.js';
 import {
   gunzipBytes,
   gzipString,
+  hydrateBeds,
   hydrateBoulders,
   hydrateBuildSites,
   hydrateCows,
@@ -498,6 +499,7 @@ async function loadGame(ctx) {
     hydrateFurnaces(world, tileGrid, jobBoard, migrated);
     hydrateEasels(world, tileGrid, jobBoard, migrated);
     hydrateStoves(world, tileGrid, jobBoard, migrated);
+    hydrateBeds(world, tileGrid, jobBoard, migrated);
     hydratePaintings(world, tileGrid, migrated);
     hydrateWallArt(world, tileGrid, migrated);
     ctx.rooms.rebuild();

@@ -115,6 +115,7 @@ export function createRenderFrame({
     stationSelectionViz,
     easelInstancer,
     stoveInstancer,
+    bedInstancer,
     paintingInstancer,
     wallArtInstancer,
     buildSiteInstancer,
@@ -203,6 +204,7 @@ export function createRenderFrame({
     });
     easelInstancer.update(world, tileGrid);
     stoveInstancer.update(world, tileGrid);
+    bedInstancer.update(world, tileGrid);
     paintingInstancer.update(world, tileGrid);
     wallArtInstancer.update(world, tileGrid);
     roofCollapseParticles.update(rdt);

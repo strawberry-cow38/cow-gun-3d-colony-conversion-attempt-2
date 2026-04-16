@@ -14,6 +14,7 @@
  */
 
 import {
+  BED_DESIGNATOR_CONFIG,
   BuildDesignator,
   DOOR_DESIGNATOR_CONFIG,
   EASEL_DESIGNATOR_CONFIG,
@@ -71,6 +72,7 @@ export function setupDesignators({
     furnaceInstancer,
     easelInstancer,
     stoveInstancer,
+    bedInstancer,
     buildSiteInstancer,
     cropInstancer,
     stockpileOverlay,
@@ -212,6 +214,14 @@ export function setupDesignators({
   });
   designators.push(stoveDesignator);
 
+  const bedDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: BED_DESIGNATOR_CONFIG,
+    buildSiteInstancer,
+    onChanged: () => notifyChanged(bedDesignator),
+  });
+  designators.push(bedDesignator);
+
   const ignoreRoofDesignator = new IgnoreRoofDesignator({
     ...baseArgs,
     overlay: ignoreRoofOverlay,
@@ -227,6 +237,7 @@ export function setupDesignators({
       furnaceInstancer,
       easelInstancer,
       stoveInstancer,
+      bedInstancer,
       deconstructOverlay,
     ],
     onChanged: () => notifyChanged(deconstructDesignator),
@@ -280,6 +291,7 @@ export function setupDesignators({
       furnaceInstancer,
       easelInstancer,
       stoveInstancer,
+      bedInstancer,
       deconstructOverlay,
     ],
     onChanged: () => notifyChanged(cancelDesignator),
@@ -308,6 +320,7 @@ export function setupDesignators({
     furnaceDesignator,
     easelDesignator,
     stoveDesignator,
+    bedDesignator,
     ignoreRoofDesignator,
     deconstructDesignator,
     removeRoofDesignator,

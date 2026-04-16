@@ -119,6 +119,7 @@ const SHARED_ORDER_ENTRIES = /** @type {const} */ ([
  * @property {ToggleableDesignator} furnaceDesignator
  * @property {ToggleableDesignator} easelDesignator
  * @property {ToggleableDesignator} stoveDesignator
+ * @property {ToggleableDesignator} bedDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
@@ -325,6 +326,16 @@ export function createBuildTab(opts) {
       categoryId: 'production',
       hotkey: 'KeyK',
       designator: opts.stoveDesignator,
+    },
+    {
+      id: 'bed',
+      label: 'Bed',
+      icon: '🛏️',
+      hotkeyHint: 'click to place a 2x1 bed (8 wood) — R rotates facing; cows walk on it',
+      activeColor: '#8fbcdb',
+      categoryId: 'production',
+      hotkey: 'KeyL',
+      designator: opts.bedDesignator,
     },
 
     // Lighting.
