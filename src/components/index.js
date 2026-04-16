@@ -55,6 +55,18 @@
  *                                    one active chat per cow at a time — the
  *                                    system overwrites on new interactions.
  *
+ * Skills     { levels: Record<SkillId, { level, xp }>, learnRateMultiplier }
+ *                                   Per-colonist competence in each work
+ *                                   domain (cooking/construction/mining/
+ *                                   crafting/plants) plus two dormant combat
+ *                                   ids (melee/shooting) that store + display
+ *                                   fine but have no XP source yet. Rolled
+ *                                   at spawn from profession/childhood/age
+ *                                   hints; awarded at job finish. See
+ *                                   world/skills.js. learnRateMultiplier is
+ *                                   stored per-cow and already honored by
+ *                                   awardXp, but nothing currently varies it.
+ *
  * Tree / TreeViz  { markedJobId, progress, kind, growth }
  *                                   markedJobId>0 means player designated it for
  *                                   chop; progress 0..1 drives chop visual
@@ -249,6 +261,14 @@ export function registerComponents(world) {
     nextInjuryId: 1,
     /** `true` once a vital part drops to 0 HP; systems should stop scheduling work for a dead cow. */
     dead: false,
+  }));
+  world.defineComponent('Skills', () => ({
+    /** @type {Record<string, { level: number, xp: number }>} */
+    levels: {},
+    /** Per-cow XP-gain multiplier. Reserved for a future learning/passion
+     * pass — nothing reads it as a gameplay gate yet, but awardXp already
+     * honors it so the system doesn't need re-plumbing later. */
+    learnRateMultiplier: 1,
   }));
   world.defineComponent('Tree', () => ({
     markedJobId: 0,

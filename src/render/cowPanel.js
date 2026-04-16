@@ -21,6 +21,7 @@ import {
 } from '../world/anatomy.js';
 import { getProfessionDescription } from '../world/backstories.js';
 import { opinionLabel } from '../world/chitchat.js';
+import { MAX_LEVEL, SKILL_IDS, SKILL_LABELS, xpForNextLevel } from '../world/skills.js';
 import { nameFontFor, nameFontScaleFor, traitDef } from '../world/traits.js';
 import { writeJitteredName } from './handwriting.js';
 
@@ -162,9 +163,10 @@ export function createCowPanel(opts) {
     borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
   });
   const bioTab = makeTabButton('Bio');
+  const skillsTab = makeTabButton('Skills');
   const medicalTab = makeTabButton('Health');
   const socialTab = makeTabButton('Social');
-  tabBar.append(bioTab, medicalTab, socialTab);
+  tabBar.append(bioTab, skillsTab, medicalTab, socialTab);
 
   const bioBody = document.createElement('div');
   bioBody.append(stats, backstoryBlock, traitsWrap, traitDetail);
@@ -172,19 +174,24 @@ export function createCowPanel(opts) {
   const medicalBody = document.createElement('div');
   Object.assign(medicalBody.style, { fontSize: '12px', color: '#d8dfe6' });
 
+  const skillsBody = document.createElement('div');
+  Object.assign(skillsBody.style, { fontSize: '12px', color: '#d8dfe6' });
+
   const socialBody = document.createElement('div');
   Object.assign(socialBody.style, { fontSize: '12px', color: '#d8dfe6' });
 
-  root.append(header, tabBar, bioBody, medicalBody, socialBody);
+  root.append(header, tabBar, bioBody, skillsBody, medicalBody, socialBody);
   document.body.appendChild(root);
 
-  /** @type {'bio'|'medical'|'social'} */
+  /** @type {'bio'|'skills'|'medical'|'social'} */
   let activeTab = 'bio';
   function renderTabState() {
     bioBody.style.display = activeTab === 'bio' ? 'block' : 'none';
+    skillsBody.style.display = activeTab === 'skills' ? 'block' : 'none';
     medicalBody.style.display = activeTab === 'medical' ? 'block' : 'none';
     socialBody.style.display = activeTab === 'social' ? 'block' : 'none';
     setTabActive(bioTab, activeTab === 'bio');
+    setTabActive(skillsTab, activeTab === 'skills');
     setTabActive(medicalTab, activeTab === 'medical');
     setTabActive(socialTab, activeTab === 'social');
   }
@@ -193,6 +200,13 @@ export function createCowPanel(opts) {
     renderTabState();
     last.socialKey = '';
     last.medicalKey = '';
+    last.skillsKey = '';
+  });
+  skillsTab.addEventListener('click', () => {
+    activeTab = 'skills';
+    renderTabState();
+    last.skillsKey = '';
+    update();
   });
   medicalTab.addEventListener('click', () => {
     activeTab = 'medical';
@@ -214,7 +228,7 @@ export function createCowPanel(opts) {
    * social list signature so switching tabs or bumping opinions doesn't
    * rebuild the DOM every tick.
    *
-   * @type {{ key: string, pinnedTrait: string | null, socialKey: string, socialCow: number, socialChats: number, medicalKey: string }}
+   * @type {{ key: string, pinnedTrait: string | null, socialKey: string, socialCow: number, socialChats: number, medicalKey: string, skillsKey: string }}
    */
   const last = {
     key: '',
@@ -223,6 +237,7 @@ export function createCowPanel(opts) {
     socialCow: -1,
     socialChats: -1,
     medicalKey: '',
+    skillsKey: '',
   };
 
   function hidePanel() {
@@ -278,6 +293,7 @@ export function createCowPanel(opts) {
     const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}|${childhood}|${profession}`;
     if (activeTab === 'social') renderSocial(id);
     if (activeTab === 'medical') renderMedical(id);
+    if (activeTab === 'skills') renderSkills(id);
     if (key === last.key) {
       if (root.style.display === 'none') root.style.display = 'block';
       return;
@@ -339,6 +355,72 @@ export function createCowPanel(opts) {
         traitsWrap.appendChild(chip);
       }
     }
+  }
+
+  /** @param {number} cowId */
+  function renderSkills(cowId) {
+    const skills = world.get(cowId, 'Skills');
+    if (!skills) {
+      if (last.skillsKey !== 'empty') {
+        last.skillsKey = 'empty';
+        skillsBody.replaceChildren(medicalEmptyLine('no skill data'));
+      }
+      return;
+    }
+    const sig = SKILL_IDS.map((id) => {
+      const e = skills.levels?.[id];
+      return `${id}:${e?.level ?? 0}:${Math.round(e?.xp ?? 0)}`;
+    }).join('|');
+    if (sig === last.skillsKey) return;
+    last.skillsKey = sig;
+    skillsBody.replaceChildren();
+    skillsBody.appendChild(medicalSectionHeader('Skills'));
+    const grid = document.createElement('div');
+    Object.assign(grid.style, {
+      display: 'grid',
+      gridTemplateColumns: 'auto auto 1fr',
+      columnGap: '8px',
+      rowGap: '3px',
+      fontSize: '11px',
+      alignItems: 'center',
+    });
+    for (const id of SKILL_IDS) {
+      const entry = skills.levels?.[id] ?? { level: 0, xp: 0 };
+      const name = document.createElement('span');
+      name.textContent = SKILL_LABELS[id];
+      name.style.color = '#9ba6b1';
+      const lvl = document.createElement('span');
+      Object.assign(lvl.style, {
+        color: skillTone(entry.level),
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: '600',
+      });
+      lvl.textContent = String(entry.level);
+      const barWrap = document.createElement('div');
+      Object.assign(barWrap.style, {
+        position: 'relative',
+        height: '6px',
+        background: 'rgba(255,255,255,0.08)',
+        borderRadius: '2px',
+        overflow: 'hidden',
+      });
+      const need = xpForNextLevel(entry.level);
+      const pct = entry.level >= MAX_LEVEL ? 1 : Math.max(0, Math.min(1, entry.xp / need));
+      const fill = document.createElement('div');
+      Object.assign(fill.style, {
+        position: 'absolute',
+        inset: '0',
+        width: `${Math.round(pct * 100)}%`,
+        background: skillTone(entry.level),
+      });
+      barWrap.appendChild(fill);
+      barWrap.title =
+        entry.level >= MAX_LEVEL
+          ? 'mastered'
+          : `${Math.round(entry.xp)} / ${need} xp to level ${entry.level + 1}`;
+      grid.append(name, lvl, barWrap);
+    }
+    skillsBody.appendChild(grid);
   }
 
   /** @param {number} cowId */
@@ -526,6 +608,20 @@ function capacityLabel(cap) {
   if (cap === 'BloodPumping') return 'Blood Pumping';
   if (cap === 'BloodFiltration') return 'Blood Filtration';
   return cap;
+}
+
+/**
+ * Skill-level → color. Mirrors capacityTone's band palette but keyed off raw
+ * level so "low skill" reads warm-red and "mastered" reads bright green.
+ *
+ * @param {number} level 0..MAX_LEVEL
+ */
+function skillTone(level) {
+  if (level >= 18) return '#7ad07a';
+  if (level >= 12) return '#b8d07a';
+  if (level >= 7) return '#d0c97a';
+  if (level >= 3) return '#d0a97a';
+  return '#7a8590';
 }
 
 /** @param {number} ratio 0..1 */

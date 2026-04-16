@@ -19,9 +19,16 @@
 const TITLE_MATCH_CHANCE = 0.7;
 
 /**
+ * @typedef {Partial<Record<import('./skills.js').SkillId, number>>} SkillBonus
+ *   e.g. `{ plants: 2, cooking: 1 }`. Read by `skillsForChildhood` /
+ *   `skillsForProfession`; consumed by `rollStartingSkills` at spawn.
+ */
+
+/**
  * @typedef BackstoryEntry
  * @property {string} text
  * @property {string[]} [titles]  if present, only cows with these titles roll this entry
+ * @property {SkillBonus} [skills] per-skill starting bonus hint; defaults to empty
  */
 
 /**
@@ -29,35 +36,36 @@ const TITLE_MATCH_CHANCE = 0.7;
  * @property {string} text
  * @property {string} description  gerund-phrase flavor shown in the hover tooltip
  * @property {string[]} [titles]
+ * @property {SkillBonus} [skills]
  */
 
 /** @type {BackstoryEntry[]} */
 const CHILDHOODS = [
-  { text: 'raised on a dairy farm' },
+  { text: 'raised on a dairy farm', skills: { plants: 2, cooking: 1 } },
   { text: 'latchkey kid with a virtual-pet collection' },
   { text: 'suburban cul-de-sac rat' },
   { text: 'spent every summer at bible camp' },
   { text: 'collected bottle caps, lost them all in a schoolyard tournament' },
   { text: 'homeschooled by conspiracy theorists' },
-  { text: 'mowed lawns all summer for saxophone money' },
-  { text: 'lived above a family-owned pizzeria' },
+  { text: 'mowed lawns all summer for saxophone money', skills: { plants: 1 } },
+  { text: 'lived above a family-owned pizzeria', skills: { cooking: 1 } },
   { text: 'ran a newspaper route on a hand-me-down bike' },
   { text: 'got grounded for burning dial-up trial CDs' },
   { text: 'dropped out of the church choir after a voice crack' },
   { text: 'eldest of eleven siblings' },
   { text: 'trained as a concert pianist, quit at fourteen' },
-  { text: 'placed third at the county fair pie-eating contest' },
-  { text: 'won a blue ribbon for a baking-soda volcano' },
+  { text: 'placed third at the county fair pie-eating contest', skills: { cooking: 1 } },
+  { text: 'won a blue ribbon for a baking-soda volcano', skills: { crafting: 1 } },
   { text: 'spent middle school in a LAN party basement' },
   { text: 'memorized every line of a sci-fi blockbuster' },
-  { text: 'ran away to join a mall food court' },
+  { text: 'ran away to join a mall food court', skills: { cooking: 1 } },
   { text: 'bounced between three foster homes' },
   { text: 'raised by a single mom who sold cosmetics door-to-door' },
   { text: 'played pioneer simulators on a creaky classroom computer' },
   { text: 'was the neighborhood babysitter' },
   { text: 'got detention for modding the library computers' },
   { text: 'sold candy bars for a fundraiser that did not exist' },
-  { text: 'built ramps for their friends’ skateboards' },
+  { text: "built ramps for their friends' skateboards", skills: { construction: 1 } },
   { text: 'shared a room with three brothers and a rabbit' },
   { text: 'stole answers off the back of the worksheet' },
   { text: 'watched too much daytime TV during a long flu' },
@@ -75,18 +83,18 @@ const CHILDHOODS = [
   { text: 'won a local spelling bee on the word "bovine"' },
   { text: 'had a parrot that outlived two of the family pets' },
   { text: 'traded collectible cards at recess for lunch money' },
-  { text: 'sold friendship bracelets at summer camp' },
+  { text: 'sold friendship bracelets at summer camp', skills: { crafting: 1 } },
   { text: 'was quietly the best kid in the marching band' },
   { text: 'fell off the gymnastics team after a wrist injury' },
-  { text: 'ran their parents’ answering machine prank business' },
-  { text: 'got a C in every subject except shop class' },
+  { text: "ran their parents' answering machine prank business" },
+  { text: 'got a C in every subject except shop class', skills: { crafting: 1 } },
   { text: 'grew up watching courtroom drama reruns with grandpa' },
-  { text: 'spent every Saturday morning at a swap meet' },
-  { text: 'was in the scout troop until the canoeing incident' },
+  { text: 'spent every Saturday morning at a swap meet', skills: { crafting: 1 } },
+  { text: 'was in the scout troop until the canoeing incident', skills: { crafting: 1 } },
   { text: 'hosted a cable access show nobody watched' },
   { text: 'lived in a trailer park with strong community spirit' },
   { text: 'had a side hustle sweeping a video rental store after hours' },
-  { text: 'detasseled corn every summer for minimum wage' },
+  { text: 'detasseled corn every summer for minimum wage', skills: { plants: 2 } },
   { text: 'got caught shoplifting a VHS and still feels guilty' },
   { text: 'had a coin collection their dad kept borrowing from' },
   { text: 'was a child pageant runner-up three years running' },
@@ -95,37 +103,41 @@ const CHILDHOODS = [
   { text: 'was convinced they would be a figure skater' },
   { text: 'organized the yearbook club three years running' },
   { text: 'inherited the class pet after the teacher gave up' },
-  { text: 'built a backyard treehouse condemned by the HOA' },
-  { text: 'helped their dad run the pinewood derby' },
-  { text: 'spent two summers at a woodworking camp' },
+  { text: 'built a backyard treehouse condemned by the HOA', skills: { construction: 2 } },
+  { text: 'helped their dad run the pinewood derby', skills: { crafting: 1 } },
+  { text: 'spent two summers at a woodworking camp', skills: { crafting: 2 } },
   { text: 'was known as the kid who could whistle with two fingers' },
-  { text: 'eldest grandchild of a doomsday prepper' },
+  { text: 'eldest grandchild of a doomsday prepper', skills: { plants: 1, crafting: 1 } },
   { text: 'spent fifth grade collecting scented lip balms' },
   { text: 'ran a backyard spelling bee for fun' },
-  { text: 'grew a crystal farm for a science fair' },
-  { text: 'grew up sweeping hair at their aunt’s salon' },
+  { text: 'grew a crystal farm for a science fair', skills: { crafting: 1 } },
+  { text: "grew up sweeping hair at their aunt's salon", skills: { crafting: 1 } },
   { text: 'was the unofficial neighborhood gossip' },
-  { text: 'spent summers waxing their stepdad’s sailboat' },
-  { text: 'did community theater and still name-drops it' },
+  { text: "spent summers waxing their stepdad's sailboat", skills: { construction: 1 } },
+  { text: 'did community theater and still name-drops it', skills: { crafting: 1 } },
   { text: 'was convinced they would headline as a stand-up comic' },
   { text: 'kept a detailed journal about a neighborhood ghost' },
-  { text: 'was the only kid in class with a bread machine at home' },
+  { text: 'was the only kid in class with a bread machine at home', skills: { cooking: 1 } },
   { text: 'had a Saturday-morning garage-sale habit' },
   { text: 'ran the school store during second-period break' },
-  { text: 'got their first black eye in a dodgeball final' },
-  { text: 'ran the mimeograph in the principal’s office during detention' },
+  { text: 'got their first black eye in a dodgeball final', skills: { melee: 1 } },
+  { text: "ran the mimeograph in the principal's office during detention" },
   { text: 'had a cassette-tape phase they still defend' },
   { text: 'trained a ferret to do one trick' },
-  { text: 'spent summers at their uncle’s lawnmower repair shop' },
+  { text: "spent summers at their uncle's lawnmower repair shop", skills: { construction: 1 } },
   { text: 'was the kid parents hired to walk their dogs' },
-  { text: 'sold hand-drawn comics at the lunch table' },
+  { text: 'sold hand-drawn comics at the lunch table', skills: { crafting: 1 } },
 
   { text: 'skipped two grades, still resents their parents for it', titles: ['Dr.', 'Prof.'] },
   { text: 'won the regional math olympiad three years running', titles: ['Dr.', 'Prof.'] },
   { text: 'published a science-fair paper in a local journal', titles: ['Dr.', 'Prof.'] },
   { text: 'debate team captain, three-time state champion', titles: ['Dr.', 'Prof.'] },
   { text: 'competitive chess prodigy on the regional circuit', titles: ['Dr.', 'Prof.'] },
-  { text: 'built a working robot from VCR parts in seventh grade', titles: ['Dr.', 'Prof.'] },
+  {
+    text: 'built a working robot from VCR parts in seventh grade',
+    titles: ['Dr.', 'Prof.'],
+    skills: { crafting: 2 },
+  },
   {
     text: 'got a perfect college-entrance score and has mentioned it every year since',
     titles: ['Dr.', 'Prof.'],
@@ -136,6 +148,7 @@ const CHILDHOODS = [
   {
     text: 'home-built a custom open-source box in the garage at age twelve',
     titles: ['Dr.', 'Prof.'],
+    skills: { crafting: 2 },
   },
   {
     text: 'tutored every one of their younger siblings through algebra',
@@ -144,14 +157,38 @@ const CHILDHOODS = [
   { text: 'skipped recess daily for extra credit', titles: ['Dr.', 'Prof.'] },
   { text: 'spent two summers at a mock-diplomacy camp', titles: ['Dr.', 'Prof.'] },
 
-  { text: 'only-child army brat who moved every two years', titles: ['Col.'] },
-  { text: 'joined junior cadet corps in seventh grade', titles: ['Col.'] },
-  { text: 'top-rank scout at thirteen', titles: ['Col.'] },
-  { text: 'grew up on a desert air base', titles: ['Col.'] },
-  { text: 'shipped to military school after the fireworks incident', titles: ['Col.'] },
-  { text: 'ran a paintball league on the weekends', titles: ['Col.'] },
-  { text: 'was the youngest kid at the shooting range every weekend', titles: ['Col.'] },
-  { text: 'spent every summer in cadet corps', titles: ['Col.'] },
+  {
+    text: 'only-child army brat who moved every two years',
+    titles: ['Col.'],
+    skills: { shooting: 1 },
+  },
+  {
+    text: 'joined junior cadet corps in seventh grade',
+    titles: ['Col.'],
+    skills: { melee: 1, shooting: 1 },
+  },
+  { text: 'top-rank scout at thirteen', titles: ['Col.'], skills: { melee: 1 } },
+  { text: 'grew up on a desert air base', titles: ['Col.'], skills: { shooting: 1 } },
+  {
+    text: 'shipped to military school after the fireworks incident',
+    titles: ['Col.'],
+    skills: { melee: 1 },
+  },
+  {
+    text: 'ran a paintball league on the weekends',
+    titles: ['Col.'],
+    skills: { shooting: 1 },
+  },
+  {
+    text: 'was the youngest kid at the shooting range every weekend',
+    titles: ['Col.'],
+    skills: { shooting: 2 },
+  },
+  {
+    text: 'spent every summer in cadet corps',
+    titles: ['Col.'],
+    skills: { melee: 1, shooting: 1 },
+  },
 ];
 
 /** @type {ProfessionEntry[]} */
@@ -160,6 +197,7 @@ const PROFESSIONS = [
     text: 'Used Tire Salesman',
     description:
       "patching sidewalls and insisting every tread 'had a few thousand miles left in it'",
+    skills: { crafting: 1 },
   },
   {
     text: 'Video Rental Assistant Manager',
@@ -189,6 +227,7 @@ const PROFESSIONS = [
   {
     text: 'Collectible Plushie Authenticator',
     description: "squinting at hangtags under a jeweler's loupe all afternoon",
+    skills: { crafting: 1 },
   },
   {
     text: 'IT Helpdesk Intern',
@@ -197,19 +236,23 @@ const PROFESSIONS = [
   {
     text: 'Mall Kiosk Ear-Piercing Technician',
     description: 'firing a piercing gun at thirteen-year-olds and calling it an apprenticeship',
+    skills: { crafting: 1 },
   },
   {
     text: 'Hotel Continental Breakfast Attendant',
     description: "refilling the waffle-mix jug and enforcing 'one muffin per guest'",
+    skills: { cooking: 2 },
   },
   {
     text: 'Goth Mall Store Assistant Manager',
     description:
       'refolding the same fishnet tights twice a day and glaring at teens trying on boots',
+    skills: { crafting: 1 },
   },
   {
     text: 'Chain Restaurant Flair Specialist',
     description: "stapling sixteen pieces of flair onto the new hire's vest",
+    skills: { cooking: 1 },
   },
   {
     text: 'Dot-Com Startup Foosball Coordinator',
@@ -230,6 +273,7 @@ const PROFESSIONS = [
   {
     text: 'Cable Company Installation Technician',
     description: 'drilling holes in the wrong wall and blaming the old wiring',
+    skills: { construction: 2 },
   },
   {
     text: 'SuperStore Layaway Clerk',
@@ -246,10 +290,12 @@ const PROFESSIONS = [
   {
     text: 'Funeral Home Makeup Artist',
     description: "getting a little too good at contouring a grandma's cheekbones",
+    skills: { crafting: 2 },
   },
   {
     text: 'Print Shop Supervisor',
     description: 'rescuing jammed toner cartridges and swearing at kids in the self-serve bay',
+    skills: { crafting: 2 },
   },
   {
     text: 'Gas Station Attendant (scratch-off specialist)',
@@ -282,26 +328,32 @@ const PROFESSIONS = [
   {
     text: 'Copier Repair Tech',
     description: 'arriving ninety minutes late with one screwdriver and extensive opinions',
+    skills: { crafting: 2 },
   },
   {
     text: 'Wedding DJ (one speaker blown)',
     description: 'transitioning between three polka songs per reception',
+    skills: { crafting: 1 },
   },
   {
     text: 'Drive-Thru Coffee Stand Operator',
     description: "arguing with a commuter about whether 'medium' is 12 or 14 ounces",
+    skills: { cooking: 2 },
   },
   {
     text: 'Quick-Lube Middle Bay Technician',
     description: 'draining oil into the wrong pan exactly once a week',
+    skills: { crafting: 2 },
   },
   {
     text: 'Funnel Cake Cart Owner',
     description: 'turning powdered sugar into airborne haze at county fairs',
+    skills: { cooking: 2 },
   },
   {
     text: 'Stadium Hot Dog Vendor',
     description: "shouting 'Beeeeer heeeere' from the mezzanine level all night",
+    skills: { cooking: 1 },
   },
   {
     text: 'Home Shopping Channel Call Screener',
@@ -310,6 +362,7 @@ const PROFESSIONS = [
   {
     text: 'Peanut Sheller',
     description: 'hulling twenty thousand peanuts a shift for a regional candy jobber',
+    skills: { plants: 2 },
   },
   {
     text: 'Waterbed Salesman',
@@ -322,6 +375,7 @@ const PROFESSIONS = [
   {
     text: 'State Fair Ferris Wheel Operator',
     description: "pulling the emergency stop four times a night 'for safety'",
+    skills: { construction: 1 },
   },
   {
     text: 'SuperStore Greeter Trainee',
@@ -330,6 +384,7 @@ const PROFESSIONS = [
   {
     text: 'Warehouse Club Free-Sample Demonstrator',
     description: 'handing out chicken cubes on toothpicks and dodging eye contact',
+    skills: { cooking: 1 },
   },
   {
     text: 'Coin Pusher Arcade Operator',
@@ -342,14 +397,17 @@ const PROFESSIONS = [
   {
     text: 'Lottery Ticket Printer Technician',
     description: 'reloading thermal paper rolls in three convenience stores every morning',
+    skills: { crafting: 1 },
   },
   {
     text: 'Carpet Remnant Warehouse Assistant Manager',
     description: "price-gunning off-cuts into 'specialty bundles'",
+    skills: { construction: 1 },
   },
   {
     text: 'Sandwich Shop "Flavor Architect"',
     description: 'squirting mayonnaise in a single spiral on rye and calling it proprietary',
+    skills: { cooking: 2 },
   },
   {
     text: 'Office Supply Plotter Specialist',
@@ -366,10 +424,12 @@ const PROFESSIONS = [
   {
     text: 'Paintball Field Referee',
     description: "yelling 'paint check!' and getting shot on purpose once a Saturday",
+    skills: { shooting: 2 },
   },
   {
     text: 'Go-Kart Track Mechanic',
     description: 'tuning the wobbliest kart to lose on purpose',
+    skills: { crafting: 2 },
   },
   {
     text: "Mall Santa's Off-Season Understudy",
@@ -395,6 +455,7 @@ const PROFESSIONS = [
   {
     text: 'Plasticware Home-Party Regional Rep',
     description: 'convincing friends that airtight seals were a lifestyle',
+    skills: { crafting: 1 },
   },
   {
     text: 'Meal-Replacement Shake Upline Consultant',
@@ -403,10 +464,12 @@ const PROFESSIONS = [
   {
     text: 'Pool Cleaner (one client, very rich)',
     description: 'skimming leaves off an Olympic-length pool twice a week and billing three times',
+    skills: { construction: 1 },
   },
   {
     text: 'Auto Glass Repair "Technician"',
     description: "filling star-breaks with clear epoxy and swearing 'you will never see it'",
+    skills: { crafting: 2 },
   },
   {
     text: 'Newspaper Horoscope Columnist',
@@ -427,10 +490,12 @@ const PROFESSIONS = [
   {
     text: 'Frozen Yogurt Shop Owner (closed after six months)',
     description: 'topping cups with gummy worms until the lease quietly ran out',
+    skills: { cooking: 2 },
   },
   {
     text: 'Stained Glass Window Apprentice',
     description: 'cutting themselves on the same piece of cobalt-blue glass thirty-two times',
+    skills: { crafting: 3 },
   },
   {
     text: 'Budget Gym Towel Attendant',
@@ -447,6 +512,7 @@ const PROFESSIONS = [
   {
     text: 'Mattress Warehouse Delivery Driver',
     description: 'wrestling a queen pillow-top up a three-flight walk-up',
+    skills: { construction: 1 },
   },
   {
     text: 'Small-Town Newspaper Obituary Writer',
@@ -459,10 +525,12 @@ const PROFESSIONS = [
   {
     text: 'Pop-Up Spooky Store Seasonal Manager',
     description: 'reshelving rubber masks and finding a live rat inside the inflatable archway',
+    skills: { crafting: 1 },
   },
   {
     text: 'Pretzel Kiosk Dough Twister',
     description: 'twisting knots all day and dreaming of a second career in real bread',
+    skills: { cooking: 2 },
   },
   {
     text: 'Strip Mall Notary Public',
@@ -488,10 +556,12 @@ const PROFESSIONS = [
   {
     text: 'Bait & Tackle Shop Weekend Clerk',
     description: 'counting nightcrawlers into styrofoam cups before dawn',
+    skills: { plants: 1 },
   },
   {
     text: 'Church Bulletin Designer',
     description: "centering the pastor's headshot and aligning the hymn numbers in WordArt",
+    skills: { crafting: 1 },
   },
   {
     text: 'Off-Brand Theme Park Mascot',
@@ -500,6 +570,7 @@ const PROFESSIONS = [
   {
     text: 'Mini-Golf Course Manager',
     description: 'fishing stuck balls out of the windmill with a coat hanger',
+    skills: { construction: 1 },
   },
   {
     text: 'Karaoke Night Host at a Dive Bar',
@@ -520,18 +591,22 @@ const PROFESSIONS = [
   {
     text: 'Christmas Tree Lot Seasonal Employee',
     description: 'netting trees into impossibly compressed cylinders',
+    skills: { plants: 2 },
   },
   {
     text: 'Costume Shop Clerk',
     description: 'fogging the same pirate hat with the same can of spray starch',
+    skills: { crafting: 1 },
   },
   {
     text: 'Self-Taught Web Designer (one terrible website)',
     description: 'centering GIF clouds on a blink tag and charging forty bucks',
+    skills: { crafting: 1 },
   },
   {
     text: 'Realtor Yard-Sign Installer',
     description: 'staking corrugated plastic into frozen suburban lawns all winter',
+    skills: { construction: 1 },
   },
   {
     text: 'Pet Photographer at a Chain Portrait Studio',
@@ -540,6 +615,7 @@ const PROFESSIONS = [
   {
     text: 'Night-Shift Vending Machine Refiller',
     description: 'restocking a fluorescent-lit rotation of taquitos and shelf-stable cheesecake',
+    skills: { cooking: 1 },
   },
   {
     text: 'Mall Security Night Watchman',
@@ -556,6 +632,7 @@ const PROFESSIONS = [
   {
     text: 'Wedding Cake Delivery Boy',
     description: 'balancing a three-tier buttercream job in the backseat of a hatchback',
+    skills: { cooking: 2 },
   },
   {
     text: 'Paperback Book Club Mailer',
@@ -564,6 +641,7 @@ const PROFESSIONS = [
   {
     text: 'Pharmacy Photo Lab Developer',
     description: "seeing things they were not supposed to see on other people's film",
+    skills: { crafting: 1 },
   },
   {
     text: 'Coupon Book Door-to-Door Solicitor',
@@ -572,6 +650,7 @@ const PROFESSIONS = [
   {
     text: 'Renaissance Faire Turkey-Leg Vendor',
     description: "shouting 'Huzzah!' and handing over a five-dollar drumstick",
+    skills: { cooking: 2 },
   },
   {
     text: 'Timeshare Telemarketer',
@@ -584,6 +663,7 @@ const PROFESSIONS = [
   {
     text: 'Scratch-Off Ticket Quality Inspector',
     description: 'confirming the latex coating was thick enough for six more dollars of hope',
+    skills: { crafting: 1 },
   },
   {
     text: 'Amateur Ghost Hunter (zero confirmed findings)',
@@ -592,26 +672,32 @@ const PROFESSIONS = [
   {
     text: 'Garden Center Seasonal Plant Waterer',
     description: 'drowning petunias for fourteen dollars an hour',
+    skills: { plants: 2 },
   },
   {
     text: 'Bounce House Weekend Operator',
     description: 'refereeing sock-footed seven-year-olds for eight hours of screaming',
+    skills: { construction: 1 },
   },
   {
     text: 'Bagel Shop Opening-Shift Slicer',
     description: 'losing fingertip sensitivity to a poorly adjusted bagel-slicer at 4:30am',
+    skills: { cooking: 2 },
   },
   {
     text: 'Laser Tag Arena Party Host',
     description: "shouting 'NO RUNNING' at ten-year-olds through a fogged-up visor",
+    skills: { shooting: 1 },
   },
   {
     text: 'Pizza Parlor Delivery Driver (three moving violations)',
     description: 'rolling stop signs with a heat bag of cooling pepperoni',
+    skills: { cooking: 1 },
   },
   {
     text: 'Auto-Detail Shop Vacuum Technician',
     description: 'finding loose change in seventeen minivans per shift',
+    skills: { crafting: 1 },
   },
   {
     text: 'Fireworks Stand Seasonal Manager',
@@ -620,6 +706,7 @@ const PROFESSIONS = [
   {
     text: 'Flea Market Booth Flipper',
     description: 'buying collectibles by the sack and reselling them individually',
+    skills: { crafting: 1 },
   },
   {
     text: 'Tennis Ball Retriever at a Country Club',
@@ -633,10 +720,12 @@ const PROFESSIONS = [
   {
     text: 'Sentimental Greeting Card Rhymer',
     description: "making 'nephew' and 'new shoe' rhyme for the quarterly catalogue",
+    skills: { crafting: 1 },
   },
   {
     text: 'Roadside Billboard Paste-Up Artist',
     description: 'wheat-pasting a smiling realtor onto twelve feet of plywood',
+    skills: { crafting: 2, construction: 1 },
   },
   {
     text: 'Apartment Leasing Office Weekend Rep',
@@ -645,6 +734,7 @@ const PROFESSIONS = [
   {
     text: 'Sub Shop "Crust Curator"',
     description: 'scoring loaves in a specific pattern only they understood the significance of',
+    skills: { cooking: 2 },
   },
   {
     text: 'Neighborhood Pool Chlorine Guy',
@@ -677,6 +767,7 @@ const PROFESSIONS = [
     text: 'Tenure-Track Poultry Geneticist',
     description: 'selectively breeding quail for a federal grant nobody renewed',
     titles: ['Dr.', 'Prof.'],
+    skills: { plants: 2 },
   },
   {
     text: 'Community College Chem 101 Adjunct',
@@ -698,6 +789,7 @@ const PROFESSIONS = [
     description:
       'driving a converted van between three rural stables with one mostly-clean stethoscope',
     titles: ['Dr.'],
+    skills: { plants: 2 },
   },
   {
     text: 'Author of an Unread Computer Science Textbook',
@@ -718,12 +810,14 @@ const PROFESSIONS = [
     text: 'Failed Philosophy PhD Turned Barista',
     description: 'explaining the ontological status of almond milk to the 8am rush',
     titles: ['Dr.', 'Prof.'],
+    skills: { cooking: 2 },
   },
   {
     text: 'Chiropractor with Questionable Credentials',
     description:
       'cracking spines in a strip-mall suite on a rope-and-pulley table of their own design',
     titles: ['Dr.'],
+    skills: { crafting: 1 },
   },
   {
     text: 'Corporate Efficiency Black Belt Trainer',
@@ -750,6 +844,7 @@ const PROFESSIONS = [
     description:
       'publishing the third edition of their definitive cow-behavior textbook to polite applause',
     titles: ['Prof.'],
+    skills: { plants: 2 },
   },
   {
     text: 'Actuary at a Small-Town Insurance Firm',
@@ -791,6 +886,7 @@ const PROFESSIONS = [
     text: 'Associate Lecturer in Medieval Metallurgy',
     description: 'forging a chainmail coif in the faculty parking lot on weekends',
     titles: ['Prof.'],
+    skills: { crafting: 3, mining: 1 },
   },
   {
     text: 'Orthodontist with a Minivan',
@@ -823,16 +919,19 @@ const PROFESSIONS = [
     description:
       "working three-month rotations in a 'security consulting' capacity nobody could define",
     titles: ['Col.'],
+    skills: { melee: 3, shooting: 3 },
   },
   {
     text: 'Desert Campaign Veteran (now drives a tiny convertible)',
     description: 'white-knuckling the steering wheel at every off-ramp merge',
     titles: ['Col.'],
+    skills: { melee: 3, shooting: 3 },
   },
   {
     text: 'Cadet Corps Instructor at a State University',
     description: 'drilling undergraduates on the parade grounds at 6am every Thursday',
     titles: ['Col.'],
+    skills: { melee: 2, shooting: 2 },
   },
   {
     text: 'Military Surplus Store Owner',
@@ -853,16 +952,19 @@ const PROFESSIONS = [
     text: 'Decorated Foreign-War Veteran (questions this himself)',
     description: 'accepting the discount pie at the diner and wondering if he deserved it',
     titles: ['Col.'],
+    skills: { melee: 3, shooting: 3 },
   },
   {
     text: 'Ex-Commando, Runs a Tuesday Bowling League',
     description: 'teaching middle-aged men to keep their wrists straight on the approach',
     titles: ['Col.'],
+    skills: { melee: 4 },
   },
   {
     text: 'Airborne Scout Reservist',
     description: 'jumping out of perfectly good aircraft one weekend a month',
     titles: ['Col.'],
+    skills: { shooting: 3, melee: 2 },
   },
   {
     text: 'Veterans Hall President',
@@ -873,6 +975,7 @@ const PROFESSIONS = [
     text: 'Private Security Consultant (bodyguard to a minor pop star)',
     description: 'blocking 4am paparazzi from the lobby of a roadside motel',
     titles: ['Col.'],
+    skills: { melee: 3 },
   },
   {
     text: 'Home Guard Recruiter',
@@ -883,11 +986,13 @@ const PROFESSIONS = [
     text: 'Ex-Drill Sergeant Running a Boot-Camp-Themed Gym',
     description: "shouting 'DROP AND GIVE ME TWENTY' at a 48-year-old accountant in yoga pants",
     titles: ['Col.'],
+    skills: { melee: 3 },
   },
   {
     text: 'Submarine Cook (Honorable Discharge)',
     description: 'making a single pot of chili feed 140 sailors for two consecutive days',
     titles: ['Col.'],
+    skills: { cooking: 4 },
   },
   {
     text: 'Air Base Control Tower Operator',
@@ -941,6 +1046,38 @@ for (const p of PROFESSIONS) PROFESSION_DESCRIPTIONS.set(p.text, p.description);
  */
 export function getProfessionDescription(profession) {
   return PROFESSION_DESCRIPTIONS.get(profession) ?? null;
+}
+
+/**
+ * Reverse lookups: text → skill bonus. Entries without a `skills` field
+ * resolve to `{}` (no bonus). Returning a shared frozen empty object keeps
+ * every untagged lookup from allocating.
+ *
+ * @type {Map<string, SkillBonus>}
+ */
+const CHILDHOOD_SKILLS = new Map();
+for (const e of CHILDHOODS) if (e.skills) CHILDHOOD_SKILLS.set(e.text, e.skills);
+/** @type {Map<string, SkillBonus>} */
+const PROFESSION_SKILLS = new Map();
+for (const p of PROFESSIONS) if (p.skills) PROFESSION_SKILLS.set(p.text, p.skills);
+
+/** @type {SkillBonus} */
+const EMPTY_BONUS = Object.freeze({});
+
+/**
+ * @param {string} text
+ * @returns {SkillBonus}
+ */
+export function skillsForChildhood(text) {
+  return CHILDHOOD_SKILLS.get(text) ?? EMPTY_BONUS;
+}
+
+/**
+ * @param {string} text
+ * @returns {SkillBonus}
+ */
+export function skillsForProfession(text) {
+  return PROFESSION_SKILLS.get(text) ?? EMPTY_BONUS;
 }
 
 /**

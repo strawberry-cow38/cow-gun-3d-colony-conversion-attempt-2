@@ -41,11 +41,14 @@ import {
 import { generatePainting } from '../world/painting.js';
 import {
   RAW_FOOD_RANK,
+  cookingSkillFor,
   nutritionMultiplier,
   poisoningChance,
   qualityRank,
+  rollQuality,
 } from '../world/quality.js';
 import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
+import { XP_PER_WORK, awardXp } from '../world/skills.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { BIOME } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
@@ -460,21 +463,21 @@ export function makeCowBrainSystem(deps) {
         }
 
         if (job.kind === 'chop') {
-          runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps);
+          runChopJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'mine') {
-          runMineJob(world, job, path, pos, grid, paths, walkable, board, deps);
+          runMineJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'cut') {
-          runCutJob(world, job, path, pos, grid, paths, walkable, board, deps);
+          runCutJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'build') {
           runBuildJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'deconstruct') {
-          runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps);
+          runDeconstructJob(world, id, job, path, pos, grid, paths, walkable, board, deps);
         } else if (job.kind === 'till') {
-          runTillJob(job, path, pos, grid, paths, board, deps);
+          runTillJob(world, id, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'plant') {
-          runPlantJob(world, job, path, pos, grid, paths, board, deps);
+          runPlantJob(world, id, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'harvest') {
-          runHarvestJob(world, job, path, pos, grid, paths, board, deps);
+          runHarvestJob(world, id, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'paint') {
           runPaintJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'cook') {
@@ -562,7 +565,7 @@ export function makeCowBrainSystem(deps) {
  * @param {{ tick: number }} ctx
  * @param {BrainDeps} deps
  */
-function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, deps) {
+function runChopJob(world, cowId, job, path, pos, grid, paths, walkable, board, ctx, deps) {
   const { treeId, jobId } = /** @type {{ treeId: number, jobId: number }} */ (job.payload);
 
   // Tree went away, OR the board job was cancelled (player unmarked the tree
@@ -622,6 +625,7 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
     if (remaining <= 0) {
       deps.onChopComplete(pos);
       finishChop(world, grid, treeId, jobId, board);
+      awardXp(world, cowId, 'plants', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -642,7 +646,7 @@ function runChopJob(world, job, path, pos, grid, paths, walkable, board, ctx, de
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runMineJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+function runMineJob(world, cowId, job, path, pos, grid, paths, walkable, board, deps) {
   const { boulderId, jobId } = /** @type {{ boulderId: number, jobId: number }} */ (job.payload);
   const boardJob = board.get(jobId);
   if (!world.get(boulderId, 'Boulder') || !boardJob || boardJob.completed) {
@@ -700,6 +704,7 @@ function runMineJob(world, job, path, pos, grid, paths, walkable, board, deps) {
     if (remaining <= 0) {
       deps.onMineComplete(pos);
       finishMine(world, grid, boulderId, jobId, board);
+      awardXp(world, cowId, 'mining', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -744,7 +749,7 @@ function finishMine(world, grid, boulderId, jobId, board) {
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runCutJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+function runCutJob(world, cowId, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, jobId } = /** @type {{ entityId: number, jobId: number }} */ (job.payload);
   const boardJob = board.get(jobId);
   if (!world.get(entityId, 'Cuttable') || !boardJob || boardJob.completed) {
@@ -801,6 +806,7 @@ function runCutJob(world, job, path, pos, grid, paths, walkable, board, deps) {
     if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
     if (remaining <= 0) {
       finishCut(world, grid, entityId, jobId, board, pos, deps);
+      awardXp(world, cowId, 'plants', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -968,6 +974,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
       }
       deps.onBuildComplete(pos, site.kind);
       finishBuild(world, grid, siteId, jobId, board, walkable);
+      awardXp(world, builderId, 'construction', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -1208,7 +1215,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
+function runDeconstructJob(world, cowId, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
   const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'|'Stove'} */ (
@@ -1273,6 +1280,7 @@ function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, 
     if (remaining <= 0) {
       deps.onBuildComplete(pos, kind);
       finishDeconstruct(world, grid, entityId, kind, jobId, board);
+      awardXp(world, cowId, 'construction', XP_PER_WORK);
       deps.onItemChange();
       job.kind = 'none';
       job.state = 'idle';
@@ -1377,7 +1385,7 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runTillJob(job, path, pos, grid, paths, board, deps) {
+function runTillJob(world, cowId, job, path, pos, grid, paths, board, deps) {
   const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
 
   const boardJob = board.get(jobId);
@@ -1425,6 +1433,7 @@ function runTillJob(job, path, pos, grid, paths, board, deps) {
       grid.setTilled(i, j, 1);
       deps.onTillComplete(pos);
       board.complete(jobId);
+      awardXp(world, cowId, 'plants', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -1447,7 +1456,7 @@ function runTillJob(job, path, pos, grid, paths, board, deps) {
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runPlantJob(world, job, path, pos, grid, paths, board, deps) {
+function runPlantJob(world, cowId, job, path, pos, grid, paths, board, deps) {
   const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
 
   const boardJob = board.get(jobId);
@@ -1511,6 +1520,7 @@ function runPlantJob(world, job, path, pos, grid, paths, board, deps) {
       });
       deps.onPlantComplete(pos);
       board.complete(jobId);
+      awardXp(world, cowId, 'plants', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -1532,7 +1542,7 @@ function runPlantJob(world, job, path, pos, grid, paths, board, deps) {
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runHarvestJob(world, job, path, pos, grid, paths, board, deps) {
+function runHarvestJob(world, cowId, job, path, pos, grid, paths, board, deps) {
   const { i, j, jobId, cropId } =
     /** @type {{ i: number, j: number, jobId: number, cropId: number }} */ (job.payload);
 
@@ -1584,6 +1594,7 @@ function runHarvestJob(world, job, path, pos, grid, paths, board, deps) {
       deps.onHarvestComplete(pos);
       deps.onItemChange();
       board.complete(jobId);
+      awardXp(world, cowId, 'plants', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2019,6 +2030,7 @@ function runPaintJob(world, cowId, job, path, pos, grid, paths, walkable, board,
     if (easel.workTicksRemaining <= 0) {
       finishPaint(world, grid, cowId, easelId, easel, bills, ctx.tick, deps);
       board.complete(jobId);
+      awardXp(world, cowId, 'crafting', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2175,6 +2187,7 @@ function runCookJob(world, cowId, job, path, pos, grid, paths, walkable, board, 
     if (stove.workTicksRemaining <= 0) {
       finishCook(world, grid, stoveId, stove, bills, deps);
       board.complete(jobId);
+      awardXp(world, cowId, 'cooking', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2198,7 +2211,10 @@ function runCookJob(world, cowId, job, path, pos, grid, paths, walkable, board, 
 function finishCook(world, grid, stoveId, stove, bills, deps) {
   const bill = bills.list.find((b) => b.id === stove.activeBillId);
   const anchor = world.get(stoveId, 'TileAnchor');
-  const quality = stove.mealQuality;
+  // stove.js pre-rolled quality without knowing the cook; re-roll now so the
+  // actual cook's skill actually affects the meal.
+  const quality =
+    stove.cookCowId > 0 ? rollQuality(cookingSkillFor(world, stove.cookCowId)) : stove.mealQuality;
   const ingredients = stove.mealIngredients.slice();
   stove.activeBillId = 0;
   stove.cookCowId = 0;

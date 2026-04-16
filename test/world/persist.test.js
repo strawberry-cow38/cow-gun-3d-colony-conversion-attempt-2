@@ -75,6 +75,7 @@ describe('cow save/load roundtrip', () => {
       Opinions: { scores: {}, last: {}, chats: 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       Health: { injuries: [], nextInjuryId: 1, dead: false },
+      Skills: { levels: {}, learnRateMultiplier: 1 },
       CowViz: {},
     });
 
@@ -133,6 +134,7 @@ describe('cow save/load roundtrip', () => {
       Opinions: { scores: {}, last: {}, chats: 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       Health: { injuries: [], nextInjuryId: 1, dead: false },
+      Skills: { levels: {}, learnRateMultiplier: 1 },
       CowViz: {},
     });
     w1.spawn({
@@ -156,6 +158,7 @@ describe('cow save/load roundtrip', () => {
       Opinions: { scores: {}, last: {}, chats: 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       Health: { injuries: [], nextInjuryId: 1, dead: false },
+      Skills: { levels: {}, learnRateMultiplier: 1 },
       CowViz: {},
     });
 

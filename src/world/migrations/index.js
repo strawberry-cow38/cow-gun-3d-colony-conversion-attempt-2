@@ -45,8 +45,9 @@ import { v31_to_v32 } from './v31_to_v32.js';
 import { v32_to_v33 } from './v32_to_v33.js';
 import { v33_to_v34 } from './v33_to_v34.js';
 import { v34_to_v35 } from './v34_to_v35.js';
+import { v35_to_v36 } from './v35_to_v36.js';
 
-export const CURRENT_VERSION = 35;
+export const CURRENT_VERSION = 36;
 
 /**
  * @typedef Migration
@@ -92,6 +93,7 @@ export const migrations = [
   v32_to_v33,
   v33_to_v34,
   v34_to_v35,
+  v35_to_v36,
 ];
 
 /**

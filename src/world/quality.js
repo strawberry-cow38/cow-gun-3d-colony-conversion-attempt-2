@@ -10,6 +10,8 @@
  * `RAW_FOOD_RANK` for sorting purposes so ANY tasty+ meal wins over raw.
  */
 
+import { skillFactorFor } from './skills.js';
+
 /** @typedef {'inedible'|'unpleasant'|'decent'|'tasty'|'delicious'|'lavish'|'gourmet'} Quality */
 
 /** @type {Quality[]} */
@@ -114,16 +116,16 @@ export function rollQuality(skill, rng = Math.random) {
 }
 
 /**
- * Cooking skill for a cow. Real skill system arrives later — until then
- * every cow has the same baseline competence so the distribution stays
- * deterministic-ish. Swap this for a real `Skills` component read.
+ * Cooking skill for a cow, normalized 0..1 for `rollQuality`. Thin adapter
+ * over `skillFactorFor` that tolerates cowId=0 (legacy unassigned-cook
+ * callers) by falling through to level-0.
  *
- * @param {import('../ecs/world.js').World} _world
- * @param {number} _cowId
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} cowId
  * @returns {number} 0..1
  */
-export function cookingSkillFor(_world, _cowId) {
-  return 0.35;
+export function cookingSkillFor(world, cowId) {
+  return skillFactorFor(world, cowId, 'cooking');
 }
 
 /**

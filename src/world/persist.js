@@ -38,6 +38,24 @@ import { stoveFootprintTiles } from './stove.js';
 import { TileGrid } from './tileGrid.js';
 
 /**
+ * Coerce a free-form `levels` bag into the strict `{ level, xp }` shape.
+ * Shared by serialize (tolerates live-data drift) and hydrate (sanitizes
+ * untrusted save JSON) so both paths agree on the canonical layout.
+ *
+ * @param {Record<string, { level: number, xp: number }> | undefined} levels
+ */
+function sanitizeSkillLevels(levels) {
+  /** @type {Record<string, { level: number, xp: number }>} */
+  const out = {};
+  if (!levels) return out;
+  for (const k of Object.keys(levels)) {
+    const v = levels[k];
+    out[k] = { level: v.level | 0, xp: +v.xp || 0 };
+  }
+  return out;
+}
+
+/**
  * @typedef SerializedIdentity
  * @property {'male' | 'female' | 'nonbinary'} gender
  * @property {number} birthTick
@@ -66,6 +84,12 @@ import { TileGrid } from './tileGrid.js';
  */
 
 /**
+ * @typedef SerializedSkills
+ * @property {Record<string, { level: number, xp: number }>} levels
+ * @property {number} learnRateMultiplier
+ */
+
+/**
  * @typedef SerializedCow
  * @property {string} name
  * @property {boolean} drafted
@@ -78,6 +102,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {SerializedIdentity} identity
  * @property {SerializedOpinions} [opinions]
  * @property {SerializedHealth} [health]
+ * @property {SerializedSkills} [skills]
  */
 
 /**
@@ -303,9 +328,11 @@ export function serializeState(tileGrid, world) {
     'Inventory',
     'Opinions',
     'Health',
+    'Skills',
   ])) {
     const op = components.Opinions;
     const health = components.Health;
+    const skills = components.Skills;
     const serialized = {
       name: components.Brain.name,
       drafted: components.Cow.drafted === true,
@@ -341,6 +368,10 @@ export function serializeState(tileGrid, world) {
         injuries: health.injuries.map((inj) => ({ ...inj })),
         nextInjuryId: health.nextInjuryId,
         dead: health.dead === true,
+      },
+      skills: {
+        levels: sanitizeSkillLevels(skills.levels),
+        learnRateMultiplier: +skills.learnRateMultiplier || 1,
       },
     };
     idToIndex.set(id, pending.length);
@@ -713,6 +744,10 @@ export function hydrateCows(world, state) {
         injuries: (c.health?.injuries ?? []).map((inj) => ({ ...inj })),
         nextInjuryId: c.health?.nextInjuryId ?? 1,
         dead: c.health?.dead === true,
+      },
+      Skills: {
+        levels: sanitizeSkillLevels(c.skills?.levels),
+        learnRateMultiplier: +(c.skills?.learnRateMultiplier ?? 1) || 1,
       },
       CowViz: {},
     });

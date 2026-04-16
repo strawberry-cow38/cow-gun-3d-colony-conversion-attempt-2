@@ -4,9 +4,12 @@
  * they live outside the main boot module.
  */
 
+import { ageYears } from '../sim/calendar.js';
+import { skillsForChildhood, skillsForProfession } from '../world/backstories.js';
 import { tileToWorld } from '../world/coords.js';
 import { pickCowName } from '../world/cowNames.js';
 import { fullName, rollCowIdentity } from '../world/identity.js';
+import { rollStartingSkills } from '../world/skills.js';
 
 /**
  * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
@@ -61,6 +64,11 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
   const firstName = pickCowName();
   const id = rollCowIdentity(currentTick, firstName);
   const name = fullName(id);
+  const skills = rollStartingSkills({
+    ageYears: ageYears(id.birthTick, currentTick),
+    childhoodBonus: skillsForChildhood(id.childhood),
+    professionBonus: skillsForProfession(id.profession),
+  });
   world.spawn({
     Cow: { drafted: false },
     Position: { x: w.x, y, z: w.z },
@@ -76,6 +84,7 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     Opinions: { scores: {}, last: {}, chats: 0 },
     Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
     Health: { injuries: [], nextInjuryId: 1, dead: false },
+    Skills: skills,
     CowViz: {},
   });
 }
