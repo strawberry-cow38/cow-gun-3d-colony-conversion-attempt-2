@@ -293,7 +293,7 @@ const {
  * @type {import('./boot/input.js').BootState}
  */
 const state = {
-  debugEnabled: true,
+  debugEnabled: false,
   // Global follow toggle. When true, the overhead camera eases toward the
   // current `primaryCow` every frame — so plain-clicking or marquee-picking
   // a different cow automatically hands the camera off. Q/E cycle primary
