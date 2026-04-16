@@ -43,6 +43,10 @@ import { TREE_MAX_WOOD, TREE_MIN_YIELD_GROWTH, woodYieldFor } from '../world/tre
  * @property {(world: import('../ecs/world.js').World, id: number) => string} [subtitle]
  *   short sub-line under the title (e.g. "mature · 100% grown")
  * @property {(world: import('../ecs/world.js').World, id: number) => string} description
+ * @property {(world: import('../ecs/world.js').World, id: number) => string | null} [kindOf]
+ *   double-click "select-similar" bucket. Return a sub-key (e.g. 'oak',
+ *   'stone') and only entities with the same key are picked up. Omit to
+ *   treat all entities of this type as one bucket.
  * @property {ObjectOrder[]} orders
  */
 
@@ -68,9 +72,11 @@ function cancelOrder(component, jobField) {
         if (!tag) continue;
         if (tag[jobField] > 0) {
           const job = ctx.board.get(tag[jobField]);
-          // Only yank the job if a cow hasn't already claimed it — yanking a
-          // claimed job strands the cow in a state whose target is gone.
-          if (job && !job.completed && job.claimedBy === null) {
+          // Matches the chop/mine/cut designators: complete the board job
+          // unconditionally. The cow's run*Job checks boardJob.completed at
+          // the top of each tick and cleanly drops the work mid-walk / mid-
+          // swing, so there's no risk of stranding a claimed cow.
+          if (job && !job.completed) {
             ctx.board.complete(job.id);
             tag[jobField] = 0;
             if ('progress' in tag) tag.progress = 0;
@@ -133,6 +139,9 @@ export const OBJECT_TYPES = [
   {
     type: 'tree',
     component: 'Tree',
+    kindOf(world, id) {
+      return world.get(id, 'Tree')?.kind ?? null;
+    },
     label(world, id) {
       const tree = world.get(id, 'Tree');
       const kind = tree?.kind ?? 'tree';
@@ -191,6 +200,9 @@ export const OBJECT_TYPES = [
   {
     type: 'boulder',
     component: 'Boulder',
+    kindOf(world, id) {
+      return world.get(id, 'Boulder')?.kind ?? null;
+    },
     label(world, id) {
       const b = world.get(id, 'Boulder');
       const kind = b?.kind ?? 'stone';

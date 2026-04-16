@@ -77,7 +77,17 @@ export class ObjectSelector {
     if (id === null) return;
     const entry = objectTypeFor(this.world, id);
     if (!entry) return;
-    const ids = frustumVisibleIds(this.camera, this.world, [entry.component, 'Position']);
+    // When a type exposes kindOf (trees by species, boulders by rock type),
+    // scope "select similar" to the same sub-kind — double-clicking an oak
+    // shouldn't grab every pine in view.
+    const targetKind = entry.kindOf?.(this.world, id) ?? null;
+    const predicate = targetKind ? (c) => c[entry.component]?.kind === targetKind : undefined;
+    const ids = frustumVisibleIds(
+      this.camera,
+      this.world,
+      [entry.component, 'Position'],
+      predicate,
+    );
     if (ids.length === 0) return;
     this.onSelectMany(ids);
     e.stopImmediatePropagation();
