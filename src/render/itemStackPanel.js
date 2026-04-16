@@ -12,6 +12,14 @@
 
 import { toggleForbiddenOnStacks } from '../boot/utils.js';
 import { ITEM_INFO } from '../world/items.js';
+import {
+  isQuality,
+  nutritionMultiplier,
+  poisoningChance,
+  qualityColor,
+  qualityLabel,
+  qualityRank,
+} from '../world/quality.js';
 
 /**
  * @typedef {Object} ItemStackPanelOpts
@@ -57,6 +65,21 @@ export function createItemStackPanel(opts) {
   Object.assign(meta.style, {
     color: '#b5c0cc',
     marginBottom: '4px',
+  });
+
+  const quality = document.createElement('div');
+  Object.assign(quality.style, {
+    fontSize: '11px',
+    marginBottom: '2px',
+    display: 'none',
+  });
+
+  const ingredientsLine = document.createElement('div');
+  Object.assign(ingredientsLine.style, {
+    color: '#9aa6b4',
+    fontSize: '11px',
+    marginBottom: '4px',
+    display: 'none',
   });
 
   const desc = document.createElement('div');
@@ -110,7 +133,7 @@ export function createItemStackPanel(opts) {
     onInstall(id, p.size | 0);
   });
 
-  root.append(title, meta, desc, forbidBtn, installBtn);
+  root.append(title, meta, quality, ingredientsLine, desc, forbidBtn, installBtn);
   document.body.appendChild(root);
 
   function toggleForbidden() {
@@ -134,6 +157,14 @@ export function createItemStackPanel(opts) {
     let totalCapacity = 0;
     let forbiddenCount = 0;
     let mixed = false;
+    /** Quality tier → total meal units. Only populated when kind='meal'. */
+    /** @type {Map<string, number>} */
+    const mealsByQuality = new Map();
+    /** Single-stack-only: ingredients list copied off the one selected stack. */
+    /** @type {string[] | null} */
+    let singleIngredients = null;
+    /** Single-stack-only: quality tier of the one selected stack. */
+    let singleQuality = '';
     for (const id of state.selectedItems) {
       const item = world.get(id, 'Item');
       if (!item) continue;
@@ -142,6 +173,13 @@ export function createItemStackPanel(opts) {
       totalCount += item.count;
       totalCapacity += item.capacity;
       if (item.forbidden === true) forbiddenCount++;
+      if (item.kind === 'meal' && isQuality(item.quality)) {
+        mealsByQuality.set(item.quality, (mealsByQuality.get(item.quality) ?? 0) + item.count);
+        if (n === 1) {
+          singleIngredients = item.ingredients ?? [];
+          singleQuality = item.quality;
+        }
+      }
     }
 
     const label = mixed ? 'Mixed stacks' : (kind && ITEM_INFO[kind]?.label) || kind || 'Item';
@@ -150,7 +188,34 @@ export function createItemStackPanel(opts) {
       : (kind && ITEM_INFO[kind]?.description) || '';
     const allForbidden = forbiddenCount === n;
     const canInstall = !!onInstall && n === 1 && !mixed && kind === 'painting';
-    const key = `${n}|${label}|${totalCount}/${totalCapacity}|${forbiddenCount}|${allForbidden ? 'F' : 'U'}|${canInstall ? 'I' : 'N'}`;
+
+    const showMealInfo = !mixed && kind === 'meal' && mealsByQuality.size > 0;
+    let qualityText = '';
+    let qualityTint = 0;
+    let ingredientsText = '';
+    if (showMealInfo) {
+      if (n === 1 && singleQuality) {
+        const q = /** @type {import('../world/quality.js').Quality} */ (singleQuality);
+        const mult = nutritionMultiplier(q);
+        const poison = poisoningChance(q);
+        const safety = poison === 0 ? 'safe' : `${Math.round(poison * 100)}% poison risk`;
+        qualityText = `${qualityLabel(q)} · ${mult.toFixed(1)}× nutrition · ${safety}`;
+        qualityTint = qualityColor(q);
+        if (singleIngredients && singleIngredients.length > 0) {
+          ingredientsText = singleIngredients.map((k) => ITEM_INFO[k]?.label ?? k).join(' + ');
+        }
+      } else {
+        // Multi-stack meal breakdown: sort tiers high → low, join with bullets.
+        const parts = [...mealsByQuality.entries()]
+          .sort((a, b) => qualityRank(b[0]) - qualityRank(a[0]))
+          .map(([q, c]) => `${qualityLabel(q)} × ${c}`);
+        qualityText = parts.join(' · ');
+        qualityTint = 0xd8dfe6;
+      }
+    }
+
+    const qualitySig = [...mealsByQuality.entries()].map(([q, c]) => `${q}:${c}`).join(',');
+    const key = `${n}|${label}|${totalCount}/${totalCapacity}|${forbiddenCount}|${allForbidden ? 'F' : 'U'}|${canInstall ? 'I' : 'N'}|${qualitySig}|${ingredientsText}`;
     if (key === lastKey) return;
     lastKey = key;
 
@@ -158,6 +223,20 @@ export function createItemStackPanel(opts) {
     meta.textContent =
       n === 1 ? `${totalCount} / ${totalCapacity}` : `total ${totalCount} / ${totalCapacity}`;
     desc.textContent = description;
+
+    if (showMealInfo) {
+      quality.textContent = qualityText;
+      quality.style.color = `#${qualityTint.toString(16).padStart(6, '0')}`;
+      quality.style.display = '';
+    } else {
+      quality.style.display = 'none';
+    }
+    if (ingredientsText) {
+      ingredientsLine.textContent = `Ingredients: ${ingredientsText}`;
+      ingredientsLine.style.display = '';
+    } else {
+      ingredientsLine.style.display = 'none';
+    }
 
     if (allForbidden) {
       forbidBtn.textContent = 'Allowed (F)';
