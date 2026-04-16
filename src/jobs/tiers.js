@@ -34,6 +34,7 @@ export const JOB_TIERS = {
   paint: 2,
   install: 2,
   uninstall: 2,
+  sleep: 1,
   haul: 3,
   supply: 3,
   wander: 4,
@@ -54,3 +55,12 @@ export const HUNGER_CRITICAL_THRESHOLD = 0.2;
 
 /** Jobs at or above this tier (less urgent) get preempted by critical hunger. */
 export const HUNGER_PREEMPT_TIER = 2;
+
+/**
+ * Tiredness level below which the brain preempts non-urgent work to go sleep.
+ * Softer than hunger — cows can tough it out longer when tired.
+ */
+export const TIREDNESS_SLEEP_THRESHOLD = 0.3;
+export const TIREDNESS_CRITICAL_THRESHOLD = 0.1;
+/** Jobs at or above this tier (less urgent) get preempted by critical tiredness. */
+export const TIREDNESS_PREEMPT_TIER = 2;

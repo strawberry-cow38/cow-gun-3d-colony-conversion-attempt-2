@@ -21,7 +21,14 @@ import { HARVEST_TICKS } from '../jobs/harvest.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { MINE_TICKS } from '../jobs/mine.js';
 import { PLANT_TICKS } from '../jobs/plant.js';
-import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
+import {
+  HUNGER_CRITICAL_THRESHOLD,
+  HUNGER_PREEMPT_TIER,
+  TIREDNESS_CRITICAL_THRESHOLD,
+  TIREDNESS_PREEMPT_TIER,
+  TIREDNESS_SLEEP_THRESHOLD,
+  tierFor,
+} from '../jobs/tiers.js';
 import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickWanderGoal } from '../jobs/wander.js';
 import { BOULDER_LOOT } from '../world/boulders.js';
@@ -59,8 +66,15 @@ export const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
 // Tiredness empties over 16 in-game hours (2/3 of a day = 28800 ticks at 30Hz).
-// Sleep restores it over 8 hours (see TIREDNESS_RESTORE_PER_TICK).
+// Sleep restores it over 8 hours (14400 ticks) in a bed — so an 8-hour night
+// fully refills a day's drain. Floor-sleep restores half as fast so cows with
+// no bed still recover, just slowly enough that building one matters.
 const TIREDNESS_DRAIN_PER_TICK = 1 / 28800;
+const TIREDNESS_RESTORE_PER_TICK = 1 / 14400;
+const TIREDNESS_FLOOR_RESTORE_MULT = 0.5;
+// Stop sleeping a little shy of 1 so cows don't ping-pong in/out of beds as
+// the tiny drain immediately flips them back to "tired".
+const SLEEP_SATIATED_THRESHOLD = 0.95;
 // While food-poisoned, hunger drains this fast — roughly 3x normal, so the
 // cow ends up hungry again sooner than if the bad meal had been tasty.
 const HUNGER_DRAIN_POISONED_MULT = 3;
@@ -160,6 +174,7 @@ export function makeCowBrainSystem(deps) {
         'Path',
         'Inventory',
         'Hunger',
+        'Tiredness',
         'Brain',
       ])) {
         const cow = components.Cow;
@@ -168,6 +183,7 @@ export function makeCowBrainSystem(deps) {
         const pos = components.Position;
         const inv = components.Inventory;
         const hunger = components.Hunger;
+        const tiredness = components.Tiredness;
         const brain = components.Brain;
 
         // Drafted cows opt out of all autonomous behavior — they just wait
@@ -189,8 +205,10 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'plant' ||
             job.kind === 'harvest' ||
             job.kind === 'paint' ||
-            job.kind === 'cook'
+            job.kind === 'cook' ||
+            job.kind === 'sleep'
           ) {
+            if (job.kind === 'sleep') releaseBedOccupant(world, job, id);
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
             job.state = 'idle';
@@ -263,6 +281,29 @@ export function makeCowBrainSystem(deps) {
           brain.vitalsDirty = true;
         }
 
+        // Same story for tiredness: a cow falling asleep on its feet drops
+        // non-urgent work so the next decide block re-plans as a sleep job.
+        // Unlike hunger we don't gate on "any beds exist" — floor-sleep is a
+        // valid fallback, so the cow should collapse wherever it stands if
+        // there's no bed.
+        if (
+          tiredness.value < TIREDNESS_CRITICAL_THRESHOLD &&
+          tierFor(job.kind) >= TIREDNESS_PREEMPT_TIER
+        ) {
+          if (job.payload?.jobId != null) board.release(job.payload.jobId);
+          if (inv.items.length > 0) {
+            dropCarriedItem(world, grid, inv, pos);
+            deps.onItemChange();
+          }
+          job.kind = 'none';
+          job.state = 'idle';
+          job.payload = {};
+          path.steps = [];
+          path.index = 0;
+          brain.jobDirty = true;
+          brain.vitalsDirty = true;
+        }
+
         // Dirty gate + staggered eval: skip the expensive decide block unless
         // something changed this cow's plan — job finished, hunger dropped,
         // or the board shifted AND this cow's bucket matches the current tick
@@ -284,6 +325,32 @@ export function makeCowBrainSystem(deps) {
                 job.kind = 'eat';
                 job.state = 'pathing-to-food';
                 job.payload = { itemId: food.id, i: food.i, j: food.j };
+                path.steps = [];
+                path.index = 0;
+              }
+            }
+
+            // Tired + idle? Prefer a bed (owned first, then unowned-unoccupied),
+            // otherwise fall through to a floor-sleep in place. Hunger wins —
+            // we only enter this branch if the eat block above didn't claim
+            // the cow.
+            if (
+              (job.kind === 'wander' || job.kind === 'none') &&
+              tiredness.value < TIREDNESS_SLEEP_THRESHOLD
+            ) {
+              const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+              const bed = findBestBed(world, id, near);
+              if (bed) {
+                job.kind = 'sleep';
+                job.state = 'pathing-to-bed';
+                job.payload = { bedId: bed.id, i: bed.i, j: bed.j };
+                path.steps = [];
+                path.index = 0;
+              } else if (tiredness.value < TIREDNESS_CRITICAL_THRESHOLD) {
+                // No bed available but we're collapsing — sleep on the floor.
+                job.kind = 'sleep';
+                job.state = 'sleeping';
+                job.payload = { onFloor: true };
                 path.steps = [];
                 path.index = 0;
               }
@@ -503,6 +570,8 @@ export function makeCowBrainSystem(deps) {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
           runEatJob(world, job, path, pos, hunger, grid, paths, deps, id);
+        } else if (job.kind === 'sleep') {
+          runSleepJob(world, job, path, pos, tiredness, grid, paths, id);
         } else if (job.kind === 'move') {
           // Player-issued move. Pop any waypoint boundary we've passed so the
           // selection viz stops drawing markers for already-reached steps.
@@ -2750,6 +2819,105 @@ function runEatJob(world, job, path, pos, hunger, grid, paths, deps, cowId) {
   }
 }
 
+/**
+ * State machine for the self-assigned sleep job: walk to bed → claim it →
+ * sleep until satiated. Bails if the bed vanishes mid-trip or gets snatched
+ * by another cow. Floor-sleep is a degenerate case with no `bedId` — the cow
+ * just sits where it is and restores at half rate.
+ *
+ * First-time sleep auto-claims ownership: an unowned bed the cow reaches
+ * becomes theirs permanently. Matches Rimworld's auto-assign-on-first-use so
+ * players don't have to manually pair cows to beds.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {{ value: number }} tiredness
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {number} cowId
+ */
+function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
+  const bedId = /** @type {number | undefined} */ (job.payload?.bedId);
+
+  if (job.state === 'pathing-to-bed') {
+    const bed = bedId != null ? world.get(bedId, 'Bed') : null;
+    const anchor = bedId != null ? world.get(bedId, 'TileAnchor') : null;
+    // Bed decon'd or claimed by another cow while we walked? Bail — next
+    // decide block will either find a new bed or fall through to wander.
+    if (
+      !bed ||
+      !anchor ||
+      bed.deconstructJobId > 0 ||
+      (bed.ownerId !== 0 && bed.ownerId !== cowId) ||
+      (bed.occupantId !== 0 && bed.occupantId !== cowId)
+    ) {
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const route = paths.find(start, { i: anchor.i, j: anchor.j });
+    if (!route || route.length === 0) {
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking-to-bed';
+    job.payload = { bedId, i: anchor.i, j: anchor.j };
+    return;
+  }
+
+  if (job.state === 'walking-to-bed') {
+    if (path.index >= path.steps.length) {
+      // Claim the bed now that we're on it. First cow to reach an unowned
+      // bed owns it forever; occupantId is the "busy" flag for the duration
+      // of this sleep so other cows skip it in findBestBed.
+      const bed = bedId != null ? world.get(bedId, 'Bed') : null;
+      if (!bed || bed.deconstructJobId > 0) {
+        job.kind = 'none';
+        job.state = 'idle';
+        job.payload = {};
+        return;
+      }
+      if (bed.ownerId === 0) bed.ownerId = cowId;
+      bed.occupantId = cowId;
+      job.state = 'sleeping';
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'sleeping') {
+    const onFloor = job.payload?.onFloor === true;
+    // Floor-sleepers don't hold a bed — they just restore in place.
+    if (!onFloor) {
+      const bed = bedId != null ? world.get(bedId, 'Bed') : null;
+      // Bed disappeared under us (deconstruct finished)? Wake up.
+      if (!bed || bed.deconstructJobId > 0) {
+        job.kind = 'none';
+        job.state = 'idle';
+        job.payload = {};
+        return;
+      }
+    }
+    const mult = onFloor ? TIREDNESS_FLOOR_RESTORE_MULT : 1;
+    tiredness.value = Math.min(1, tiredness.value + TIREDNESS_RESTORE_PER_TICK * mult);
+    if (tiredness.value >= SLEEP_SATIATED_THRESHOLD) {
+      if (!onFloor) releaseBedOccupant(world, job, cowId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
 /** @param {string} kind */
 function isEdibleKind(kind) {
   return kind === 'food' || kind === 'meal';
@@ -2781,6 +2949,52 @@ function findBestFood(world, near) {
     }
   }
   return best;
+}
+
+/**
+ * Pick a bed for a tired cow: owned-by-me beds win (cows remember their own
+ * mattress), then unowned + unoccupied beds by nearest Chebyshev distance.
+ * A bed still under construction has no Bed component yet, so blueprints are
+ * automatically excluded.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} cowId
+ * @param {{ i: number, j: number }} near
+ */
+function findBestBed(world, cowId, near) {
+  /** @type {{ id: number, i: number, j: number, owned: boolean, dist: number } | null} */
+  let best = null;
+  for (const { id, components } of world.query(['Bed', 'TileAnchor'])) {
+    const b = components.Bed;
+    // Skip beds mid-deconstruct — don't send a cow to sleep on something that's
+    // about to be torn down and its tiles freed for walkability.
+    if (b.deconstructJobId > 0) continue;
+    const ownedByMe = b.ownerId === cowId;
+    // Someone else's bed, or someone is currently asleep in it.
+    if (!ownedByMe && b.ownerId !== 0) continue;
+    if (b.occupantId !== 0 && b.occupantId !== cowId) continue;
+    const a = components.TileAnchor;
+    const dist = Math.max(Math.abs(a.i - near.i), Math.abs(a.j - near.j));
+    if (!best || (ownedByMe && !best.owned) || (ownedByMe === best.owned && dist < best.dist)) {
+      best = { id, i: a.i, j: a.j, owned: ownedByMe, dist };
+    }
+  }
+  return best;
+}
+
+/**
+ * Clear the occupantId on a bed the cow is currently sleeping in. Called when
+ * a sleep job ends for any reason — completed, preempted, drafted, etc.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {{ payload: Record<string, any> }} job
+ * @param {number} cowId
+ */
+function releaseBedOccupant(world, job, cowId) {
+  const bedId = job.payload?.bedId;
+  if (!bedId) return;
+  const bed = world.get(bedId, 'Bed');
+  if (bed && bed.occupantId === cowId) bed.occupantId = 0;
 }
 
 /** @param {import('../ecs/world.js').World} world */

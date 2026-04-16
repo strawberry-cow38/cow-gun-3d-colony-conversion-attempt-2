@@ -13,6 +13,10 @@ export function thoughtFor(job) {
     if (state === 'eating') return 'munching';
     return 'hungry';
   }
+  if (kind === 'sleep') {
+    if (state === 'sleeping') return 'zzz';
+    return 'tired';
+  }
   if (kind === 'chop') {
     if (state === 'chopping') return 'chopping';
     return 'to tree';
