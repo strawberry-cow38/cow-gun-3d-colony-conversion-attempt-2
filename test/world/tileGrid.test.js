@@ -52,3 +52,45 @@ describe('TileGrid', () => {
     expect(seen.size).toBeGreaterThan(1);
   });
 });
+
+describe('TileGrid structureTiles index', () => {
+  it('tracks add/remove through the setters', () => {
+    const grid = new TileGrid(20, 20);
+    expect(grid.structureTiles.size).toBe(0);
+    grid.setWall(3, 3, 1);
+    grid.setFloor(4, 4, 1);
+    grid.setRoof(5, 5, 1);
+    grid.setDoor(6, 6, 1);
+    grid.setTorch(7, 7, 1);
+    expect(grid.structureTiles.size).toBe(5);
+    grid.setWall(3, 3, 0);
+    expect(grid.structureTiles.size).toBe(4);
+    expect(grid.structureTiles.has(grid.idx(3, 3))).toBe(false);
+  });
+
+  it('keeps a tile indexed while any structure remains on it', () => {
+    const grid = new TileGrid(10, 10);
+    const k = grid.idx(2, 2);
+    grid.setWall(2, 2, 1);
+    grid.setFloor(2, 2, 1);
+    expect(grid.structureTiles.has(k)).toBe(true);
+    grid.setWall(2, 2, 0);
+    expect(grid.structureTiles.has(k)).toBe(true);
+    grid.setFloor(2, 2, 0);
+    expect(grid.structureTiles.has(k)).toBe(false);
+  });
+
+  it('recomputeCounts rebuilds the index from raw bitmaps', () => {
+    const grid = new TileGrid(8, 8);
+    // Bypass setters so we're exercising the rebuild path that persist/load
+    // takes after raw-writing the bitmaps.
+    grid.wall[grid.idx(1, 1)] = 1;
+    grid.floor[grid.idx(2, 2)] = 1;
+    grid.torch[grid.idx(3, 3)] = 1;
+    grid.recomputeCounts();
+    expect(grid.structureTiles.size).toBe(3);
+    expect(grid.structureTiles.has(grid.idx(1, 1))).toBe(true);
+    expect(grid.structureTiles.has(grid.idx(2, 2))).toBe(true);
+    expect(grid.structureTiles.has(grid.idx(3, 3))).toBe(true);
+  });
+});

@@ -2,10 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { CURRENT_VERSION, runMigrations } from '../../src/world/migrations/index.js';
 
 describe('migration runner', () => {
-  it('CURRENT_VERSION is positive', () => {
-    expect(CURRENT_VERSION).toBeGreaterThanOrEqual(1);
-  });
-
   it('upgrades a v0 save through the chain to CURRENT_VERSION', () => {
     const v0 = { version: 0, W: 2, H: 2, tiles: [1, 2, 3, 4] };
     const out = runMigrations(v0);

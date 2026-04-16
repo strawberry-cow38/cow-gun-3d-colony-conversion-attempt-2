@@ -20,6 +20,48 @@ function makeWorld() {
   return w;
 }
 
+/**
+ * Spawn a fully-componented cow with sensible defaults. Per-test values can be
+ * set via `overrides`, which is shallow-merged — override one field without
+ * rebuilding the whole 20-component entity.
+ *
+ * @param {ReturnType<typeof makeWorld>} world
+ * @param {Record<string, any>} [overrides]
+ */
+function spawnCow(world, overrides = {}) {
+  /** @type {Record<string, any>} */
+  const base = {
+    Cow: {},
+    Position: { x: 0, y: 0, z: 0 },
+    PrevPosition: { x: 0, y: 0, z: 0 },
+    Velocity: { x: 0, y: 0, z: 0 },
+    Hunger: { value: 1 },
+    Tiredness: { value: 1 },
+    FoodPoisoning: { ticksRemaining: 0 },
+    Brain: { name: 'cow' },
+    Identity: {
+      name: 'cow',
+      gender: 'female',
+      birthTick: -5000000,
+      heightCm: 170,
+      hairColor: '#4a2f20',
+    },
+    Job: { kind: 'none', state: 'idle', payload: {} },
+    Path: { steps: [], index: 0 },
+    Inventory: { items: [] },
+    Opinions: { scores: {}, last: {}, chats: 0 },
+    Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
+    Health: { injuries: [], nextInjuryId: 1, dead: false },
+    Skills: { levels: {}, learnRateMultiplier: 1 },
+    WorkPriorities: { priorities: {} },
+    CowViz: {},
+  };
+  for (const [key, val] of Object.entries(overrides)) {
+    base[key] = { ...base[key], ...val };
+  }
+  return world.spawn(base);
+}
+
 describe('serializeState / hydrateTileGrid roundtrip', () => {
   it('preserves elevation + biome arrays exactly', () => {
     const orig = new TileGrid(8, 6);
@@ -54,31 +96,12 @@ describe('cow save/load roundtrip', () => {
   it('preserves cow name, position, and hunger', () => {
     const tg = new TileGrid(4, 4);
     const w1 = makeWorld();
-    w1.spawn({
-      Cow: {},
+    spawnCow(w1, {
       Position: { x: 1.5, y: 2.5, z: 3.5 },
       PrevPosition: { x: 1.5, y: 2.5, z: 3.5 },
-      Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: 0.42 },
-      Tiredness: { value: 1 },
-      FoodPoisoning: { ticksRemaining: 0 },
       Brain: { name: 'bessie' },
-      Identity: {
-        name: 'bessie',
-        gender: 'female',
-        birthTick: -5000000,
-        heightCm: 170,
-        hairColor: '#4a2f20',
-      },
-      Job: { kind: 'none', state: 'idle', payload: {} },
-      Path: { steps: [], index: 0 },
-      Inventory: { items: [] },
-      Opinions: { scores: {}, last: {}, chats: 0 },
-      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
-      Health: { injuries: [], nextInjuryId: 1, dead: false },
-      Skills: { levels: {}, learnRateMultiplier: 1 },
-      WorkPriorities: { priorities: {} },
-      CowViz: {},
+      Identity: { name: 'bessie' },
     });
 
     const state = serializeState(tg, w1);
@@ -115,57 +138,17 @@ describe('cow save/load roundtrip', () => {
   it('preserves the drafted flag across save/load', () => {
     const tg = new TileGrid(2, 2);
     const w1 = makeWorld();
-    w1.spawn({
+    spawnCow(w1, {
       Cow: { drafted: true },
-      Position: { x: 0, y: 0, z: 0 },
-      PrevPosition: { x: 0, y: 0, z: 0 },
-      Velocity: { x: 0, y: 0, z: 0 },
-      Hunger: { value: 1 },
-      Tiredness: { value: 1 },
-      FoodPoisoning: { ticksRemaining: 0 },
       Brain: { name: 'sarge' },
-      Identity: {
-        name: 'sarge',
-        gender: 'male',
-        birthTick: -7000000,
-        heightCm: 180,
-        hairColor: '#2b1b10',
-      },
-      Job: { kind: 'none', state: 'idle', payload: {} },
-      Path: { steps: [], index: 0 },
-      Inventory: { items: [] },
-      Opinions: { scores: {}, last: {}, chats: 0 },
-      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
-      Health: { injuries: [], nextInjuryId: 1, dead: false },
-      Skills: { levels: {}, learnRateMultiplier: 1 },
-      WorkPriorities: { priorities: {} },
-      CowViz: {},
+      Identity: { name: 'sarge', gender: 'male' },
     });
-    w1.spawn({
+    spawnCow(w1, {
       Cow: { drafted: false },
       Position: { x: 1, y: 0, z: 1 },
       PrevPosition: { x: 1, y: 0, z: 1 },
-      Velocity: { x: 0, y: 0, z: 0 },
-      Hunger: { value: 1 },
-      Tiredness: { value: 1 },
-      FoodPoisoning: { ticksRemaining: 0 },
       Brain: { name: 'civvy' },
-      Identity: {
-        name: 'civvy',
-        gender: 'female',
-        birthTick: -5000000,
-        heightCm: 165,
-        hairColor: '#c99a4a',
-      },
-      Job: { kind: 'none', state: 'idle', payload: {} },
-      Path: { steps: [], index: 0 },
-      Inventory: { items: [] },
-      Opinions: { scores: {}, last: {}, chats: 0 },
-      Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
-      Health: { injuries: [], nextInjuryId: 1, dead: false },
-      Skills: { levels: {}, learnRateMultiplier: 1 },
-      WorkPriorities: { priorities: {} },
-      CowViz: {},
+      Identity: { name: 'civvy' },
     });
 
     const state = serializeState(tg, w1);

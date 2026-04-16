@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DirtyBus, Scheduler } from '../../src/ecs/schedule.js';
+import { DirtyBus, Scheduler, TIER_PERIODS } from '../../src/ecs/schedule.js';
 import { World } from '../../src/ecs/world.js';
 
 describe('Scheduler tier cadences', () => {
@@ -12,21 +12,23 @@ describe('Scheduler tier cadences', () => {
     expect(count).toBe(10);
   });
 
-  it("'rare' systems run once every 8 ticks", () => {
+  it("'rare' systems run once per TIER_PERIODS.rare", () => {
     const s = new Scheduler();
     const w = new World();
     let count = 0;
     s.add({ name: 'a', tier: 'rare', offset: 0, run: () => count++ });
-    for (let t = 0; t < 64; t++) s.tick(w, t, 1 / 30);
+    const ticks = TIER_PERIODS.rare * 8;
+    for (let t = 0; t < ticks; t++) s.tick(w, t, 1 / 30);
     expect(count).toBe(8);
   });
 
-  it("'long' systems run once every 64 ticks", () => {
+  it("'long' systems run once per TIER_PERIODS.long", () => {
     const s = new Scheduler();
     const w = new World();
     let count = 0;
     s.add({ name: 'a', tier: 'long', offset: 0, run: () => count++ });
-    for (let t = 0; t < 256; t++) s.tick(w, t, 1 / 30);
+    const ticks = TIER_PERIODS.long * 4;
+    for (let t = 0; t < ticks; t++) s.tick(w, t, 1 / 30);
     expect(count).toBe(4);
   });
 
