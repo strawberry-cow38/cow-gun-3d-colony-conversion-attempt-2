@@ -13,7 +13,7 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { FACING_YAWS } from '../world/facing.js';
 
 const FOOTPRINT = TILE_SIZE * 0.7;
-const EASEL_HEIGHT = 1.6 * UNITS_PER_METER;
+export const EASEL_HEIGHT = 1.6 * UNITS_PER_METER;
 const POST_WIDTH = 0.04 * UNITS_PER_METER;
 const CANVAS_WIDTH = TILE_SIZE * 0.62;
 const CANVAS_HEIGHT = 0.7 * UNITS_PER_METER;

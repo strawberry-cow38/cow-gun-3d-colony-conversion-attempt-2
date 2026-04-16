@@ -25,8 +25,6 @@ import { createFloorInstancer } from '../render/floorInstancer.js';
 import { createFlowerInstancer } from '../render/flowerInstancer.js';
 import { createFurnaceEffects } from '../render/furnaceEffects.js';
 import { createFurnaceInstancer } from '../render/furnaceInstancer.js';
-import { createFurnaceProgressBars } from '../render/furnaceProgressBars.js';
-import { createFurnaceSelectionViz } from '../render/furnaceSelectionViz.js';
 import { createIgnoreRoofOverlay } from '../render/ignoreRoofOverlay.js';
 import { createItemInstancer } from '../render/itemInstancer.js';
 import { createItemLabels } from '../render/itemLabels.js';
@@ -39,6 +37,8 @@ import { createRoofCollapseParticles } from '../render/roofCollapseParticles.js'
 import { createRoofInstancer } from '../render/roofInstancer.js';
 import { createRoomOverlay } from '../render/roomOverlay.js';
 import { createSelectionViz } from '../render/selectionViz.js';
+import { createStationProgressBars } from '../render/stationProgressBars.js';
+import { createStationSelectionViz } from '../render/stationSelectionViz.js';
 import { createStockpileOverlay } from '../render/stockpileOverlay.js';
 import { createStoveInstancer } from '../render/stoveInstancer.js';
 import { createTilledOverlay } from '../render/tilledOverlay.js';
@@ -80,8 +80,8 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     flowerInstancer: createFlowerInstancer(scene, 2048),
     furnaceInstancer: createFurnaceInstancer(scene, 256),
     furnaceEffects: createFurnaceEffects(scene),
-    furnaceProgressBars: createFurnaceProgressBars(scene),
-    furnaceSelectionViz: createFurnaceSelectionViz(scene),
+    stationProgressBars: createStationProgressBars(scene),
+    stationSelectionViz: createStationSelectionViz(scene),
     easelInstancer: createEaselInstancer(scene, 64),
     stoveInstancer: createStoveInstancer(scene, 32),
     paintingInstancer: createPaintingInstancer(scene, 128),

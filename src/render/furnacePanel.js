@@ -24,6 +24,8 @@ import { computeStockByKind } from '../world/stock.js';
 
 /**
  * Kind-specific lookups. Isolated here so the panel body can stay generic.
+ * `workerField` is the component field holding the currently assigned cow id
+ * (0 = none) — furnaces are unmanned, so that slot is null.
  *
  * @type {Record<StationKind, {
  *   title: string,
@@ -31,6 +33,8 @@ import { computeStockByKind } from '../world/stock.js';
  *   selectedKey: 'selectedFurnaces' | 'selectedEasels' | 'selectedStoves',
  *   primaryKey: 'primaryFurnace' | 'primaryEasel' | 'primaryStove',
  *   accent: string,
+ *   workerField: 'artistCowId' | 'cookCowId' | null,
+ *   workerVerb: string,
  * }>}
  */
 const KIND_META = {
@@ -40,6 +44,8 @@ const KIND_META = {
     selectedKey: 'selectedFurnaces',
     primaryKey: 'primaryFurnace',
     accent: 'rgba(255, 140, 80, 0.35)',
+    workerField: null,
+    workerVerb: '',
   },
   easel: {
     title: 'Easel',
@@ -47,6 +53,8 @@ const KIND_META = {
     selectedKey: 'selectedEasels',
     primaryKey: 'primaryEasel',
     accent: 'rgba(216, 178, 106, 0.45)',
+    workerField: 'artistCowId',
+    workerVerb: 'painting',
   },
   stove: {
     title: 'Stove',
@@ -54,6 +62,8 @@ const KIND_META = {
     selectedKey: 'selectedStoves',
     primaryKey: 'primaryStove',
     accent: 'rgba(210, 185, 138, 0.45)',
+    workerField: 'cookCowId',
+    workerVerb: 'cooking',
   },
 };
 
@@ -136,6 +146,10 @@ export function createFurnacePanel(opts) {
   const progressFills = new Map();
   /** @type {Map<number, HTMLSpanElement>} */
   const progressSpans = new Map();
+  /** @type {Map<number, HTMLDivElement>} */
+  const workerLines = new Map();
+  /** @type {Map<number, string>} */
+  const lastWorkerText = new Map();
 
   function update() {
     const selected = /** @type {Set<number>} */ (state[meta.selectedKey]);
@@ -176,6 +190,8 @@ export function createFurnacePanel(opts) {
       billsWrap.replaceChildren();
       progressFills.clear();
       progressSpans.clear();
+      workerLines.clear();
+      lastWorkerText.clear();
       return;
     }
     const billsKey = bills.list
@@ -191,6 +207,8 @@ export function createFurnacePanel(opts) {
       billsWrap.replaceChildren();
       progressFills.clear();
       progressSpans.clear();
+      workerLines.clear();
+      lastWorkerText.clear();
       if (bills.list.length === 0) {
         const empty = document.createElement('div');
         empty.textContent = 'No bills. Click "Add bill" to queue a recipe.';
@@ -210,6 +228,21 @@ export function createFurnacePanel(opts) {
       if (fill && recipe && recipe.workTicks > 0) {
         const p = Math.max(0, Math.min(1, 1 - station.workTicksRemaining / recipe.workTicks));
         fill.style.width = `${(p * 100).toFixed(1)}%`;
+      }
+      if (meta.workerField) {
+        const line = workerLines.get(activeId);
+        if (line) {
+          const workerId = /** @type {number} */ (station[meta.workerField]) | 0;
+          // artistCowId / cookCowId is 0 while the cow is still walking over;
+          // "Waiting for a cow…" communicates that the station is queued but
+          // unattended, which feels different from "Bessie is painting".
+          const next =
+            workerId > 0 ? `${nameOf(workerId)} is ${meta.workerVerb}` : 'Waiting for a cow…';
+          if (lastWorkerText.get(activeId) !== next) {
+            line.textContent = next;
+            lastWorkerText.set(activeId, next);
+          }
+        }
       }
     }
 
@@ -353,6 +386,18 @@ export function createFurnacePanel(opts) {
       track.append(fill);
       row.append(track);
       progressFills.set(bill.id, fill);
+      if (meta.workerField) {
+        const workerLine = document.createElement('div');
+        Object.assign(workerLine.style, {
+          color: '#cdd7e1',
+          fontSize: '11px',
+          fontStyle: 'italic',
+          marginTop: '2px',
+        });
+        workerLine.textContent = 'Waiting for a cow…';
+        row.append(workerLine);
+        workerLines.set(bill.id, workerLine);
+      }
     }
     row.append(controls);
     return row;
@@ -469,6 +514,12 @@ export function createFurnacePanel(opts) {
     const s = document.createElement('span');
     s.style.flex = '1';
     return s;
+  }
+
+  /** @param {number} cowId */
+  function nameOf(cowId) {
+    const ident = world.get(cowId, 'Identity');
+    return ident?.name ?? 'Someone';
   }
 
   /** @param {HTMLElement} anchor */

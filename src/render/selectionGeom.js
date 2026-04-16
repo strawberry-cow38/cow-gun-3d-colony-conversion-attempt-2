@@ -8,20 +8,21 @@
 
 /**
  * Writes 8 line vertices (4 segments: N, E, S, W) forming an axis-aligned
- * square outline at (x, z) on plane y, with half-extent r.
+ * rectangle outline at (x, z) on plane y, with half-extents rx and rz.
  *
  * @param {Float32Array} out
  * @param {number} off
  * @param {number} x
  * @param {number} y
  * @param {number} z
- * @param {number} r
+ * @param {number} rx
+ * @param {number} rz
  */
-export function writeSquareOutline(out, off, x, y, z, r) {
-  const x0 = x - r;
-  const x1 = x + r;
-  const z0 = z - r;
-  const z1 = z + r;
+export function writeRectOutline(out, off, x, y, z, rx, rz) {
+  const x0 = x - rx;
+  const x1 = x + rx;
+  const z0 = z - rz;
+  const z1 = z + rz;
   let p = off;
   // N edge
   out[p++] = x0;
@@ -51,4 +52,19 @@ export function writeSquareOutline(out, off, x, y, z, r) {
   out[p++] = x0;
   out[p++] = y;
   out[p++] = z0;
+}
+
+/**
+ * Writes 8 line vertices for a square outline — thin wrapper around
+ * writeRectOutline with equal half-extents.
+ *
+ * @param {Float32Array} out
+ * @param {number} off
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @param {number} r
+ */
+export function writeSquareOutline(out, off, x, y, z, r) {
+  writeRectOutline(out, off, x, y, z, r, r);
 }

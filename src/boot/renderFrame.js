@@ -109,8 +109,8 @@ export function createRenderFrame({
     flowerInstancer,
     furnaceInstancer,
     furnaceEffects,
-    furnaceProgressBars,
-    furnaceSelectionViz,
+    stationProgressBars,
+    stationSelectionViz,
     easelInstancer,
     stoveInstancer,
     paintingInstancer,
@@ -193,8 +193,12 @@ export function createRenderFrame({
     furnaceInstancer.update(world, tileGrid);
     furnaceInstancer.updateGlow(tSec);
     furnaceEffects.update(world, tileGrid, rdt, tSec, camera);
-    furnaceProgressBars.update(world, tileGrid, camera);
-    furnaceSelectionViz.update(world, tileGrid, state.selectedFurnaces);
+    stationProgressBars.update(world, tileGrid, camera);
+    stationSelectionViz.update(world, tileGrid, {
+      selectedFurnaces: state.selectedFurnaces,
+      selectedEasels: state.selectedEasels,
+      selectedStoves: state.selectedStoves,
+    });
     easelInstancer.update(world, tileGrid);
     stoveInstancer.update(world, tileGrid);
     paintingInstancer.update(world, tileGrid);
