@@ -655,6 +655,7 @@ new CowMoveCommand(
 );
 
 const {
+  deactivateAllTools,
   chopDesignator,
   cutDesignator,
   mineDesignator,
@@ -686,6 +687,14 @@ const {
   state,
   instancers,
   updateHud,
+});
+
+// Right-click in the world viewport drops whatever tool the player had
+// armed. Button popovers (stuff/crop picker) call stopPropagation on their
+// own contextmenu, so this only runs for clicks that hit the canvas.
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  deactivateAllTools();
 });
 
 const fpCamera = new FirstPersonCamera(camera, canvas, world, () => updateHud());

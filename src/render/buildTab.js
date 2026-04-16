@@ -368,6 +368,9 @@ export function createBuildTab(opts) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       btn.blur();
+      // Changing or collapsing the open category drops any armed tool —
+      // the user has indicated they're no longer acting on that palette.
+      deactivateActive();
       if (state.openCategoryId === cat.id) {
         state.openCategoryId = null;
       } else {
@@ -404,7 +407,10 @@ export function createBuildTab(opts) {
     e.stopPropagation();
     buildButton.blur();
     state.open = !state.open;
-    if (!state.open) state.openCategoryId = null;
+    if (!state.open) {
+      state.openCategoryId = null;
+      deactivateActive();
+    }
     syncPanels();
   });
   buildButton.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -417,8 +423,13 @@ export function createBuildTab(opts) {
     if (!state.open && !state.openCategoryId) return;
     state.open = false;
     state.openCategoryId = null;
+    deactivateActive();
     syncPanels();
   });
+
+  function deactivateActive() {
+    for (const b of buttons) if (b.designator.active) b.designator.deactivate();
+  }
 
   function syncPanels() {
     categoryColumn.style.display = state.open ? 'flex' : 'none';

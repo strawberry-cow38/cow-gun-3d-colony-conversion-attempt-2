@@ -274,7 +274,12 @@ export function setupDesignators({
   });
   designators.push(cancelDesignator);
 
+  const deactivateAllTools = () => {
+    for (const d of designators) if (d.active) d.deactivate();
+  };
+
   return {
+    deactivateAllTools,
     chopDesignator,
     cutDesignator,
     mineDesignator,
