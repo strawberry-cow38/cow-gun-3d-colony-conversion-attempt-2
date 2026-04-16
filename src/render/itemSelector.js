@@ -17,19 +17,13 @@
  * it stopImmediatePropagation's to keep the tile picker + designators quiet.
  */
 
-import * as THREE from 'three';
-import { worldToTile } from '../world/coords.js';
-
-const _ndc = new THREE.Vector2();
-const _frustum = new THREE.Frustum();
-const _projView = new THREE.Matrix4();
-const _point = new THREE.Vector3();
+import { frustumVisibleIds, pickTileFromEvent } from './tilePickUtils.js';
 
 export class ItemSelector {
   /**
    * @param {HTMLElement} dom
-   * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh
+   * @param {import('three').PerspectiveCamera} camera
+   * @param {() => import('three').Mesh} getTileMesh
    * @param {{ W: number, H: number }} grid
    * @param {import('../ecs/world.js').World} world
    * @param {(id: number | null, additive: boolean) => void} onSelect
@@ -43,7 +37,6 @@ export class ItemSelector {
     this.world = world;
     this.onSelect = onSelect;
     this.onSelectMany = onSelectMany;
-    this.raycaster = new THREE.Raycaster();
     dom.addEventListener('click', (e) => this.#handleClick(e), { capture: true });
     dom.addEventListener('dblclick', (e) => this.#handleDouble(e), { capture: true });
   }
@@ -51,7 +44,7 @@ export class ItemSelector {
   /** @param {MouseEvent} e */
   #handleClick(e) {
     if (e.button !== 0) return;
-    const tile = this.#pickTile(e);
+    const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
     if (!tile) {
       if (!e.shiftKey) this.onSelect(null, false);
       return;
@@ -68,30 +61,21 @@ export class ItemSelector {
   /** @param {MouseEvent} e */
   #handleDouble(e) {
     if (e.button !== 0) return;
-    const tile = this.#pickTile(e);
+    const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
     if (!tile) return;
     const id = this.#itemAt(tile.i, tile.j);
     if (id === null) return;
-    const kind = this.#kindOf(id);
+    const kind = this.world.get(id, 'Item')?.kind;
     if (!kind) return;
-    const ids = this.#visibleOfKind(kind);
+    const ids = frustumVisibleIds(
+      this.camera,
+      this.world,
+      ['Item', 'Position'],
+      (c) => c.Item.kind === kind,
+    );
     if (ids.length === 0) return;
     this.onSelectMany(ids);
     e.stopImmediatePropagation();
-  }
-
-  /** @param {MouseEvent} e */
-  #pickTile(e) {
-    const rect = this.dom.getBoundingClientRect();
-    _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    this.raycaster.setFromCamera(_ndc, this.camera);
-    const hits = this.raycaster.intersectObject(this.getTileMesh(), false);
-    if (hits.length === 0) return null;
-    const p = hits[0].point;
-    const t = worldToTile(p.x, p.z, this.grid.W, this.grid.H);
-    if (t.i < 0) return null;
-    return t;
   }
 
   /** @param {number} i @param {number} j */
@@ -101,25 +85,5 @@ export class ItemSelector {
       if (a.i === i && a.j === j) return id;
     }
     return null;
-  }
-
-  /** @param {number} id */
-  #kindOf(id) {
-    return this.world.get(id, 'Item')?.kind ?? null;
-  }
-
-  /** @param {string} kind */
-  #visibleOfKind(kind) {
-    this.camera.updateMatrixWorld();
-    _projView.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
-    _frustum.setFromProjectionMatrix(_projView);
-    const out = [];
-    for (const { id, components } of this.world.query(['Item', 'Position'])) {
-      if (components.Item.kind !== kind) continue;
-      const pos = components.Position;
-      _point.set(pos.x, pos.y, pos.z);
-      if (_frustum.containsPoint(_point)) out.push(id);
-    }
-    return out;
   }
 }

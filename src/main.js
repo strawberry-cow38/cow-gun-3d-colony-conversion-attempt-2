@@ -31,6 +31,8 @@ import { createEaselPanel, createFurnacePanel } from './render/furnacePanel.js';
 import { ItemSelector } from './render/itemSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
+import { createObjectPanel } from './render/objectPanel.js';
+import { ObjectSelector } from './render/objectSelector.js';
 import { TilePicker } from './render/picker.js';
 import { createPrioritizeMenu } from './render/prioritizeMenu.js';
 import { RtsCamera } from './render/rtsCamera.js';
@@ -298,6 +300,8 @@ const state = {
   primaryFurnace: null,
   selectedEasels: new Set(),
   primaryEasel: null,
+  selectedObjects: new Set(),
+  primaryObject: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
   tickOffset: 0,
@@ -313,9 +317,39 @@ let hudApi = null;
 const updateHud = () => hudApi?.updateHud();
 const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
 
+/**
+ * Wipe every selection bucket other than the one named by `keep`. A plain
+ * (non-additive) pick is exclusive: picking a cow drops item/station/object
+ * selections, picking an object drops cow/item/station, and so on.
+ *
+ * @param {'cows'|'items'|'furnaces'|'easels'|'objects'} keep
+ */
+const clearOtherSelections = (keep) => {
+  if (keep !== 'cows') {
+    state.selectedCows.clear();
+    state.primaryCow = null;
+  }
+  if (keep !== 'items') {
+    state.selectedItems.clear();
+  }
+  if (keep !== 'furnaces') {
+    state.selectedFurnaces.clear();
+    state.primaryFurnace = null;
+  }
+  if (keep !== 'easels') {
+    state.selectedEasels.clear();
+    state.primaryEasel = null;
+  }
+  if (keep !== 'objects') {
+    state.selectedObjects.clear();
+    state.primaryObject = null;
+  }
+};
+
 // Marquee BEFORE CowSelector so its capture-phase handler swallows the post-drag click first.
 new SelectionBox(canvas, camera, world, (ids, additive) => {
   if (!additive) {
+    if (ids.length > 0) clearOtherSelections('cows');
     state.selectedCows.clear();
     state.primaryCow = null;
   }
@@ -355,14 +389,10 @@ const selectCow = (id, additive) => {
     }
     audio.play('click');
   } else {
+    clearOtherSelections('cows');
     state.selectedCows.clear();
     state.selectedCows.add(id);
     state.primaryCow = id;
-    state.selectedItems.clear();
-    state.selectedFurnaces.clear();
-    state.primaryFurnace = null;
-    state.selectedEasels.clear();
-    state.primaryEasel = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -387,14 +417,9 @@ const selectItem = (id, additive) => {
     else state.selectedItems.add(id);
     audio.play('click');
   } else {
-    state.selectedCows.clear();
-    state.primaryCow = null;
+    clearOtherSelections('items');
     state.selectedItems.clear();
     state.selectedItems.add(id);
-    state.selectedFurnaces.clear();
-    state.primaryFurnace = null;
-    state.selectedEasels.clear();
-    state.primaryEasel = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -403,13 +428,8 @@ const selectItem = (id, additive) => {
 
 /** @param {number[]} ids */
 const selectItemsMany = (ids) => {
-  state.selectedCows.clear();
-  state.primaryCow = null;
+  clearOtherSelections('items');
   state.selectedItems.clear();
-  state.selectedFurnaces.clear();
-  state.primaryFurnace = null;
-  state.selectedEasels.clear();
-  state.primaryEasel = null;
   for (const id of ids) state.selectedItems.add(id);
   if (ids.length > 0) audio.play('command');
   itemSelectionViz.markDirty();
@@ -444,14 +464,10 @@ const selectFurnace = (id, additive) => {
     }
     audio.play('click');
   } else {
-    state.selectedCows.clear();
-    state.primaryCow = null;
-    state.selectedItems.clear();
+    clearOtherSelections('furnaces');
     state.selectedFurnaces.clear();
     state.selectedFurnaces.add(id);
     state.primaryFurnace = id;
-    state.selectedEasels.clear();
-    state.primaryEasel = null;
     audio.play('click');
   }
   itemSelectionViz.markDirty();
@@ -485,11 +501,7 @@ const selectEasel = (id, additive) => {
     }
     audio.play('click');
   } else {
-    state.selectedCows.clear();
-    state.primaryCow = null;
-    state.selectedItems.clear();
-    state.selectedFurnaces.clear();
-    state.primaryFurnace = null;
+    clearOtherSelections('easels');
     state.selectedEasels.clear();
     state.selectedEasels.add(id);
     state.primaryEasel = id;
@@ -539,6 +551,65 @@ new WallArtSelector({
   world,
   jobBoard,
   audio,
+});
+
+/**
+ * Generic world-object selection (trees, boulders, walls, doors, torches,
+ * roofs, floors). Mutex with the cow/item/station selections.
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectObject = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
+      state.selectedObjects.clear();
+      state.primaryObject = null;
+    }
+  } else if (additive) {
+    if (state.selectedObjects.has(id)) {
+      state.selectedObjects.delete(id);
+      if (state.primaryObject === id) {
+        state.primaryObject =
+          state.selectedObjects.size > 0
+            ? /** @type {number} */ (state.selectedObjects.values().next().value)
+            : null;
+      }
+    } else {
+      state.selectedObjects.add(id);
+      state.primaryObject = id;
+    }
+    audio.play('click');
+  } else {
+    clearOtherSelections('objects');
+    state.selectedObjects.clear();
+    state.selectedObjects.add(id);
+    state.primaryObject = id;
+    audio.play('click');
+  }
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
+/** @param {number[]} ids */
+const selectObjectsMany = (ids) => {
+  clearOtherSelections('objects');
+  state.selectedObjects.clear();
+  for (const id of ids) state.selectedObjects.add(id);
+  state.primaryObject = ids.length > 0 ? ids[0] : null;
+  if (ids.length > 0) audio.play('command');
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
+new ObjectSelector({
+  canvas,
+  camera,
+  tileMesh: () => state.tileMesh,
+  grid: { W: gridW, H: gridH },
+  world,
+  onSelect: selectObject,
+  onSelectMany: selectObjectsMany,
 });
 
 new TilePicker(
@@ -683,6 +754,24 @@ const cowPanel = createCowPanel({
   getTick: () => loop.tick,
 });
 
+const objectPanel = createObjectPanel({
+  world,
+  state,
+  board: jobBoard,
+  audio,
+  onChange: () => {
+    // Mark the instancers whose per-instance visuals flip on job post/cancel.
+    // door/torch/furnace/easel re-evaluate every frame, so their job-id state
+    // shows up for free.
+    treeInstancer.markDirty();
+    boulderInstancer.markDirty();
+    wallInstancer.markDirty();
+    roofInstancer.markDirty();
+    floorInstancer.markDirty();
+    updateHud();
+  },
+});
+
 const stressInstancer = stressCount > 0 ? createStressInstancer(scene, stressCount) : null;
 
 const hud = /** @type {HTMLElement} */ (document.getElementById('hud'));
@@ -712,6 +801,7 @@ const { render, getFps } = createRenderFrame({
   itemStackPanel,
   furnacePanel,
   easelPanel,
+  objectPanel,
   buildTab,
   clockEl,
   getSpeed: () => loop.speed,

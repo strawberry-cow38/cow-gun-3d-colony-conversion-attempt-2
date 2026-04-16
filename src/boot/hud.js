@@ -8,6 +8,7 @@
 import { defaultWalkable } from '../sim/pathfinding.js';
 import { COW_SPEED_UNITS_PER_SEC } from '../systems/cow.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from '../systems/lighting.js';
+import { objectTypeFor } from '../ui/objectTypes.js';
 import { UNITS_PER_METER, worldToTileClamp } from '../world/coords.js';
 import { ITEM_KINDS } from '../world/items.js';
 import { BIOME } from '../world/tileGrid.js';
@@ -117,6 +118,15 @@ export function createHud(ctx) {
       state.primaryEasel =
         state.selectedEasels.size > 0
           ? /** @type {number} */ (state.selectedEasels.values().next().value)
+          : null;
+    }
+    for (const id of state.selectedObjects) {
+      if (!objectTypeFor(world, id)) state.selectedObjects.delete(id);
+    }
+    if (state.primaryObject !== null && !state.selectedObjects.has(state.primaryObject)) {
+      state.primaryObject =
+        state.selectedObjects.size > 0
+          ? /** @type {number} */ (state.selectedObjects.values().next().value)
           : null;
     }
   }
