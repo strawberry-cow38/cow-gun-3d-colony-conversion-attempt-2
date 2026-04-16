@@ -792,5 +792,12 @@ installKeyboard({
   updateHud: hudApi.updateHud,
 });
 
+// Force THREE.js to compile every shader variant against the final scene
+// graph before the first rendered frame. Without this, lit materials (cows,
+// tiles, trees, walls, furniture) compile lazily on first draw and stutter
+// the opening frames while the shadow-casting torch PointLights' variants
+// work through the GL driver.
+renderer.compile(scene, camera);
+
 loop.start();
 hudApi.updateHud();

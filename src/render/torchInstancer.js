@@ -100,7 +100,12 @@ export function createTorchInstancer(scene, capacity = 512) {
   const pointLights = /** @type {THREE.PointLight[]} */ ([]);
   for (let i = 0; i < POINT_LIGHT_POOL; i++) {
     const pl = new THREE.PointLight(0xff8040, 0, POINT_LIGHT_DISTANCE, 2);
-    pl.visible = false;
+    // Lights stay `visible = true` for the life of the scene, toggled off
+    // by intensity=0 alone. Flipping `visible` on a point light (especially
+    // a shadow-caster) changes NUM_POINT_LIGHTS / NUM_POINT_LIGHT_SHADOWS
+    // and forces THREE.js to recompile every lit material's shader — a
+    // noticeable ~1s hitch when the first torch is placed.
+    pl.visible = true;
     // First N slots in the pool are pre-configured with shadow cubemaps so
     // we only allocate that VRAM up front, not one per torch. The nearest
     // N torches end up in these slots each frame (sorted-by-distance
@@ -115,6 +120,9 @@ export function createTorchInstancer(scene, capacity = 512) {
       // introducing visible peter-panning at torch ranges.
       pl.shadow.bias = -0.002;
       pl.shadow.radius = 2;
+      // Skip per-frame cubemap rendering while the slot carries no real
+      // torch; intensity=0 means the (stale) shadow term is multiplied out.
+      pl.shadow.autoUpdate = false;
     }
     scene.add(pl);
     pointLights.push(pl);
@@ -220,11 +228,12 @@ export function createTorchInstancer(scene, capacity = 512) {
       const pl = pointLights[i];
       pl.position.set(lx, ly, lz);
       pl.intensity = lightIntensity;
-      pl.visible = true;
+      if (pl.castShadow) pl.shadow.autoUpdate = true;
     }
     for (let i = assigned; i < pointLights.length; i++) {
-      pointLights[i].visible = false;
-      pointLights[i].intensity = 0;
+      const pl = pointLights[i];
+      pl.intensity = 0;
+      if (pl.castShadow) pl.shadow.autoUpdate = false;
     }
   }
 
