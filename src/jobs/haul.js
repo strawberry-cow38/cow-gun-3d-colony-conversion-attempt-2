@@ -23,7 +23,7 @@
 
 import { defaultWalkable } from '../sim/pathfinding.js';
 import { roofIsSupported } from '../systems/autoRoof.js';
-import { maxStack } from '../world/items.js';
+import { maxStack, stackCount } from '../world/items.js';
 
 export const PICKUP_TICKS = 12;
 export const DROP_TICKS = 9;
@@ -233,20 +233,37 @@ export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
 }
 
 /**
- * Count open haul jobs whose target tile is a BuildSite. Returned as a map
- * tileIdx → pending deliveries so the poster knows how many more to dispatch.
+ * Count material in-flight to every BuildSite — both open deliver jobs (the
+ * cow hasn't picked up yet) and cows already carrying their load. Returned
+ * as a map tileIdx → units so the poster knows how many more to dispatch.
  *
+ * Why count the already-carried portion: `releaseHaulClaim` zeroes the
+ * board job's `payload.count` the moment a cow picks up, so relying on
+ * `payload.count` alone makes the poster think the site has no in-flight
+ * supply the instant the cow grabs her stack — and it dispatches a second
+ * hauler for a site that's already fully supplied.
+ *
+ * @param {import('../ecs/world.js').World} world
  * @param {import('./board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @returns {Map<number, number>}
  */
-export function buildSiteInFlight(board, grid) {
+export function buildSiteInFlight(world, board, grid) {
   /** @type {Map<number, number>} */
   const out = new Map();
   for (const j of board.jobs) {
     if (j.completed || j.kind !== 'deliver') continue;
+    if (!j.payload.toBuildSite) continue;
     const idx = grid.idx(j.payload.toI, j.payload.toJ);
     out.set(idx, (out.get(idx) ?? 0) + (j.payload.count ?? 1));
+  }
+  for (const { components } of world.query(['Cow', 'Job', 'Inventory'])) {
+    const job = components.Job;
+    if (job.kind !== 'deliver' || !job.payload.toBuildSite) continue;
+    const carried = stackCount(components.Inventory.items, job.payload.kind);
+    if (carried === 0) continue;
+    const idx = grid.idx(job.payload.toI, job.payload.toJ);
+    out.set(idx, (out.get(idx) ?? 0) + carried);
   }
   return out;
 }
@@ -346,7 +363,7 @@ export function makeHaulPostingSystem(board, grid) {
     run(world) {
       const slots = computeStockpileSlots(world, grid, board);
       const targetedCounts = buildHaulTargetedCounts(world, board);
-      const siteInFlight = buildSiteInFlight(board, grid);
+      const siteInFlight = buildSiteInFlight(world, board, grid);
 
       /** Tiles hosting any pending BuildSite — reused by the blueprint-clear pass. */
       /** @type {Set<number>} */

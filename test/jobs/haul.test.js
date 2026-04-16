@@ -162,6 +162,51 @@ describe('haul poster: stack consolidation', () => {
     expect(hauls).toHaveLength(0);
   });
 
+  it('counts cow-carried material toward a BuildSite — does not double-post after pickup', () => {
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(0, 0, 1);
+    const world = makeWorld();
+    // Second stockpile stack so a second deliver job CAN be posted if the
+    // in-flight count is wrong.
+    spawnItem(world, 0, 0, 'wood', 1, 50);
+    spawnItem(world, 3, 3, 'wood', 1, 50);
+    world.spawn({
+      BuildSite: {
+        kind: 'wall',
+        stuff: 'wood',
+        requiredKind: 'wood',
+        required: 1,
+        delivered: 0,
+        buildJobId: 0,
+        progress: 0,
+      },
+      BuildSiteViz: {},
+      TileAnchor: { i: 2, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+
+    // Simulate a cow mid-delivery: she picked up her wood, so her active Job
+    // still points at the site but the board job's payload.count has been
+    // zeroed by releaseHaulClaim.
+    world.spawn({
+      Cow: {},
+      Position: { x: 0, y: 0, z: 0 },
+      Job: {
+        kind: 'deliver',
+        payload: { kind: 'wood', count: 0, toI: 2, toJ: 2, toBuildSite: true },
+      },
+      Inventory: { items: [{ kind: 'wood', count: 1 }] },
+    });
+
+    const board = new JobBoard();
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    const delivers = board.jobs.filter(
+      (j) => j.kind === 'deliver' && j.payload.toBuildSite === true,
+    );
+    expect(delivers).toHaveLength(0);
+  });
+
   it('does not merge across different kinds', () => {
     const grid = new TileGrid(4, 4);
     grid.setStockpile(0, 0, 1);
