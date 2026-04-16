@@ -655,6 +655,33 @@ describe('migration runner', () => {
     expect(b[0]).toBe(1); // dirt border untouched
   });
 
+  it('adds a default Health record to every cow when upgrading from v33', () => {
+    const v33 = {
+      version: 33,
+      tileGrid: {
+        W: 1,
+        H: 1,
+        elevation: [0],
+        biome: [0],
+        stockpile: [0],
+      },
+      cows: [
+        { name: 'bessie', drafted: false },
+        { name: 'buttercup', drafted: true },
+      ],
+      trees: [],
+      items: [],
+    };
+    const out = runMigrations(v33);
+    expect(out.version).toBe(CURRENT_VERSION);
+    for (const c of out.cows) {
+      expect(c.health).toBeDefined();
+      expect(c.health.injuries).toEqual([]);
+      expect(c.health.nextInjuryId).toBe(1);
+      expect(c.health.dead).toBe(false);
+    }
+  });
+
   it('passes a CURRENT_VERSION save through unchanged', () => {
     const cur = {
       version: CURRENT_VERSION,

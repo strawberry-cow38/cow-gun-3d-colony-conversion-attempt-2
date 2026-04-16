@@ -224,6 +224,14 @@ export function registerComponents(world) {
     /** @type {number} sim tick the bubble should hide at */
     expiresAtTick: 0,
   }));
+  world.defineComponent('Health', () => ({
+    /** @type {import('../world/anatomy.js').Injury[]} */
+    injuries: [],
+    /** Monotonic id assigner for injuries on this body; stable for UI keys. */
+    nextInjuryId: 1,
+    /** `true` once a vital part drops to 0 HP; systems should stop scheduling work for a dead cow. */
+    dead: false,
+  }));
   world.defineComponent('Tree', () => ({
     markedJobId: 0,
     progress: 0,

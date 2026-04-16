@@ -73,6 +73,7 @@ describe('cow save/load roundtrip', () => {
       Inventory: { items: [] },
       Opinions: { scores: {}, last: {}, chats: 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
+      Health: { injuries: [], nextInjuryId: 1, dead: false },
       CowViz: {},
     });
 
@@ -129,6 +130,7 @@ describe('cow save/load roundtrip', () => {
       Inventory: { items: [] },
       Opinions: { scores: {}, last: {}, chats: 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
+      Health: { injuries: [], nextInjuryId: 1, dead: false },
       CowViz: {},
     });
     w1.spawn({
@@ -150,6 +152,7 @@ describe('cow save/load roundtrip', () => {
       Inventory: { items: [] },
       Opinions: { scores: {}, last: {}, chats: 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
+      Health: { injuries: [], nextInjuryId: 1, dead: false },
       CowViz: {},
     });
 

@@ -74,6 +74,7 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     Inventory: { items: [] },
     Opinions: { scores: {}, last: {}, chats: 0 },
     Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
+    Health: { injuries: [], nextInjuryId: 1, dead: false },
     CowViz: {},
   });
 }

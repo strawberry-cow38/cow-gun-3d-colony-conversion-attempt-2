@@ -57,6 +57,13 @@ import { TileGrid } from './tileGrid.js';
  */
 
 /**
+ * @typedef SerializedHealth
+ * @property {import('../world/anatomy.js').Injury[]} injuries
+ * @property {number} nextInjuryId
+ * @property {boolean} dead
+ */
+
+/**
  * @typedef SerializedCow
  * @property {string} name
  * @property {boolean} drafted
@@ -67,6 +74,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {{ items: { kind: string, count: number }[] }} inventory
  * @property {SerializedIdentity} identity
  * @property {SerializedOpinions} [opinions]
+ * @property {SerializedHealth} [health]
  */
 
 /**
@@ -267,8 +275,10 @@ export function serializeState(tileGrid, world) {
     'Path',
     'Inventory',
     'Opinions',
+    'Health',
   ])) {
     const op = components.Opinions;
+    const health = components.Health;
     const serialized = {
       name: components.Brain.name,
       drafted: components.Cow.drafted === true,
@@ -299,6 +309,11 @@ export function serializeState(tileGrid, world) {
         profession: components.Identity.profession ?? '',
       },
       opinions: { scores: {}, last: {}, chats: 0 },
+      health: {
+        injuries: health.injuries.map((inj) => ({ ...inj })),
+        nextInjuryId: health.nextInjuryId,
+        dead: health.dead === true,
+      },
     };
     idToIndex.set(id, pending.length);
     pending.push({
@@ -634,6 +649,11 @@ export function hydrateCows(world, state) {
       Inventory: { items: (inv.items ?? []).map((s) => ({ kind: s.kind, count: s.count })) },
       Opinions: { scores: {}, last: {}, chats: c.opinions?.chats ?? 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
+      Health: {
+        injuries: (c.health?.injuries ?? []).map((inj) => ({ ...inj })),
+        nextInjuryId: c.health?.nextInjuryId ?? 1,
+        dead: c.health?.dead === true,
+      },
       CowViz: {},
     });
     spawnedIds.push(newId);

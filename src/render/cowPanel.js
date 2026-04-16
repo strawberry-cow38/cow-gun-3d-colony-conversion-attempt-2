@@ -11,6 +11,14 @@
  */
 
 import { ageYears, formatSimBirthday, tickToSimDate } from '../sim/calendar.js';
+import {
+  CAPACITIES,
+  HUMAN_ANATOMY,
+  computeCapacities,
+  partHp,
+  partHpRatio,
+  totalBleedRate,
+} from '../world/anatomy.js';
 import { getProfessionDescription } from '../world/backstories.js';
 import { opinionLabel } from '../world/chitchat.js';
 import { nameFontFor, nameFontScaleFor, traitDef } from '../world/traits.js';
@@ -154,31 +162,43 @@ export function createCowPanel(opts) {
     borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
   });
   const bioTab = makeTabButton('Bio');
+  const medicalTab = makeTabButton('Health');
   const socialTab = makeTabButton('Social');
-  tabBar.append(bioTab, socialTab);
+  tabBar.append(bioTab, medicalTab, socialTab);
 
   const bioBody = document.createElement('div');
   bioBody.append(stats, backstoryBlock, traitsWrap, traitDetail);
 
+  const medicalBody = document.createElement('div');
+  Object.assign(medicalBody.style, { fontSize: '12px', color: '#d8dfe6' });
+
   const socialBody = document.createElement('div');
   Object.assign(socialBody.style, { fontSize: '12px', color: '#d8dfe6' });
 
-  root.append(header, tabBar, bioBody, socialBody);
+  root.append(header, tabBar, bioBody, medicalBody, socialBody);
   document.body.appendChild(root);
 
-  /** @type {'bio'|'social'} */
+  /** @type {'bio'|'medical'|'social'} */
   let activeTab = 'bio';
   function renderTabState() {
-    const isBio = activeTab === 'bio';
-    bioBody.style.display = isBio ? 'block' : 'none';
-    socialBody.style.display = isBio ? 'none' : 'block';
-    setTabActive(bioTab, isBio);
-    setTabActive(socialTab, !isBio);
+    bioBody.style.display = activeTab === 'bio' ? 'block' : 'none';
+    medicalBody.style.display = activeTab === 'medical' ? 'block' : 'none';
+    socialBody.style.display = activeTab === 'social' ? 'block' : 'none';
+    setTabActive(bioTab, activeTab === 'bio');
+    setTabActive(medicalTab, activeTab === 'medical');
+    setTabActive(socialTab, activeTab === 'social');
   }
   bioTab.addEventListener('click', () => {
     activeTab = 'bio';
     renderTabState();
     last.socialKey = '';
+    last.medicalKey = '';
+  });
+  medicalTab.addEventListener('click', () => {
+    activeTab = 'medical';
+    renderTabState();
+    last.medicalKey = '';
+    update();
   });
   socialTab.addEventListener('click', () => {
     activeTab = 'social';
@@ -194,9 +214,16 @@ export function createCowPanel(opts) {
    * social list signature so switching tabs or bumping opinions doesn't
    * rebuild the DOM every tick.
    *
-   * @type {{ key: string, pinnedTrait: string | null, socialKey: string, socialCow: number, socialChats: number }}
+   * @type {{ key: string, pinnedTrait: string | null, socialKey: string, socialCow: number, socialChats: number, medicalKey: string }}
    */
-  const last = { key: '', pinnedTrait: null, socialKey: '', socialCow: -1, socialChats: -1 };
+  const last = {
+    key: '',
+    pinnedTrait: null,
+    socialKey: '',
+    socialCow: -1,
+    socialChats: -1,
+    medicalKey: '',
+  };
 
   function hidePanel() {
     root.style.display = 'none';
@@ -250,6 +277,7 @@ export function createCowPanel(opts) {
     const profession = identity.profession ?? '';
     const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}|${childhood}|${profession}`;
     if (activeTab === 'social') renderSocial(id);
+    if (activeTab === 'medical') renderMedical(id);
     if (key === last.key) {
       if (root.style.display === 'none') root.style.display = 'block';
       return;
@@ -314,6 +342,104 @@ export function createCowPanel(opts) {
   }
 
   /** @param {number} cowId */
+  function renderMedical(cowId) {
+    const health = world.get(cowId, 'Health');
+    if (!health) {
+      if (last.medicalKey !== 'empty') {
+        last.medicalKey = 'empty';
+        medicalBody.replaceChildren(medicalEmptyLine('no health record'));
+      }
+      return;
+    }
+    // Sig captures everything the panel shows. Injury ids are cow-local, so
+    // prefix with cowId — otherwise switching between two cows who both own an
+    // id:1 injury would falsely hit the cache.
+    const sig = `${cowId}|${health.dead ? 1 : 0}|${health.injuries
+      .map((i) => `${i.id}:${i.severity.toFixed(1)}:${i.tended ? 1 : 0}:${i.infection.toFixed(2)}`)
+      .join(',')}`;
+    if (sig === last.medicalKey) return;
+    last.medicalKey = sig;
+
+    medicalBody.replaceChildren();
+
+    const status = document.createElement('div');
+    Object.assign(status.style, {
+      fontSize: '11px',
+      marginBottom: '6px',
+      color: health.dead ? '#d07a7a' : health.injuries.length === 0 ? '#7ad07a' : '#d0a97a',
+      fontWeight: '600',
+    });
+    const bleed = totalBleedRate(health.injuries);
+    const statusText = health.dead
+      ? 'Deceased'
+      : health.injuries.length === 0
+        ? 'Healthy'
+        : bleed > 0
+          ? 'Injured · bleeding'
+          : 'Injured';
+    status.textContent = statusText;
+    medicalBody.appendChild(status);
+
+    medicalBody.appendChild(medicalSectionHeader('Capacities'));
+    const caps = computeCapacities(health.injuries);
+    const capGrid = document.createElement('div');
+    Object.assign(capGrid.style, {
+      display: 'grid',
+      gridTemplateColumns: 'auto 1fr auto',
+      columnGap: '6px',
+      rowGap: '2px',
+      fontSize: '11px',
+      marginBottom: '8px',
+    });
+    for (const cap of CAPACITIES) {
+      const v = caps[cap];
+      const label = document.createElement('span');
+      label.textContent = capacityLabel(cap);
+      label.style.color = '#9ba6b1';
+      const bar = document.createElement('div');
+      Object.assign(bar.style, {
+        position: 'relative',
+        height: '6px',
+        background: 'rgba(255, 255, 255, 0.08)',
+        borderRadius: '2px',
+        overflow: 'hidden',
+        alignSelf: 'center',
+      });
+      const fill = document.createElement('div');
+      Object.assign(fill.style, {
+        position: 'absolute',
+        left: '0',
+        top: '0',
+        bottom: '0',
+        width: `${Math.round(v * 100)}%`,
+        background: capacityTone(v),
+      });
+      bar.appendChild(fill);
+      const pct = document.createElement('span');
+      Object.assign(pct.style, { color: capacityTone(v), fontVariantNumeric: 'tabular-nums' });
+      pct.textContent = `${Math.round(v * 100)}%`;
+      capGrid.append(label, bar, pct);
+    }
+    medicalBody.appendChild(capGrid);
+
+    medicalBody.appendChild(medicalSectionHeader('Body'));
+    const bodyList = document.createElement('div');
+    Object.assign(bodyList.style, { fontSize: '11px', marginBottom: '8px' });
+    renderBodyParts(bodyList, health.injuries);
+    medicalBody.appendChild(bodyList);
+
+    medicalBody.appendChild(medicalSectionHeader(`Injuries (${health.injuries.length})`));
+    if (health.injuries.length === 0) {
+      medicalBody.appendChild(medicalEmptyLine('no active injuries'));
+    } else {
+      const injuryList = document.createElement('div');
+      Object.assign(injuryList.style, { fontSize: '11px' });
+      for (const inj of health.injuries) injuryList.appendChild(injuryRow(inj));
+      medicalBody.appendChild(injuryList);
+    }
+  }
+
+  /** @param {number} cowId */
   function renderSocial(cowId) {
     const op = world.get(cowId, 'Opinions');
     if (!op) {
@@ -370,6 +496,136 @@ function socialEmptyLine(msg) {
   Object.assign(d.style, { fontSize: '11px', color: '#7a8590', fontStyle: 'italic' });
   d.textContent = msg;
   return d;
+}
+
+/** @param {string} msg */
+function medicalEmptyLine(msg) {
+  const d = document.createElement('div');
+  Object.assign(d.style, { fontSize: '11px', color: '#7a8590', fontStyle: 'italic' });
+  d.textContent = msg;
+  return d;
+}
+
+/** @param {string} label */
+function medicalSectionHeader(label) {
+  const d = document.createElement('div');
+  Object.assign(d.style, {
+    fontSize: '10px',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    color: '#8fa0af',
+    fontWeight: '700',
+    marginBottom: '3px',
+  });
+  d.textContent = label;
+  return d;
+}
+
+/** @param {import('../world/anatomy.js').Capacity} cap */
+function capacityLabel(cap) {
+  if (cap === 'BloodPumping') return 'Blood Pumping';
+  if (cap === 'BloodFiltration') return 'Blood Filtration';
+  return cap;
+}
+
+/** @param {number} ratio 0..1 */
+function capacityTone(ratio) {
+  if (ratio >= 0.95) return '#7ad07a';
+  if (ratio >= 0.75) return '#b8d07a';
+  if (ratio >= 0.5) return '#d0c97a';
+  if (ratio >= 0.25) return '#d0a97a';
+  return '#d07a7a';
+}
+
+/**
+ * Walks HUMAN_ANATOMY in order and renders only top-level parts with their
+ * children indented below. Container parts (maxHp=0) render their own row
+ * with the aggregate HP of their children. Fully healthy parts are dimmed
+ * so the eye jumps to the damaged ones.
+ *
+ * @param {HTMLElement} host
+ * @param {import('../world/anatomy.js').Injury[]} injuries
+ */
+function renderBodyParts(host, injuries) {
+  for (const part of HUMAN_ANATOMY) {
+    if (part.parentId !== null) continue;
+    host.appendChild(bodyPartRow(part, injuries, 0));
+    for (const child of HUMAN_ANATOMY) {
+      if (child.parentId !== part.id) continue;
+      host.appendChild(bodyPartRow(child, injuries, 1));
+    }
+  }
+}
+
+/**
+ * @param {import('../world/anatomy.js').BodyPart} part
+ * @param {import('../world/anatomy.js').Injury[]} injuries
+ * @param {number} depth
+ */
+function bodyPartRow(part, injuries, depth) {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '1px 0',
+    paddingLeft: `${depth * 10}px`,
+  });
+  const label = document.createElement('span');
+  label.textContent = part.label;
+  const isContainer = part.maxHp <= 0;
+  const ratio = isContainer ? 1 : partHpRatio(part.id, injuries);
+  const dim = ratio >= 0.999;
+  Object.assign(label.style, {
+    color: dim ? '#7a8590' : '#e6e6e6',
+    fontWeight: isContainer ? '600' : '400',
+  });
+  const hp = document.createElement('span');
+  if (isContainer) {
+    hp.textContent = '';
+  } else if (ratio <= 0) {
+    hp.textContent = 'destroyed';
+    hp.style.color = '#d07a7a';
+  } else {
+    hp.textContent = `${Math.round(partHp(part.id, injuries))} / ${part.maxHp}`;
+    hp.style.color = dim ? '#7a8590' : capacityTone(ratio);
+  }
+  Object.assign(hp.style, { fontVariantNumeric: 'tabular-nums' });
+  row.append(label, hp);
+  return row;
+}
+
+/** @param {import('../world/anatomy.js').Injury} inj */
+function injuryRow(inj) {
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '6px',
+    padding: '2px 0',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+  });
+  const left = document.createElement('span');
+  const partLabel = bodyPartLabel(inj.partId);
+  left.textContent = `${inj.type} · ${partLabel}${inj.permanent ? ' (scar)' : ''}`;
+  const right = document.createElement('span');
+  Object.assign(right.style, { fontVariantNumeric: 'tabular-nums', flex: '0 0 auto' });
+  const parts = [];
+  if (inj.severity > 0) parts.push(`${inj.severity.toFixed(0)} HP`);
+  if (inj.bleedRate > 0 && !inj.tended) parts.push('bleeding');
+  if (inj.infection > 0) parts.push(`infection ${Math.round(inj.infection * 100)}%`);
+  if (inj.tended) parts.push('tended');
+  right.textContent = parts.join(' · ');
+  right.style.color = inj.infection > 0 ? '#d07a7a' : inj.tended ? '#7ad07a' : '#d0a97a';
+  row.append(left, right);
+  return row;
+}
+
+/** @param {string} partId */
+function bodyPartLabel(partId) {
+  for (const p of HUMAN_ANATOMY) {
+    if (p.id === partId) return p.label;
+  }
+  return partId;
 }
 
 /**
