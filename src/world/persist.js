@@ -69,6 +69,7 @@ import { TileGrid } from './tileGrid.js';
  * @property {boolean} drafted
  * @property {{ x: number, y: number, z: number }} position
  * @property {number} hunger
+ * @property {{ ticksRemaining: number }} [foodPoisoning]
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
  * @property {{ items: { kind: string, count: number }[] }} inventory
@@ -106,6 +107,8 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} count
  * @property {number} capacity
  * @property {boolean} forbidden
+ * @property {string} [quality]           meal tier (only on cooked meals)
+ * @property {string[]} [ingredients]     source kinds the meal was cooked from
  */
 
 /**
@@ -269,6 +272,7 @@ export function serializeState(tileGrid, world) {
     'Cow',
     'Position',
     'Hunger',
+    'FoodPoisoning',
     'Brain',
     'Identity',
     'Job',
@@ -284,6 +288,7 @@ export function serializeState(tileGrid, world) {
       drafted: components.Cow.drafted === true,
       position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
       hunger: components.Hunger.value,
+      foodPoisoning: { ticksRemaining: components.FoodPoisoning.ticksRemaining | 0 },
       job: {
         kind: components.Job.kind,
         state: components.Job.state,
@@ -376,14 +381,21 @@ export function serializeState(tileGrid, world) {
     // …). They round-trip through the `paintings` section below so that
     // metadata survives; skip them here to avoid a duplicate plain-item entry.
     if (components.Item.kind === 'painting') continue;
-    items.push({
+    const it = components.Item;
+    /** @type {SerializedItem} */
+    const entry = {
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
-      kind: components.Item.kind,
-      count: components.Item.count,
-      capacity: components.Item.capacity,
-      forbidden: components.Item.forbidden === true,
-    });
+      kind: it.kind,
+      count: it.count,
+      capacity: it.capacity,
+      forbidden: it.forbidden === true,
+    };
+    if (it.quality) entry.quality = it.quality;
+    if (Array.isArray(it.ingredients) && it.ingredients.length > 0) {
+      entry.ingredients = [...it.ingredients];
+    }
+    items.push(entry);
   }
   /** @type {SerializedBuildSite[]} */
   const buildSites = [];
@@ -630,6 +642,7 @@ export function hydrateCows(world, state) {
       PrevPosition: { ...c.position },
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: c.hunger },
+      FoodPoisoning: { ticksRemaining: c.foodPoisoning?.ticksRemaining ?? 0 },
       Brain: { name: c.name },
       Identity: {
         name: c.name,
@@ -761,6 +774,8 @@ export function hydrateItems(world, grid, state) {
         count: it.count,
         capacity: it.capacity,
         forbidden: it.forbidden === true,
+        quality: it.quality ?? '',
+        ingredients: Array.isArray(it.ingredients) ? [...it.ingredients] : [],
       },
       ItemViz: {},
       TileAnchor: { i: it.i, j: it.j },

@@ -60,6 +60,7 @@ describe('cow save/load roundtrip', () => {
       PrevPosition: { x: 1.5, y: 2.5, z: 3.5 },
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: 0.42 },
+      FoodPoisoning: { ticksRemaining: 0 },
       Brain: { name: 'bessie' },
       Identity: {
         name: 'bessie',
@@ -117,6 +118,7 @@ describe('cow save/load roundtrip', () => {
       PrevPosition: { x: 0, y: 0, z: 0 },
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: 1 },
+      FoodPoisoning: { ticksRemaining: 0 },
       Brain: { name: 'sarge' },
       Identity: {
         name: 'sarge',
@@ -139,6 +141,7 @@ describe('cow save/load roundtrip', () => {
       PrevPosition: { x: 1, y: 0, z: 1 },
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: 1 },
+      FoodPoisoning: { ticksRemaining: 0 },
       Brain: { name: 'civvy' },
       Identity: {
         name: 'civvy',

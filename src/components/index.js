@@ -174,6 +174,10 @@ export function registerComponents(world) {
   world.defineComponent('StressViz', () => ({}));
   world.defineComponent('Cow', () => ({ drafted: false }));
   world.defineComponent('Hunger', () => ({ value: 1 }));
+  world.defineComponent('FoodPoisoning', () => ({
+    /** ticks until the debuff lifts; 0 = not poisoned. */
+    ticksRemaining: 0,
+  }));
   world.defineComponent('Brain', () => ({
     name: 'cow',
     jobDirty: true,
@@ -246,7 +250,16 @@ export function registerComponents(world) {
   }));
   world.defineComponent('BoulderViz', () => ({}));
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
-  world.defineComponent('Item', () => ({ kind: 'wood', count: 1, capacity: 50, forbidden: false }));
+  world.defineComponent('Item', () => ({
+    kind: 'wood',
+    count: 1,
+    capacity: 50,
+    forbidden: false,
+    /** Meal tier — '' for non-meals. See world/quality.js. */
+    quality: '',
+    /** Source kinds that cooked into this meal — '' for non-meals. */
+    ingredients: /** @type {string[]} */ ([]),
+  }));
   world.defineComponent('ItemViz', () => ({}));
   world.defineComponent('Inventory', () => ({
     /** @type {{ kind: string, count: number }[]} */

@@ -4,6 +4,7 @@
  */
 
 import { tileToWorld } from './coords.js';
+import { ingredientsSig } from './quality.js';
 
 export const ITEM_KINDS = /** @type {const} */ ([
   'wood',
@@ -13,6 +14,7 @@ export const ITEM_KINDS = /** @type {const} */ ([
   'coal',
   'iron',
   'painting',
+  'meal',
 ]);
 
 /** @type {Record<string, number>} */
@@ -24,6 +26,7 @@ export const MAX_STACK = {
   coal: 30,
   iron: 30,
   painting: 1,
+  meal: 10,
 };
 
 /** @type {Record<string, { label: string, description: string }>} */
@@ -56,6 +59,11 @@ export const ITEM_INFO = {
     label: 'Painting',
     description: 'Unique artwork made by a cow at an easel. Non-stackable.',
   },
+  meal: {
+    label: 'Meal',
+    description:
+      'A cooked dish. Quality depends on the cook; higher tiers feed more and never poison.',
+  },
 };
 
 /** Hunger restored per unit of food consumed (0..1 scale). */
@@ -80,6 +88,7 @@ export const WEIGHT_PER_UNIT = {
   coal: 3,
   iron: 4,
   painting: 4,
+  meal: 0.4,
 };
 
 /** Total mass a cow can haul in a single trip. */
@@ -199,6 +208,7 @@ export const KIND_COLOR = {
   coal: 0x2a2a2e,
   iron: 0xc8cbd0,
   painting: 0xd8b26a,
+  meal: 0xd8a860,
 };
 
 /** @param {string} kind */
@@ -207,7 +217,22 @@ export function maxStack(kind) {
 }
 
 /**
- * Drop one unit of `kind` at (i, j), merging into an existing same-kind stack
+ * Check two items would merge — same kind, same forbidden flag, and for
+ * meal-style items, same quality + same ingredients signature. Yucky + gourmet
+ * meals never pollute each other's stacks.
+ *
+ * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[] }} a
+ * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[] }} b
+ */
+function stackKeyMatches(a, b) {
+  if (a.kind !== b.kind) return false;
+  if (a.forbidden !== b.forbidden) return false;
+  if ((a.quality ?? '') !== (b.quality ?? '')) return false;
+  return ingredientsSig(a.ingredients ?? []) === ingredientsSig(b.ingredients ?? []);
+}
+
+/**
+ * Drop one unit of `kind` at (i, j), merging into an existing matching stack
  * with room if one is there, else spawning a fresh stack with count=1.
  *
  * `opts.forbidden` (default false) sets the forbidden flag on a freshly spawned
@@ -215,34 +240,35 @@ export function maxStack(kind) {
  * stack and vice versa, so the supply path can leave items reserved on a
  * furnace work spot without them blending into a haul-bound pile.
  *
+ * `opts.quality` and `opts.ingredients` apply to cooked meals — two meals only
+ * merge when BOTH match, so a tasty stack never contracts food poisoning from
+ * an unpleasant drop landing on top.
+ *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {string} kind
  * @param {number} i
  * @param {number} j
- * @param {{ forbidden?: boolean }} [opts]
+ * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[] }} [opts]
  */
 export function addItemToTile(world, grid, kind, i, j, opts) {
   if (!grid.inBounds(i, j)) return;
   const forbidden = opts?.forbidden === true;
+  const quality = opts?.quality ?? '';
+  const ingredients = opts?.ingredients ?? [];
   const cap = maxStack(kind);
+  const probe = { kind, forbidden, quality, ingredients };
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     const it = components.Item;
-    if (
-      a.i === i &&
-      a.j === j &&
-      it.kind === kind &&
-      it.count < cap &&
-      it.forbidden === forbidden
-    ) {
+    if (a.i === i && a.j === j && it.count < cap && stackKeyMatches(it, probe)) {
       it.count += 1;
       return;
     }
   }
   const w = tileToWorld(i, j, grid.W, grid.H);
   world.spawn({
-    Item: { kind, count: 1, capacity: cap, forbidden },
+    Item: { kind, count: 1, capacity: cap, forbidden, quality, ingredients: ingredients.slice() },
     ItemViz: {},
     TileAnchor: { i, j },
     Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
@@ -250,33 +276,30 @@ export function addItemToTile(world, grid, kind, i, j, opts) {
 }
 
 /**
- * Drop `count` units in one call. Tops up existing same-kind stacks first
- * (forbidden flag must match), then spawns new stacks until everything is
- * placed. Single query sweep instead of N calls to addItemToTile.
+ * Drop `count` units in one call. Tops up matching stacks first (forbidden +
+ * quality + ingredients must all match), then spawns new stacks until
+ * everything is placed. Single query sweep instead of N calls to addItemToTile.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {string} kind
  * @param {number} count
  * @param {number} i @param {number} j
- * @param {{ forbidden?: boolean }} [opts]
+ * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[] }} [opts]
  */
 export function addItemsToTile(world, grid, kind, count, i, j, opts) {
   if (!grid.inBounds(i, j) || count <= 0) return;
   const forbidden = opts?.forbidden === true;
+  const quality = opts?.quality ?? '';
+  const ingredients = opts?.ingredients ?? [];
   const cap = maxStack(kind);
+  const probe = { kind, forbidden, quality, ingredients };
   let remaining = count;
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     if (remaining <= 0) break;
     const a = components.TileAnchor;
     const it = components.Item;
-    if (
-      a.i === i &&
-      a.j === j &&
-      it.kind === kind &&
-      it.count < cap &&
-      it.forbidden === forbidden
-    ) {
+    if (a.i === i && a.j === j && it.count < cap && stackKeyMatches(it, probe)) {
       const room = cap - it.count;
       const add = Math.min(room, remaining);
       it.count += add;
@@ -287,7 +310,7 @@ export function addItemsToTile(world, grid, kind, count, i, j, opts) {
     const c = Math.min(remaining, cap);
     const w = tileToWorld(i, j, grid.W, grid.H);
     world.spawn({
-      Item: { kind, count: c, capacity: cap, forbidden },
+      Item: { kind, count: c, capacity: cap, forbidden, quality, ingredients: ingredients.slice() },
       ItemViz: {},
       TileAnchor: { i, j },
       Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },

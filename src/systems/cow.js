@@ -39,6 +39,12 @@ import {
   stackRemove,
 } from '../world/items.js';
 import { generatePainting } from '../world/painting.js';
+import {
+  RAW_FOOD_RANK,
+  nutritionMultiplier,
+  poisoningChance,
+  qualityRank,
+} from '../world/quality.js';
 import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
 import { BIOME } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
@@ -47,6 +53,11 @@ import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 export const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
+// While food-poisoned, hunger drains this fast — roughly 3x normal, so the
+// cow ends up hungry again sooner than if the bad meal had been tasty.
+const HUNGER_DRAIN_POISONED_MULT = 3;
+// Poisoning lasts about 2.5 minutes of real time at 30Hz (4500 ticks).
+const FOOD_POISONING_DURATION_TICKS = 4500;
 const EAT_TICKS = 18;
 
 // Staggered brain evaluation: when the board changes, we don't want every
@@ -259,7 +270,7 @@ export function makeCowBrainSystem(deps) {
             // nearest food stack instead of wandering while starving.
             if (hunger.value < HUNGER_EAT_THRESHOLD) {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-              const food = findNearestFood(world, near);
+              const food = findBestFood(world, near);
               if (food) {
                 job.kind = 'eat';
                 job.state = 'pathing-to-food';
@@ -460,7 +471,7 @@ export function makeCowBrainSystem(deps) {
         } else if (job.kind === 'haul' || job.kind === 'deliver' || job.kind === 'supply') {
           runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
-          runEatJob(world, job, path, pos, hunger, grid, paths, deps);
+          runEatJob(world, job, path, pos, hunger, grid, paths, deps, id);
         } else if (job.kind === 'move') {
           // Player-issued move. Pop any waypoint boundary we've passed so the
           // selection viz stops drawing markers for already-reached steps.
@@ -2413,6 +2424,10 @@ function collectBlueprintTiles(world, grid, excludeSiteId) {
  * State machine for the self-assigned eat job: walk to food → consume one unit
  * → restore hunger. Bails if the food vanishes mid-trip.
  *
+ * Works on both raw food (`kind === 'food'`) and cooked meals (`kind === 'meal'`).
+ * Meals apply a quality-scaled nutrition multiplier and may inflict food
+ * poisoning on lower-tier dishes — see world/quality.js for the table.
+ *
  * @param {import('../ecs/world.js').World} world
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
@@ -2421,14 +2436,15 @@ function collectBlueprintTiles(world, grid, excludeSiteId) {
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../sim/pathfinding.js').PathCache} paths
  * @param {BrainDeps} deps
+ * @param {number} cowId
  */
-function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
+function runEatJob(world, job, path, pos, hunger, grid, paths, deps, cowId) {
   const { itemId } = /** @type {{ itemId: number }} */ (job.payload);
 
   if (job.state === 'pathing-to-food') {
     const item = world.get(itemId, 'Item');
     const anchor = world.get(itemId, 'TileAnchor');
-    if (!item || !anchor || item.count <= 0 || item.kind !== 'food') {
+    if (!item || !anchor || item.count <= 0 || !isEdibleKind(item.kind)) {
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2464,7 +2480,7 @@ function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
     // or eaten by someone else, bail immediately instead of burning the full
     // EAT_TICKS countdown with nothing to consume.
     const item = world.get(itemId, 'Item');
-    if (!item || item.kind !== 'food' || item.count <= 0) {
+    if (!item || !isEdibleKind(item.kind) || item.count <= 0) {
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2473,8 +2489,16 @@ function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
     const remaining = (job.payload.ticksRemaining ?? EAT_TICKS) - 1;
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
+      const mult = item.kind === 'meal' && item.quality ? nutritionMultiplier(item.quality) : 1;
+      hunger.value = Math.min(1, hunger.value + FOOD_NUTRITION * mult);
+      if (item.kind === 'meal' && item.quality) {
+        const chance = poisoningChance(item.quality);
+        if (chance > 0 && Math.random() < chance) {
+          const fp = world.get(cowId, 'FoodPoisoning');
+          if (fp) fp.ticksRemaining = FOOD_POISONING_DURATION_TICKS;
+        }
+      }
       item.count -= 1;
-      hunger.value = Math.min(1, hunger.value + FOOD_NUTRITION);
       if (item.count <= 0) world.despawn(itemId);
       deps.onItemChange();
       deps.onCowEat(pos);
@@ -2485,24 +2509,34 @@ function runEatJob(world, job, path, pos, hunger, grid, paths, deps) {
   }
 }
 
+/** @param {string} kind */
+function isEdibleKind(kind) {
+  return kind === 'food' || kind === 'meal';
+}
+
+/** Raw food has no `quality`; sort it between 'unpleasant' and 'decent'. */
+const EDIBLE_RANK_RAW = RAW_FOOD_RANK;
+
 /**
- * Nearest food item (Chebyshev) with at least one unit left. Cheap enough at
- * colony scale since there are rarely many food stacks.
+ * Pick the edible stack a cow most wants: highest-quality tier first, then
+ * nearest Chebyshev distance within that tier. Raw food sits at a fixed rank
+ * so ANY tasty+ meal beats a raw crop, but a starving cow still eats raw food
+ * when that's all there is.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {{ i: number, j: number }} near
  */
-function findNearestFood(world, near) {
+function findBestFood(world, near) {
+  /** @type {{ id: number, i: number, j: number, rank: number, dist: number } | null} */
   let best = null;
-  let bestD = Number.POSITIVE_INFINITY;
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
-    if (components.Item.kind !== 'food' || components.Item.count <= 0) continue;
-    if (components.Item.forbidden) continue;
+    const it = components.Item;
+    if (!isEdibleKind(it.kind) || it.count <= 0 || it.forbidden) continue;
     const a = components.TileAnchor;
-    const d = Math.max(Math.abs(a.i - near.i), Math.abs(a.j - near.j));
-    if (d < bestD) {
-      bestD = d;
-      best = { id, i: a.i, j: a.j };
+    const rank = it.kind === 'meal' && it.quality ? qualityRank(it.quality) : EDIBLE_RANK_RAW;
+    const dist = Math.max(Math.abs(a.i - near.i), Math.abs(a.j - near.j));
+    if (!best || rank > best.rank || (rank === best.rank && dist < best.dist)) {
+      best = { id, i: a.i, j: a.j, rank, dist };
     }
   }
   return best;
@@ -2512,7 +2546,7 @@ function findNearestFood(world, near) {
 function hasAnyFood(world) {
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     const it = components.Item;
-    if (it.kind === 'food' && it.count > 0 && !it.forbidden) return true;
+    if (isEdibleKind(it.kind) && it.count > 0 && !it.forbidden) return true;
   }
   return false;
 }
@@ -2742,11 +2776,14 @@ export function makeHungerSystem() {
     name: 'hungerDrain',
     tier: 'rare',
     run(world) {
-      const drain = HUNGER_DRAIN_PER_TICK * 8;
-      for (const { components } of world.query(['Hunger', 'Brain'])) {
+      const baseDrain = HUNGER_DRAIN_PER_TICK * 8;
+      for (const { components } of world.query(['Hunger', 'FoodPoisoning', 'Brain'])) {
         const h = components.Hunger;
-        const before = h.value;
-        h.value = Math.max(0, before - drain);
+        const fp = components.FoodPoisoning;
+        const poisoned = fp.ticksRemaining > 0;
+        const drain = poisoned ? baseDrain * HUNGER_DRAIN_POISONED_MULT : baseDrain;
+        h.value = Math.max(0, h.value - drain);
+        if (poisoned) fp.ticksRemaining = Math.max(0, fp.ticksRemaining - 8);
         // Wake the brain when the cow is (or just became) hungry enough to
         // want food. The gate in cowBrain stays closed otherwise.
         if (h.value < HUNGER_EAT_THRESHOLD) {
