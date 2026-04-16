@@ -88,6 +88,7 @@ export function createRenderFrame({
   const {
     ambientParticles,
     cowInstancer,
+    cowHitboxes,
     cowNameTags,
     cowThoughtBubbles,
     cowChatBubbles,
@@ -170,6 +171,7 @@ export function createRenderFrame({
     const tSec = (now - startClock) / 1000;
     const hiddenCowId = fpCamera.active ? fpCamera.cowId : null;
     cowInstancer.update(world, alpha, tSec, tileGrid, hiddenCowId);
+    cowHitboxes.update(world);
     cowNameTags.update(world, camera, alpha);
     cowThoughtBubbles.update(world, camera, alpha);
     cowChatBubbles.update(world, camera, alpha, simTick);

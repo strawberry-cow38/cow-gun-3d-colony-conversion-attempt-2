@@ -2,10 +2,12 @@
  * Click-to-select a cow.
  *
  * Two-stage pick:
- * 1. Direct raycast against the cow InstancedMesh — exact hit.
+ * 1. Direct raycast against an invisible cow-hitbox InstancedMesh — sized
+ *    to encapsulate the whole figure (head + hair + arms + legs) so the
+ *    click target is generous even at default RTS zoom.
  * 2. Fallback: raycast against the tile mesh and pick the nearest cow within
- *    `pickRadius` world units of that hit point. Keeps cows selectable at
- *    default RTS zoom where a 1.8m box is only a few pixels wide.
+ *    `pickRadius` world units of that hit point. Catches clicks that land
+ *    just past the edge of a cow's silhouette.
  *
  * Listens with `capture: true` so it runs before the TilePicker; on a hit it
  * calls `stopImmediatePropagation` to prevent the tile click from also firing.
@@ -28,17 +30,18 @@ export class CowSelector {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
-   * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} instancer
+   * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} hitboxes
+   *   full-figure click target (see cowHitboxes.js).
    * @param {() => THREE.Mesh} getTileMesh  resolved per-click so Save/Load
    *                                         mesh swaps don't strand a stale ref.
    * @param {import('../ecs/world.js').World} world
    * @param {(entityId: number | null, additive: boolean) => void} onSelect
    * @param {{ pickRadius?: number }} [opts]
    */
-  constructor(dom, camera, instancer, getTileMesh, world, onSelect, opts = {}) {
+  constructor(dom, camera, hitboxes, getTileMesh, world, onSelect, opts = {}) {
     this.dom = dom;
     this.camera = camera;
-    this.instancer = instancer;
+    this.hitboxes = hitboxes;
     this.getTileMesh = getTileMesh;
     this.world = world;
     this.onSelect = onSelect;
@@ -55,10 +58,10 @@ export class CowSelector {
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
 
-    // 1) direct raycast against cows
-    const direct = this.raycaster.intersectObject(this.instancer.mesh, false);
+    // 1) direct raycast against full-figure hitboxes
+    const direct = this.raycaster.intersectObject(this.hitboxes.mesh, false);
     if (direct.length > 0 && direct[0].instanceId !== undefined) {
-      const ent = this.instancer.entityFromInstanceId(direct[0].instanceId);
+      const ent = this.hitboxes.entityFromInstanceId(direct[0].instanceId);
       if (ent !== null) {
         this.onSelect(ent, additive);
         e.stopImmediatePropagation();

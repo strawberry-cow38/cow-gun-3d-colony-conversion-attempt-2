@@ -28,16 +28,12 @@ const BOULDER_HEIGHT_M = 0.9;
 const TORCH_RADIUS_M = 0.22;
 
 /** Every ObjectType.component that participates in box-based hit/ghost logic. */
-export const TRACKED_COMPONENTS = [
-  'Tree',
-  'Boulder',
-  'Wall',
-  'Door',
-  'Torch',
-  'Roof',
-  'Floor',
-  'BuildSite',
-];
+// Floor is intentionally excluded: a full-tile floor hitbox was swallowing
+// clicks on items / build sites / other entities sitting on top of it,
+// making it hard to interact with anything once floors were placed. Floors
+// stay in the OBJECT_TYPES registry (so the panel still opens when reached
+// through other means, e.g. deconstruct overlay), just not through click.
+export const TRACKED_COMPONENTS = ['Tree', 'Boulder', 'Wall', 'Door', 'Torch', 'Roof', 'BuildSite'];
 
 /**
  * @param {import('../ui/objectTypes.js').ObjectType} entry

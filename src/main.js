@@ -223,6 +223,7 @@ rts.maxZ = halfGridZ;
 const instancers = setupInstancers({ scene, audio, gridW, gridH, tileGrid });
 const {
   cowInstancer,
+  cowHitboxes,
   cowNameTags,
   cowThoughtBubbles,
   selectionViz,
@@ -401,7 +402,7 @@ const selectCow = (id, additive) => {
   updateHud();
 };
 
-new CowSelector(canvas, camera, cowInstancer, () => state.tileMesh, world, selectCow);
+new CowSelector(canvas, camera, cowHitboxes, () => state.tileMesh, world, selectCow);
 
 /**
  * Shared item-selection callback. Stacks + cows are mutually exclusive — a

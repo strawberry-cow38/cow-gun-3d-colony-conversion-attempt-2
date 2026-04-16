@@ -19,10 +19,12 @@ import { TILE_SIZE, tileToWorld } from '../world/coords.js';
 import { getStuff } from '../world/stuff.js';
 
 // Thin slab so floors look like a finished surface without poking into the
-// cow silhouette. Slightly lifted (BASE_LIFT) so z-fighting with the terrain
-// mesh doesn't flicker.
+// cow silhouette. Lifted (BASE_LIFT) so the slab's bottom face never
+// coincides with the terrain polygon beneath it — at 0.1u (~3mm) the depth
+// buffer loses precision at RTS zoom-out and we'd see stripes of flicker.
+// 2.0u ≈ 7cm real-world; plenty of separation at any supported zoom.
 const FLOOR_THICKNESS = 1;
-const BASE_LIFT = 0.1;
+const BASE_LIFT = 2.0;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();

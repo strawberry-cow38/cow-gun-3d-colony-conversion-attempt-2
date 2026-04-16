@@ -32,7 +32,9 @@ const TORCH_HEIGHT = 1.6 * UNITS_PER_METER;
 const TORCH_THICKNESS = TILE_SIZE * 0.25;
 const ROOF_THICKNESS = 4;
 const FLOOR_THICKNESS = 1;
-const FLOOR_LIFT = 0.1;
+// Matches floorInstancer.js BASE_LIFT so the blueprint lines up with the
+// finished slab and doesn't z-fight the terrain.
+const FLOOR_LIFT = 2.0;
 
 const COLOR_EMPTY = 0x8a8a8a;
 const COLOR_TORCH_FILLED = 0xb87333;
