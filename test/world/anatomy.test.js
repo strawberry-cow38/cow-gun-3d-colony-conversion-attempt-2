@@ -10,6 +10,12 @@ import {
   totalBleedRate,
 } from '../../src/world/anatomy.js';
 
+/**
+ * @param {string} partId
+ * @param {number} severity
+ * @param {Partial<import('../../src/world/anatomy.js').Injury>} [extra]
+ * @returns {import('../../src/world/anatomy.js').Injury}
+ */
 function injury(partId, severity, extra = {}) {
   return {
     id: 1,
@@ -26,6 +32,13 @@ function injury(partId, severity, extra = {}) {
   };
 }
 
+/** @param {string} id */
+function part(id) {
+  const p = getPart(id);
+  if (!p) throw new Error(`test bug: unknown part ${id}`);
+  return p;
+}
+
 describe('anatomy capacities', () => {
   it('all capacities are 1.0 on an uninjured body', () => {
     const caps = computeCapacities([]);
@@ -35,21 +48,19 @@ describe('anatomy capacities', () => {
   });
 
   it('destroying the brain zeroes out Consciousness and gates everything else', () => {
-    const brain = getPart('brain');
-    const caps = computeCapacities([injury('brain', brain.maxHp)]);
+    const caps = computeCapacities([injury('brain', part('brain').maxHp)]);
     expect(caps.Consciousness).toBe(0);
     // Other capacities are capped to consciousness level.
     for (const c of CAPACITIES) expect(caps[c]).toBe(0);
   });
 
   it('losing one eye halves Sight', () => {
-    const caps = computeCapacities([injury('left_eye', getPart('left_eye').maxHp)]);
+    const caps = computeCapacities([injury('left_eye', part('left_eye').maxHp)]);
     expect(caps.Sight).toBeCloseTo(0.5, 5);
   });
 
   it('destroying one leg drops Moving but does not zero it', () => {
-    const leg = getPart('left_leg');
-    const caps = computeCapacities([injury('left_leg', leg.maxHp)]);
+    const caps = computeCapacities([injury('left_leg', part('left_leg').maxHp)]);
     // Left leg contributes 0.35; remaining capacities sum to 0.65.
     expect(caps.Moving).toBeCloseTo(0.65, 5);
     expect(caps.Consciousness).toBe(1);
@@ -57,8 +68,7 @@ describe('anatomy capacities', () => {
   });
 
   it('partial damage scales the capacity contribution proportionally', () => {
-    const heart = getPart('heart');
-    const caps = computeCapacities([injury('heart', heart.maxHp / 2)]);
+    const caps = computeCapacities([injury('heart', part('heart').maxHp / 2)]);
     // Heart owns 100% of BloodPumping, so half HP = half capacity.
     expect(caps.BloodPumping).toBeCloseTo(0.5, 5);
   });
@@ -66,7 +76,7 @@ describe('anatomy capacities', () => {
 
 describe('anatomy part HP', () => {
   it('partHp subtracts all injuries on that part', () => {
-    const leg = getPart('left_leg');
+    const leg = part('left_leg');
     const injuries = [injury('left_leg', 5), injury('left_leg', 7), injury('right_leg', 100)];
     expect(partHp('left_leg', injuries)).toBe(leg.maxHp - 12);
     expect(partHpRatio('left_leg', injuries)).toBeCloseTo((leg.maxHp - 12) / leg.maxHp, 5);
@@ -100,8 +110,7 @@ describe('anatomy bleed + lethality', () => {
   });
 
   it('hasLethalDamage triggers on any vital part destruction', () => {
-    const heart = getPart('heart');
-    expect(hasLethalDamage([injury('heart', heart.maxHp)])).toBe(true);
+    expect(hasLethalDamage([injury('heart', part('heart').maxHp)])).toBe(true);
     expect(hasLethalDamage([injury('left_arm', 999)])).toBe(false);
   });
 });
