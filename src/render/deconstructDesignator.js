@@ -19,6 +19,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { stoveFootprintTiles } from '../world/stove.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
@@ -39,6 +40,7 @@ export const DECON_KINDS = /** @type {const} */ ([
   { comp: 'Torch', kind: 'torch' },
   { comp: 'Furnace', kind: 'furnace' },
   { comp: 'Easel', kind: 'easel' },
+  { comp: 'Stove', kind: 'stove' },
 ]);
 
 export class DeconstructDesignator {
@@ -216,8 +218,18 @@ export class DeconstructDesignator {
     for (const { comp, kind } of this.kinds) {
       for (const { id, components } of this.world.query([comp, 'TileAnchor'])) {
         const anchor = components.TileAnchor;
-        if (anchor.i < i0 || anchor.i > i1) continue;
-        if (anchor.j < j0 || anchor.j > j1) continue;
+        let matched = false;
+        if (comp === 'Stove') {
+          for (const t of stoveFootprintTiles(anchor, components.Stove.facing | 0)) {
+            if (t.i >= i0 && t.i <= i1 && t.j >= j0 && t.j <= j1) {
+              matched = true;
+              break;
+            }
+          }
+        } else if (anchor.i >= i0 && anchor.i <= i1 && anchor.j >= j0 && anchor.j <= j1) {
+          matched = true;
+        }
+        if (!matched) continue;
         const tag = components[comp];
         if (removing) {
           if (tag.deconstructJobId > 0) {

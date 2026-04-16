@@ -14,6 +14,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { stoveFootprintTiles } from '../world/stove.js';
 import { releaseBuildSite } from './buildDesignator.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 
@@ -29,6 +30,7 @@ const DECON_COMPS = /** @type {const} */ ([
   'Floor',
   'Furnace',
   'Easel',
+  'Stove',
 ]);
 
 export class CancelDesignator {
@@ -182,20 +184,25 @@ export class CancelDesignator {
     let cancelledSite = false;
     let clearedDecon = false;
 
-    // Two-pass: despawning mid-query corrupts the iterator.
+    // Two-pass: despawning mid-query corrupts the iterator. A stove blueprint
+    // occupies 3 tiles; rect-drag over any of them cancels it.
     const toDespawn = [];
     for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
       const anchor = components.TileAnchor;
-      if (anchor.i < i0 || anchor.i > i1) continue;
-      if (anchor.j < j0 || anchor.j > j1) continue;
-      releaseBuildSite(
-        this.world,
-        this.board,
-        this.tileGrid,
-        components.BuildSite,
-        anchor.i,
-        anchor.j,
-      );
+      const site = components.BuildSite;
+      let matched = false;
+      if (site.kind === 'stove') {
+        for (const t of stoveFootprintTiles(anchor, site.facing | 0)) {
+          if (t.i >= i0 && t.i <= i1 && t.j >= j0 && t.j <= j1) {
+            matched = true;
+            break;
+          }
+        }
+      } else if (anchor.i >= i0 && anchor.i <= i1 && anchor.j >= j0 && anchor.j <= j1) {
+        matched = true;
+      }
+      if (!matched) continue;
+      releaseBuildSite(this.world, this.board, this.tileGrid, site, anchor.i, anchor.j);
       toDespawn.push(id);
       cancelledSite = true;
     }
@@ -204,8 +211,18 @@ export class CancelDesignator {
     for (const comp of DECON_COMPS) {
       for (const { components } of this.world.query([comp, 'TileAnchor'])) {
         const anchor = components.TileAnchor;
-        if (anchor.i < i0 || anchor.i > i1) continue;
-        if (anchor.j < j0 || anchor.j > j1) continue;
+        let matched = false;
+        if (comp === 'Stove') {
+          for (const t of stoveFootprintTiles(anchor, components.Stove.facing | 0)) {
+            if (t.i >= i0 && t.i <= i1 && t.j >= j0 && t.j <= j1) {
+              matched = true;
+              break;
+            }
+          }
+        } else if (anchor.i >= i0 && anchor.i <= i1 && anchor.j >= j0 && anchor.j <= j1) {
+          matched = true;
+        }
+        if (!matched) continue;
         const tag = components[comp];
         if (tag.deconstructJobId > 0) {
           this.board.complete(tag.deconstructJobId);

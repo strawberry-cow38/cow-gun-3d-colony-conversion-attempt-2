@@ -427,6 +427,14 @@ export class BuildDesignator {
           return false;
         }
       }
+      // Reserve the flanking footprint tiles immediately so no cow wanders
+      // (or gets picked as a build stand-tile) onto a tile that's about to
+      // be blocked when the build completes. The anchor stays walkable since
+      // haulers deliver materials there.
+      for (const t of footprint) {
+        if (t.i === i && t.j === j) continue;
+        this.tileGrid.blockTile(t.i, t.j);
+      }
       const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
       this.world.spawn({
         BuildSite: {
@@ -756,7 +764,7 @@ function hasRoofSupport(grid, world, i, j) {
  * @param {import('../ecs/world.js').World} world
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} tileGrid
- * @param {{ buildJobId: number, delivered: number, requiredKind: string }} site
+ * @param {{ kind?: string, facing?: number, buildJobId: number, delivered: number, requiredKind: string }} site
  * @param {number} i @param {number} j
  */
 export function releaseBuildSite(world, board, tileGrid, site, i, j) {
@@ -769,6 +777,12 @@ export function releaseBuildSite(world, board, tileGrid, site, i, j) {
       TileAnchor: { i, j },
       Position: { x: w.x, y: tileGrid.getElevation(i, j), z: w.z },
     });
+  }
+  if (site.kind === 'stove') {
+    for (const t of stoveFootprintTiles({ i, j }, (site.facing ?? 0) | 0)) {
+      if (t.i === i && t.j === j) continue;
+      tileGrid.unblockTile(t.i, t.j);
+    }
   }
   for (const job of board.jobs) {
     if (job.completed || job.kind !== 'deliver') continue;
