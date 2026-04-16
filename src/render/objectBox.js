@@ -10,8 +10,11 @@
 import { objectTypeFor } from '../ui/objectTypes.js';
 import { BOULDER_VISUALS } from '../world/boulders.js';
 import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
+import { FACING_YAWS } from '../world/facing.js';
 import { TREE_VISUALS, growthScale } from '../world/trees.js';
+import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
+import { STOVE_BODY_DEPTH, STOVE_BODY_HEIGHT, STOVE_BODY_SPAN } from './stoveInstancer.js';
 
 export const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = WALL_HEIGHT;
@@ -34,6 +37,11 @@ const TORCH_RADIUS_M = 0.22;
 // stay in the OBJECT_TYPES registry (so the panel still opens when reached
 // through other means, e.g. deconstruct overlay), just not through click.
 export const TRACKED_COMPONENTS = ['Tree', 'Boulder', 'Wall', 'Door', 'Torch', 'Roof', 'BuildSite'];
+
+/** Crafting stations. Tracked separately because they live outside the
+ * OBJECT_TYPES registry (they have dedicated panels) but still want
+ * click-what-you-see 3D hitbox picking. */
+export const STATION_COMPONENTS = /** @type {const} */ (['Furnace', 'Easel', 'Stove']);
 
 /**
  * @param {import('../ui/objectTypes.js').ObjectType} entry
@@ -117,4 +125,33 @@ export function boxForEntity(world, id) {
   const entry = objectTypeFor(world, id);
   if (!entry) return null;
   return boxFor(entry, world, id);
+}
+
+/**
+ * Box + yaw for a crafting station entity. Stove is long along its body span;
+ * its yaw rotates the box around Y so the long edge aligns with the build
+ * facing. Furnace/easel are anchored on a single tile and don't rotate.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} id
+ * @returns {{ w: number, h: number, d: number, yBase: number, yaw: number } | null}
+ */
+export function boxForStation(world, id) {
+  if (world.get(id, 'Furnace')) {
+    return { w: FURNACE_FOOTPRINT, h: FURNACE_HEIGHT, d: FURNACE_FOOTPRINT, yBase: 0, yaw: 0 };
+  }
+  if (world.get(id, 'Easel')) {
+    return { w: EASEL_FOOTPRINT, h: EASEL_HEIGHT, d: EASEL_FOOTPRINT, yBase: 0, yaw: 0 };
+  }
+  const stove = world.get(id, 'Stove');
+  if (stove) {
+    return {
+      w: STOVE_BODY_SPAN,
+      h: STOVE_BODY_HEIGHT,
+      d: STOVE_BODY_DEPTH,
+      yBase: 0,
+      yaw: FACING_YAWS[stove.facing | 0] ?? 0,
+    };
+  }
+  return null;
 }

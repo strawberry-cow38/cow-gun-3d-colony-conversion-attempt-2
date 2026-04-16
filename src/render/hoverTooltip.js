@@ -2,8 +2,7 @@
  * Bottom-right "what's under the cursor" readout. Listens for mousemove on
  * the canvas and runs three raycasts against the cow instancer, the object
  * hitbox mesh, and the tile mesh; whichever reports the closest hit decides
- * the label. Fallbacks handle items, furnaces/easels, nearby-cow proximity,
- * and bare terrain.
+ * the label. Fallbacks handle items, nearby-cow proximity, and bare terrain.
  *
  * Throttled to one resolve per rAF so a 120 Hz mouse still only does one
  * pass per frame.
@@ -121,18 +120,15 @@ export class HoverTooltip {
       const ent = this.objectHitboxes.entityFromInstanceId(
         /** @type {number} */ (objHit.instanceId),
       );
-      if (ent !== null) return this.#objectLabel(ent);
+      if (ent !== null) {
+        const label = this.#objectLabel(ent) ?? this.#stationLabel(ent);
+        if (label) return label;
+      }
     }
 
     if (!tileHit) return null;
     const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
     if (!tile) return null;
-
-    // Stations occupy a whole tile but aren't in the object hitbox registry
-    // (they have their own StationSelector UX), so they need a separate
-    // tile-based lookup.
-    if (this.#entityAt(tile.i, tile.j, 'Furnace') !== null) return 'Furnace';
-    if (this.#entityAt(tile.i, tile.j, 'Easel') !== null) return 'Easel';
 
     // Cow proximity fallback: at RTS zoom a moving cow can be a few pixels
     // wide, so grab any cow within a tile of the tile-hit point.
@@ -179,6 +175,14 @@ export class HoverTooltip {
     const label = entry.label(this.world, id);
     const sub = entry.subtitle?.(this.world, id);
     return sub ? `${label} · ${sub}` : label;
+  }
+
+  /** @param {number} id */
+  #stationLabel(id) {
+    if (this.world.get(id, 'Furnace')) return 'Furnace';
+    if (this.world.get(id, 'Easel')) return 'Easel';
+    if (this.world.get(id, 'Stove')) return 'Stove';
+    return null;
   }
 
   /** @param {number} id */

@@ -1,8 +1,9 @@
 /**
  * Invisible click-hitbox InstancedMesh. One box per registered world object
- * (tree / boulder / wall / door / torch / roof / floor), sized by the same
- * `boxForEntity` helper that drives the ghost selection box — so the area
- * the player has to click matches the area that lights up.
+ * (tree / boulder / wall / door / torch / roof / build-site) plus every
+ * crafting station (furnace / easel / stove), sized by the same `boxFor*`
+ * helpers that drive the ghost selection box — so the area the player has
+ * to click matches the area that lights up.
  *
  * The mesh is hidden (`visible = false`), but three.js still raycasts it
  * when `intersectObject(mesh, false)` is called directly — the visibility
@@ -16,12 +17,18 @@
 
 import * as THREE from 'three';
 import { tileToWorld } from '../world/coords.js';
-import { TRACKED_COMPONENTS, boxForEntity } from './objectBox.js';
+import {
+  STATION_COMPONENTS,
+  TRACKED_COMPONENTS,
+  boxForEntity,
+  boxForStation,
+} from './objectBox.js';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
 const _s = new THREE.Vector3();
+const _yAxis = new THREE.Vector3(0, 1, 0);
 
 /**
  * @param {THREE.Scene} scene
@@ -63,6 +70,27 @@ export function createObjectHitboxes(scene, capacity) {
         n++;
       }
     }
+    // Crafting stations live outside TRACKED_COMPONENTS (they have dedicated
+    // panels) but still get 3D hitboxes so clicks match the ghost box.
+    for (const comp of STATION_COMPONENTS) {
+      for (const { id, components } of world.query([comp, 'TileAnchor'])) {
+        if (n >= capacity) break;
+        const box = boxForStation(world, id);
+        if (!box) continue;
+        const anchor = components.TileAnchor;
+        const center = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
+        const yBase = grid.getElevation(anchor.i, anchor.j) + box.yBase;
+        _p.set(center.x, yBase + box.h * 0.5, center.z);
+        _s.set(box.w, box.h, box.d);
+        if (box.yaw) _q.setFromAxisAngle(_yAxis, box.yaw);
+        else _q.identity();
+        _m.compose(_p, _q, _s);
+        mesh.setMatrixAt(n, _m);
+        slotToEntity[n] = id;
+        n++;
+      }
+    }
+    _q.identity();
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
   }

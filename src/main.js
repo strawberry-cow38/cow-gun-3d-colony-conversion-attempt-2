@@ -39,7 +39,6 @@ import { createPrioritizeMenu } from './render/prioritizeMenu.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
-import { StationSelector } from './render/stationSelector.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
@@ -568,40 +567,6 @@ const selectStove = (id, additive) => {
   updateHud();
 };
 
-// Station selectors fire in capture-phase BEFORE ItemSelector so a click on
-// a station tile wins even when an item stack sits on the same tile. Tile-
-// based picking resolves clicks anywhere within the station's footprint.
-new StationSelector(
-  canvas,
-  camera,
-  () => state.tileMesh,
-  { W: gridW, H: gridH },
-  world,
-  'Furnace',
-  selectFurnace,
-  { isDesignatorActive: isDesignatorArmed },
-);
-new StationSelector(
-  canvas,
-  camera,
-  () => state.tileMesh,
-  { W: gridW, H: gridH },
-  world,
-  'Easel',
-  selectEasel,
-  { isDesignatorActive: isDesignatorArmed },
-);
-new StationSelector(
-  canvas,
-  camera,
-  () => state.tileMesh,
-  { W: gridW, H: gridH },
-  world,
-  'Stove',
-  selectStove,
-  { isDesignatorActive: isDesignatorArmed },
-);
-
 new ItemSelector(
   canvas,
   camera,
@@ -673,6 +638,22 @@ const selectObjectsMany = (ids) => {
   updateHud();
 };
 
+// The hitbox mesh also covers crafting stations, so route picks on those
+// to the specialized station select* handlers instead of the generic
+// object bucket — stations have their own panels and mutex selection.
+/**
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const routeObjectPick = (id, additive) => {
+  if (id !== null) {
+    if (world.get(id, 'Furnace')) return selectFurnace(id, additive);
+    if (world.get(id, 'Easel')) return selectEasel(id, additive);
+    if (world.get(id, 'Stove')) return selectStove(id, additive);
+  }
+  selectObject(id, additive);
+};
+
 new ObjectSelector({
   canvas,
   camera,
@@ -680,7 +661,7 @@ new ObjectSelector({
   grid: { W: gridW, H: gridH },
   world,
   hitboxes: objectHitboxes,
-  onSelect: selectObject,
+  onSelect: routeObjectPick,
   onSelectMany: selectObjectsMany,
   isDesignatorActive: isDesignatorArmed,
 });
