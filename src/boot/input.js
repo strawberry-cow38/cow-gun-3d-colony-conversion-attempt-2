@@ -63,6 +63,10 @@ import { dispatch } from './hotkeys.js';
  * @property {import('../sim/loop.js').SimLoop} loop
  * @property {() => void} applyDebugVisibility
  * @property {() => void} updateHud
+ * @property {{ runKey: (code: string) => boolean }} [objectPanel]
+ *   click-selection order dispatcher. Hotkeys (B/C/X/L/Y/F) fall through to
+ *   this when the world has objects selected so a keybind fires the same
+ *   path as clicking the panel button.
  */
 
 /** @param {InputCtx} ctx */

@@ -149,6 +149,23 @@ export const HOTKEYS = [
       ctx.updateHud();
     },
   },
+  // B/C/X/L/Y/F on world objects — route the key to the order registered
+  // under it in objectTypes.js. Chord definitions live alongside each order
+  // so adding a new verb only touches one file.
+  {
+    match: (e, ctx) =>
+      (e.code === 'KeyB' ||
+        e.code === 'KeyC' ||
+        e.code === 'KeyX' ||
+        e.code === 'KeyL' ||
+        e.code === 'KeyY' ||
+        e.code === 'KeyF') &&
+      !!ctx.objectPanel &&
+      ctx.state.selectedObjects.size > 0,
+    run: (ctx, e) => {
+      ctx.objectPanel?.runKey(e.code);
+    },
+  },
   // F — toggle camera follow. Auto-selects the first cow if nothing's
   // selected so pressing F on a fresh world still does something.
   {

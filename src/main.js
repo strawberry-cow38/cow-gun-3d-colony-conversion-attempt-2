@@ -905,6 +905,7 @@ installKeyboard({
   loop,
   applyDebugVisibility: hudApi.applyDebugVisibility,
   updateHud: hudApi.updateHud,
+  objectPanel,
 });
 
 // Force THREE.js to compile every shader variant against the final scene

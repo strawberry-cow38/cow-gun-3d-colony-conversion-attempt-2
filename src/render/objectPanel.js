@@ -170,7 +170,7 @@ export function createObjectPanel(opts) {
         const anyEnabled = sameTypeIds.some((id) => order.enabled(world, id));
         if (!anyEnabled) continue;
         const btn = getButton(i);
-        btn.textContent = order.label;
+        btn.textContent = order.key ? `${order.label} (${keyHint(order.key)})` : order.label;
         btn.onclick = (e) => {
           e.stopPropagation();
           runOrder(order, sameTypeIds);
@@ -204,5 +204,37 @@ export function createObjectPanel(opts) {
     }
   }
 
-  return { update, root };
+  /**
+   * Fire the order on the current selection whose `key` matches `code`. Used
+   * by the global hotkey dispatcher so B/C/X/L/Y/F act on the click-selected
+   * object set without the player moving the cursor to the button.
+   *
+   * @param {string} code KeyboardEvent.code
+   * @returns {boolean} true if an order was applied (audio already played)
+   */
+  function runKey(code) {
+    if (state.selectedObjects.size === 0) return false;
+    const primary =
+      state.primaryObject ?? /** @type {number} */ (state.selectedObjects.values().next().value);
+    const primaryEntry = objectTypeFor(world, primary);
+    if (!primaryEntry) return false;
+    const sameTypeIds = [];
+    for (const id of state.selectedObjects) {
+      if (objectTypeFor(world, id) === primaryEntry) sameTypeIds.push(id);
+    }
+    for (const order of primaryEntry.orders) {
+      if (order.key !== code) continue;
+      if (!sameTypeIds.some((id) => order.enabled(world, id))) continue;
+      runOrder(order, sameTypeIds);
+      return true;
+    }
+    return false;
+  }
+
+  return { update, root, runKey };
+}
+
+/** @param {string} code */
+function keyHint(code) {
+  return code.startsWith('Key') ? code.slice(3) : code;
 }

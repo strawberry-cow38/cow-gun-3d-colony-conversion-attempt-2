@@ -38,6 +38,10 @@ import { TREE_MAX_WOOD, TREE_MIN_YIELD_GROWTH, woodYieldFor } from '../world/tre
  * @typedef {Object} ObjectOrder
  * @property {string} id                   unique within its type
  * @property {string} label                button text
+ * @property {string} [key]                KeyboardEvent.code that fires this
+ *   order directly (e.g. 'KeyB'). Only consulted when the selected primary's
+ *   type carries the order — so the same code (C for cancel, X for
+ *   deconstruct, …) can mean different things depending on what's selected.
  * @property {(world: import('../ecs/world.js').World, id: number) => boolean} enabled
  *   gate the button on per-entity state (e.g. "only show Chop when not marked")
  * @property {(ctx: ObjectOrderCtx, ids: number[]) => number}  apply
@@ -108,6 +112,7 @@ function deconstructOrder(kind, component) {
   return {
     id: 'deconstruct',
     label: 'Deconstruct',
+    key: 'KeyX',
     /** @param {import('../ecs/world.js').World} world @param {number} id */
     enabled(world, id) {
       const tag = world.get(id, component);
@@ -141,6 +146,7 @@ function cancelDeconstructOrder(component) {
   return {
     id: 'cancel-deconstruct',
     label: 'Cancel deconstruct',
+    key: 'KeyC',
     ...cancelOrder(component, 'deconstructJobId'),
   };
 }
@@ -179,6 +185,7 @@ export const OBJECT_TYPES = [
       {
         id: 'chop',
         label: 'Chop',
+        key: 'KeyB',
         enabled(world, id) {
           const tree = world.get(id, 'Tree');
           if (!tree) return false;
@@ -204,7 +211,37 @@ export const OBJECT_TYPES = [
       {
         id: 'cancel-chop',
         label: 'Cancel chop',
+        key: 'KeyC',
         ...cancelOrder('Tree', 'markedJobId'),
+      },
+      {
+        id: 'cut',
+        label: 'Cut',
+        key: 'KeyY',
+        enabled(world, id) {
+          const cut = world.get(id, 'Cuttable');
+          return !!cut && cut.markedJobId === 0;
+        },
+        apply(ctx, ids) {
+          let n = 0;
+          for (const id of ids) {
+            const cut = ctx.world.get(id, 'Cuttable');
+            const anchor = ctx.world.get(id, 'TileAnchor');
+            if (!cut || !anchor) continue;
+            if (cut.markedJobId > 0) continue;
+            const job = ctx.board.post('cut', { entityId: id, i: anchor.i, j: anchor.j });
+            cut.markedJobId = job.id;
+            cut.progress = 0;
+            n++;
+          }
+          return n;
+        },
+      },
+      {
+        id: 'cancel-cut',
+        label: 'Cancel cut',
+        key: 'KeyC',
+        ...cancelOrder('Cuttable', 'markedJobId'),
       },
     ],
   },
@@ -229,6 +266,7 @@ export const OBJECT_TYPES = [
       {
         id: 'mine',
         label: 'Mine',
+        key: 'KeyL',
         enabled(world, id) {
           const b = world.get(id, 'Boulder');
           return !!b && b.markedJobId === 0;
@@ -251,6 +289,7 @@ export const OBJECT_TYPES = [
       {
         id: 'cancel-mine',
         label: 'Cancel mine',
+        key: 'KeyC',
         ...cancelOrder('Boulder', 'markedJobId'),
       },
     ],
@@ -380,6 +419,7 @@ export const OBJECT_TYPES = [
       {
         id: 'cancel-blueprint',
         label: 'Cancel blueprint',
+        key: 'KeyC',
         enabled() {
           return true;
         },
@@ -400,6 +440,7 @@ export const OBJECT_TYPES = [
       {
         id: 'forbid',
         label: 'Forbid',
+        key: 'KeyF',
         enabled(world, id) {
           return world.get(id, 'BuildSite')?.forbidden === false;
         },
@@ -425,6 +466,7 @@ export const OBJECT_TYPES = [
       {
         id: 'unforbid',
         label: 'Unforbid',
+        key: 'KeyF',
         enabled(world, id) {
           return world.get(id, 'BuildSite')?.forbidden === true;
         },
