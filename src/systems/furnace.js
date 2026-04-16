@@ -13,8 +13,9 @@
  *   3. If idle: walk the bills list in order. For the first eligible bill
  *      (not suspended, not capped by countMode), check whether all
  *      ingredients are in `furnace.stored`. If so → consume + start craft.
- *      If not → post `supply` jobs for the deficit (one per missing unit,
- *      deduplicated against in-flight supplies for this furnace).
+ *      If not → post `supply` jobs for the deficit (bundled: one job per
+ *      source stack, carrying up to the cow's 60 kg cap, deduplicated by
+ *      unit count against in-flight supplies for this furnace).
  *
  * Bills are sequential — once the first eligible bill is found, the loop
  * stops. Lower bills wait their turn (matches RimWorld semantics).
@@ -64,9 +65,9 @@ export function makeFurnaceSystem(board, grid, opts) {
       const haulFromInFlight = new Map();
       for (const j of board.jobs) {
         if (j.completed) continue;
-        if (j.kind === 'supply') {
+        if (j.kind === 'supply' && typeof j.payload.furnaceId === 'number') {
           const k = `${j.payload.furnaceId}:${j.payload.kind}`;
-          supplyInFlight.set(k, (supplyInFlight.get(k) ?? 0) + 1);
+          supplyInFlight.set(k, (supplyInFlight.get(k) ?? 0) + (j.payload.count ?? 1));
         } else if (j.kind === 'haul' && typeof j.payload.fromFurnaceId === 'number') {
           const k = `${j.payload.fromFurnaceId}:${j.payload.kind}`;
           haulFromInFlight.set(k, (haulFromInFlight.get(k) ?? 0) + (j.payload.count ?? 1));
@@ -179,9 +180,11 @@ export function makeFurnaceSystem(board, grid, opts) {
                 furnace.workJ,
               );
               if (!src) break;
+              const bundle = Math.min(need, src.avail);
               board.post('supply', {
                 itemId: src.id,
                 kind: ing.kind,
+                count: bundle,
                 fromI: src.i,
                 fromJ: src.j,
                 toI: furnace.workI,
@@ -189,9 +192,9 @@ export function makeFurnaceSystem(board, grid, opts) {
                 furnaceId,
                 toSupply: true,
               });
-              claimed.set(src.id, (claimed.get(src.id) ?? 0) + 1);
-              supplyInFlight.set(key, (supplyInFlight.get(key) ?? 0) + 1);
-              need--;
+              claimed.set(src.id, (claimed.get(src.id) ?? 0) + bundle);
+              supplyInFlight.set(key, (supplyInFlight.get(key) ?? 0) + bundle);
+              need -= bundle;
             }
           }
           break;

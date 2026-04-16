@@ -49,7 +49,7 @@ export function makeEaselSystem(board, grid) {
         if (j.completed) continue;
         if (j.kind === 'supply' && typeof j.payload.easelId === 'number') {
           const k = `${j.payload.easelId}:${j.payload.kind}`;
-          supplyInFlight.set(k, (supplyInFlight.get(k) ?? 0) + 1);
+          supplyInFlight.set(k, (supplyInFlight.get(k) ?? 0) + (j.payload.count ?? 1));
         } else if (j.kind === 'paint' && typeof j.payload.easelId === 'number') {
           paintInFlight.add(j.payload.easelId);
         }
@@ -121,7 +121,7 @@ export function makeEaselSystem(board, grid) {
           for (const ing of recipe.ingredients) {
             const have = stackCount(easel.stored ?? [], ing.kind);
             const key = `${easelId}:${ing.kind}`;
-            let inFlight = supplyInFlight.get(key) ?? 0;
+            const inFlight = supplyInFlight.get(key) ?? 0;
             let need = ing.count - have - inFlight;
             while (need > 0) {
               const src = findNearestAvailableItem(
@@ -133,9 +133,11 @@ export function makeEaselSystem(board, grid) {
                 easel.workJ,
               );
               if (!src) break;
+              const bundle = Math.min(need, src.avail);
               board.post('supply', {
                 itemId: src.id,
                 kind: ing.kind,
+                count: bundle,
                 fromI: src.i,
                 fromJ: src.j,
                 toI: easel.workI,
@@ -143,10 +145,9 @@ export function makeEaselSystem(board, grid) {
                 easelId,
                 toSupply: true,
               });
-              claimed.set(src.id, (claimed.get(src.id) ?? 0) + 1);
-              inFlight++;
-              supplyInFlight.set(key, inFlight);
-              need--;
+              claimed.set(src.id, (claimed.get(src.id) ?? 0) + bundle);
+              supplyInFlight.set(key, (supplyInFlight.get(key) ?? 0) + bundle);
+              need -= bundle;
             }
           }
           break;

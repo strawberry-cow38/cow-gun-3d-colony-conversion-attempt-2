@@ -54,7 +54,7 @@ function tick(world, board, grid) {
 }
 
 describe('furnace system: supply posting', () => {
-  it('posts supply jobs for each missing ingredient unit when work spot is empty', () => {
+  it('posts one bundled supply job per missing ingredient when work spot is empty', () => {
     const grid = new TileGrid(8, 8);
     const world = makeWorld();
     spawnFurnace(world, 2, 2, 2, 3, [{}]);
@@ -65,19 +65,41 @@ describe('furnace system: supply posting', () => {
     tick(world, board, grid);
 
     const supply = board.jobs.filter((j) => j.kind === 'supply');
-    // Recipe needs 1 coal + 5 metal_ore = 6 supply jobs.
-    expect(supply).toHaveLength(6);
-    expect(supply.filter((j) => j.payload.kind === 'coal')).toHaveLength(1);
-    expect(supply.filter((j) => j.payload.kind === 'metal_ore')).toHaveLength(5);
+    // Recipe needs 1 coal + 5 metal_ore, each sourced from a single stack,
+    // so one bundled job per ingredient carries the whole deficit.
+    expect(supply).toHaveLength(2);
+    const coalJob = supply.find((j) => j.payload.kind === 'coal');
+    const oreJob = supply.find((j) => j.payload.kind === 'metal_ore');
+    expect(coalJob?.payload.itemId).toBe(coal);
+    expect(coalJob?.payload.count).toBe(1);
+    expect(oreJob?.payload.itemId).toBe(ore);
+    expect(oreJob?.payload.count).toBe(5);
     for (const j of supply) {
       expect(j.payload.toI).toBe(2);
       expect(j.payload.toJ).toBe(3);
       expect(j.payload.toSupply).toBe(true);
     }
-    expect(supply.find((j) => j.payload.kind === 'coal')?.payload.itemId).toBe(coal);
-    expect(supply.every((j) => j.payload.kind !== 'metal_ore' || j.payload.itemId === ore)).toBe(
-      true,
-    );
+  });
+
+  it('splits a deficit across multiple source stacks when no single stack fills it', () => {
+    const grid = new TileGrid(8, 8);
+    const world = makeWorld();
+    spawnFurnace(world, 2, 2, 2, 3, [{}]);
+    spawnItem(world, 5, 5, 'coal', 1);
+    // Two ore piles of 2 and 3 — needs 5 total, so poster must split.
+    const ore1 = spawnItem(world, 6, 6, 'metal_ore', 2);
+    const ore2 = spawnItem(world, 7, 7, 'metal_ore', 3);
+    const board = new JobBoard();
+
+    tick(world, board, grid);
+
+    const oreJobs = board.jobs.filter((j) => j.kind === 'supply' && j.payload.kind === 'metal_ore');
+    expect(oreJobs).toHaveLength(2);
+    const totalReserved = oreJobs.reduce((s, j) => s + j.payload.count, 0);
+    expect(totalReserved).toBe(5);
+    const sourceIds = new Set(oreJobs.map((j) => j.payload.itemId));
+    expect(sourceIds.has(ore1)).toBe(true);
+    expect(sourceIds.has(ore2)).toBe(true);
   });
 
   it('does not double-post supplies when ones are already in flight', () => {

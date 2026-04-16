@@ -278,11 +278,11 @@ export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
     if (grid.isStockpile(a.i, a.j)) {
       if (d < bestStockD) {
         bestStockD = d;
-        bestStock = { id, i: a.i, j: a.j };
+        bestStock = { id, i: a.i, j: a.j, avail };
       }
     } else if (d < bestLooseD) {
       bestLooseD = d;
-      bestLoose = { id, i: a.i, j: a.j };
+      bestLoose = { id, i: a.i, j: a.j, avail };
     }
   }
   return bestLoose ?? bestStock;
@@ -379,10 +379,7 @@ export function makeHaulPostingSystem(board, grid) {
             a.j,
           );
           if (!src) break;
-          const srcItem = world.get(src.id, 'Item');
-          const srcAvail = srcItem ? srcItem.count - (targetedCounts.get(src.id) ?? 0) : 0;
-          if (srcAvail <= 0) break;
-          const bundle = Math.min(need, srcAvail);
+          const bundle = Math.min(need, src.avail);
           board.post('deliver', {
             itemId: src.id,
             kind: site.requiredKind,
