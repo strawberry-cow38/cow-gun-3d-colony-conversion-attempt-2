@@ -156,29 +156,61 @@ export class TileGrid {
     this.torchCount = 0;
     /** @type {Set<number>} tile indices with torch=1 */
     this.torchTiles = new Set();
+    /** @type {Set<number>} tile indices that carry any player-placed structure
+     * (wall, door, roof, floor, or torch). Lets the wander picker bias goals
+     * toward colony territory without rescanning the full grid. */
+    this.structureTiles = new Set();
   }
 
-  /** Rebuild derived wall/door/roof counts + torch index from the bitmaps.
-   * Call after bulk writes that bypass the setters (save load, terrain init). */
+  /** Rebuild derived wall/door/roof counts + torch/structure indices from the
+   * bitmaps. Call after bulk writes that bypass the setters (save load,
+   * terrain init). */
   recomputeCounts() {
     let w = 0;
     let d = 0;
     let r = 0;
     let t = 0;
     this.torchTiles.clear();
+    this.structureTiles.clear();
     for (let k = 0; k < this.wall.length; k++) {
-      if (this.wall[k] !== 0) w++;
-      if (this.door[k] !== 0) d++;
-      if (this.roof[k] !== 0) r++;
-      if (this.torch[k] !== 0) {
+      const hasWall = this.wall[k] !== 0;
+      const hasDoor = this.door[k] !== 0;
+      const hasRoof = this.roof[k] !== 0;
+      const hasTorch = this.torch[k] !== 0;
+      const hasFloor = this.floor[k] !== 0;
+      if (hasWall) w++;
+      if (hasDoor) d++;
+      if (hasRoof) r++;
+      if (hasTorch) {
         t++;
         this.torchTiles.add(k);
+      }
+      if (hasWall || hasDoor || hasRoof || hasTorch || hasFloor) {
+        this.structureTiles.add(k);
       }
     }
     this.wallCount = w;
     this.doorCount = d;
     this.roofCount = r;
     this.torchCount = t;
+  }
+
+  /** True iff tile (i,j) holds any player-placed structure. */
+  #hasAnyStructure(k) {
+    return (
+      this.wall[k] !== 0 ||
+      this.door[k] !== 0 ||
+      this.roof[k] !== 0 ||
+      this.floor[k] !== 0 ||
+      this.torch[k] !== 0
+    );
+  }
+
+  /** Called by the structure setters after they mutate a bitmap. Keeps
+   * structureTiles in sync without each setter spelling out the union. */
+  #refreshStructureTile(k) {
+    if (this.#hasAnyStructure(k)) this.structureTiles.add(k);
+    else this.structureTiles.delete(k);
   }
 
   /** @param {number} i @param {number} j */
@@ -220,6 +252,7 @@ export class TileGrid {
     if (was === now) return;
     this.wall[k] = now;
     this.wallCount += now - was;
+    this.#refreshStructureTile(k);
   }
 
   /** @param {number} i @param {number} j */
@@ -235,6 +268,7 @@ export class TileGrid {
     if (was === now) return;
     this.door[k] = now;
     this.doorCount += now - was;
+    this.#refreshStructureTile(k);
   }
 
   /** @param {number} i @param {number} j */
@@ -256,6 +290,7 @@ export class TileGrid {
       this.torchTiles.delete(k);
       this.torchCount--;
     }
+    this.#refreshStructureTile(k);
   }
 
   /** @param {number} i @param {number} j */
@@ -271,6 +306,7 @@ export class TileGrid {
     if (was === now) return;
     this.roof[k] = now;
     this.roofCount += now - was;
+    this.#refreshStructureTile(k);
   }
 
   /** @param {number} i @param {number} j */
@@ -290,7 +326,9 @@ export class TileGrid {
 
   /** @param {number} i @param {number} j @param {number} v */
   setFloor(i, j, v) {
-    this.floor[this.idx(i, j)] = v ? 1 : 0;
+    const k = this.idx(i, j);
+    this.floor[k] = v ? 1 : 0;
+    this.#refreshStructureTile(k);
   }
 
   /** @param {number} i @param {number} j */

@@ -23,7 +23,7 @@ import { MINE_TICKS } from '../jobs/mine.js';
 import { PLANT_TICKS } from '../jobs/plant.js';
 import { HUNGER_CRITICAL_THRESHOLD, HUNGER_PREEMPT_TIER, tierFor } from '../jobs/tiers.js';
 import { TILL_TICKS } from '../jobs/till.js';
-import { WANDER_IDLE_TICKS, pickRandomWalkable } from '../jobs/wander.js';
+import { WANDER_IDLE_TICKS, pickWanderGoal } from '../jobs/wander.js';
 import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropIsReady, cropKindFor } from '../world/crops.js';
@@ -479,7 +479,7 @@ export function makeCowBrainSystem(deps) {
         } else if (job.kind === 'wander') {
           if (job.state === 'planning') {
             const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-            const goal = pickRandomWalkable(grid, walkable, { i: si, j: sj });
+            const goal = pickWanderGoal(grid, walkable);
             if (!goal) {
               job.state = 'idle';
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };

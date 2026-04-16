@@ -1,0 +1,134 @@
+import { describe, expect, it } from 'vitest';
+import { pickWanderGoal } from '../../src/jobs/wander.js';
+import { BIOME, TileGrid } from '../../src/world/tileGrid.js';
+
+/**
+ * Tiny seeded RNG so assertions are deterministic — our picker burns through
+ * random() fast and real randomness would flake.
+ */
+function seededRand(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1103515245 + 12345) >>> 0;
+    return (s & 0x7fffffff) / 0x7fffffff;
+  };
+}
+
+function allWalkable() {
+  return true;
+}
+
+describe('pickWanderGoal', () => {
+  it('anchors to map center when no structures exist', () => {
+    // 60×60 all-grass: no structures → center is (30,30), and any goal must
+    // land in the 20-Chebyshev square around it: rows/cols 10..50.
+    const grid = new TileGrid(60, 60);
+    const rand = seededRand(1);
+    for (let n = 0; n < 200; n++) {
+      const goal = pickWanderGoal(grid, allWalkable, rand);
+      expect(goal).not.toBeNull();
+      // biome: undefined in allocated buffers is 0 = GRASS, fine.
+      expect(goal).toBeDefined();
+      if (!goal) continue;
+      expect(Math.abs(goal.i - 30)).toBeLessThanOrEqual(20);
+      expect(Math.abs(goal.j - 30)).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('anchors near a placed structure when one exists', () => {
+    // Single wall at (5,5). Every goal must be within 20 Chebyshev of it,
+    // which is the only possible anchor.
+    const grid = new TileGrid(60, 60);
+    grid.setWall(5, 5, 1);
+    const rand = seededRand(2);
+    for (let n = 0; n < 200; n++) {
+      const goal = pickWanderGoal(grid, allWalkable, rand);
+      expect(goal).not.toBeNull();
+      if (!goal) continue;
+      expect(Math.abs(goal.i - 5)).toBeLessThanOrEqual(20);
+      expect(Math.abs(goal.j - 5)).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('never targets water tiles', () => {
+    const grid = new TileGrid(10, 10);
+    // Flood a 4×4 block with water so a sampler centered at the map center
+    // (5,5) will hit these repeatedly unless it filters them out.
+    for (let j = 3; j < 7; j++) {
+      for (let i = 3; i < 7; i++) {
+        grid.biome[grid.idx(i, j)] = BIOME.SHALLOW_WATER;
+      }
+    }
+    // Two water tiles promoted to deep as extra coverage.
+    grid.biome[grid.idx(4, 4)] = BIOME.DEEP_WATER;
+    grid.biome[grid.idx(5, 5)] = BIOME.DEEP_WATER;
+    const rand = seededRand(3);
+    for (let n = 0; n < 200; n++) {
+      const goal = pickWanderGoal(grid, allWalkable, rand);
+      if (!goal) continue;
+      const b = grid.biome[grid.idx(goal.i, goal.j)];
+      expect(b).not.toBe(BIOME.SHALLOW_WATER);
+      expect(b).not.toBe(BIOME.DEEP_WATER);
+    }
+  });
+
+  it('stays inside the map bounds', () => {
+    // Corner anchor: structure at (0,0) means samples can stray OOB; picker
+    // must skip those and try again.
+    const grid = new TileGrid(40, 40);
+    grid.setWall(0, 0, 1);
+    const rand = seededRand(4);
+    for (let n = 0; n < 200; n++) {
+      const goal = pickWanderGoal(grid, allWalkable, rand);
+      if (!goal) continue;
+      expect(goal.i).toBeGreaterThanOrEqual(0);
+      expect(goal.j).toBeGreaterThanOrEqual(0);
+      expect(goal.i).toBeLessThan(grid.W);
+      expect(goal.j).toBeLessThan(grid.H);
+    }
+  });
+});
+
+describe('TileGrid structureTiles index', () => {
+  it('tracks add/remove through the setters', () => {
+    const grid = new TileGrid(20, 20);
+    expect(grid.structureTiles.size).toBe(0);
+    grid.setWall(3, 3, 1);
+    grid.setFloor(4, 4, 1);
+    grid.setRoof(5, 5, 1);
+    grid.setDoor(6, 6, 1);
+    grid.setTorch(7, 7, 1);
+    expect(grid.structureTiles.size).toBe(5);
+    // Clearing a wall removes it from the set.
+    grid.setWall(3, 3, 0);
+    expect(grid.structureTiles.size).toBe(4);
+    expect(grid.structureTiles.has(grid.idx(3, 3))).toBe(false);
+  });
+
+  it('keeps a tile indexed while any structure remains on it', () => {
+    // Wall + floor on the same tile — removing just the wall leaves the
+    // floor, so the tile stays in structureTiles.
+    const grid = new TileGrid(10, 10);
+    const k = grid.idx(2, 2);
+    grid.setWall(2, 2, 1);
+    grid.setFloor(2, 2, 1);
+    expect(grid.structureTiles.has(k)).toBe(true);
+    grid.setWall(2, 2, 0);
+    expect(grid.structureTiles.has(k)).toBe(true);
+    grid.setFloor(2, 2, 0);
+    expect(grid.structureTiles.has(k)).toBe(false);
+  });
+
+  it('recomputeCounts rebuilds the index from raw bitmaps', () => {
+    const grid = new TileGrid(8, 8);
+    // Write directly to bypass the setters, as persist/load does.
+    grid.wall[grid.idx(1, 1)] = 1;
+    grid.floor[grid.idx(2, 2)] = 1;
+    grid.torch[grid.idx(3, 3)] = 1;
+    grid.recomputeCounts();
+    expect(grid.structureTiles.size).toBe(3);
+    expect(grid.structureTiles.has(grid.idx(1, 1))).toBe(true);
+    expect(grid.structureTiles.has(grid.idx(2, 2))).toBe(true);
+    expect(grid.structureTiles.has(grid.idx(3, 3))).toBe(true);
+  });
+});
