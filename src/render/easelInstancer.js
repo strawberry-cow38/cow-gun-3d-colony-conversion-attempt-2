@@ -12,14 +12,14 @@ import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { FACING_YAWS } from '../world/facing.js';
 
-const FOOTPRINT = TILE_SIZE * 0.7;
+export const EASEL_FOOTPRINT = TILE_SIZE * 0.7;
 export const EASEL_HEIGHT = 1.6 * UNITS_PER_METER;
 const POST_WIDTH = 0.04 * UNITS_PER_METER;
 const CANVAS_WIDTH = TILE_SIZE * 0.62;
 const CANVAS_HEIGHT = 0.7 * UNITS_PER_METER;
 const CANVAS_DEPTH = 0.04 * UNITS_PER_METER;
 const CANVAS_Y = 0.9 * UNITS_PER_METER;
-const CANVAS_FRONT_OFFSET = FOOTPRINT * 0.22;
+const CANVAS_FRONT_OFFSET = EASEL_FOOTPRINT * 0.22;
 
 const WOOD_COLOR = 0x6b4a28;
 const CANVAS_COLOR = 0xe6d4a8;

@@ -1,41 +1,67 @@
 /**
- * Yellow outline around every selected crafting station. Single LineSegments
- * with a pooled vertex buffer. Furnace + easel draw a single-tile square at
- * the anchor; stove draws a 3x1 rectangle spanning the full footprint so the
- * whole body is highlighted, not just the middle tile.
+ * Translucent yellow 3D ghost box around every selected crafting station.
+ * Mirrors the box that objectSelectionViz draws around trees/walls/etc. so a
+ * selected furnace/easel/stove feels the same as any other selected world
+ * object — same affordance, same readability at distance.
+ *
+ * Stove is a 3x1 station: its box is rotated by the stove's `facing` so the
+ * long edge aligns with the body span. Furnace/easel are anchored on a single
+ * tile and don't need rotation.
  */
 
 import * as THREE from 'three';
-import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
-import { stoveFootprintTiles } from '../world/stove.js';
-import { writeRectOutline, writeSquareOutline } from './selectionGeom.js';
+import { tileToWorld } from '../world/coords.js';
+import { FACING_YAWS } from '../world/facing.js';
+import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
+import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
+import { STOVE_BODY_DEPTH, STOVE_BODY_HEIGHT, STOVE_BODY_SPAN } from './stoveInstancer.js';
 
 const SELECT_COLOR = 0xffe14a;
-const SELECT_RADIUS = TILE_SIZE * 0.52;
-const STOVE_HALF_SHORT = TILE_SIZE * 0.52;
-const STOVE_HALF_LONG = TILE_SIZE * 1.52;
-const SELECT_Y_OFFSET = 0.08 * UNITS_PER_METER;
 const CAPACITY = 64;
+
+const _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _p = new THREE.Vector3();
+const _s = new THREE.Vector3();
+const _yAxis = new THREE.Vector3(0, 1, 0);
 
 /** @param {THREE.Scene} scene */
 export function createStationSelectionViz(scene) {
-  const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(CAPACITY * 8 * 3);
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setDrawRange(0, 0);
-  const mat = new THREE.LineBasicMaterial({
+  const geo = new THREE.BoxGeometry(1, 1, 1);
+  const mat = new THREE.MeshBasicMaterial({
     color: SELECT_COLOR,
-    depthTest: false,
     transparent: true,
+    opacity: 0.18,
+    depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  const lines = new THREE.LineSegments(geo, mat);
-  lines.frustumCulled = false;
-  lines.renderOrder = 999;
-  scene.add(lines);
+  const mesh = new THREE.InstancedMesh(geo, mat, CAPACITY);
+  mesh.count = 0;
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 998;
+  scene.add(mesh);
 
-  // Signature of last-drawn selection so we can skip the GPU upload when
-  // nothing changed. Stove selections rebuild whenever facing changes too,
-  // because the outline orientation depends on it.
+  const edgeGeo = new THREE.EdgesGeometry(geo);
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: SELECT_COLOR,
+    transparent: true,
+    opacity: 0.7,
+    depthTest: false,
+  });
+  const edgeBasePositions = /** @type {Float32Array} */ (edgeGeo.getAttribute('position').array);
+  const edgeVertCount = edgeBasePositions.length / 3;
+  const edgePositions = new Float32Array(CAPACITY * edgeVertCount * 3);
+  const edgeBuffer = new THREE.BufferGeometry();
+  edgeBuffer.setAttribute('position', new THREE.BufferAttribute(edgePositions, 3));
+  edgeBuffer.setDrawRange(0, 0);
+  const edges = new THREE.LineSegments(edgeBuffer, edgeMat);
+  edges.frustumCulled = false;
+  edges.renderOrder = 999;
+  scene.add(edges);
+
+  // Cheap signature of the drawn selection + per-stove facing (the box
+  // rotates with facing). Bill activity doesn't affect the outline, so we
+  // don't need to resample every frame.
   let lastSig = '';
 
   /**
@@ -59,69 +85,95 @@ export function createStationSelectionViz(scene) {
     lastSig = sig;
 
     let n = 0;
-    n = drawSquares(positions, n, world, grid, sel.selectedFurnaces);
-    n = drawSquares(positions, n, world, grid, sel.selectedEasels);
-    n = drawStoves(positions, n, world, grid, sel.selectedStoves);
+    n = writeSquares(world, grid, sel.selectedFurnaces, n, FURNACE_FOOTPRINT, FURNACE_HEIGHT);
+    n = writeSquares(world, grid, sel.selectedEasels, n, EASEL_FOOTPRINT, EASEL_HEIGHT);
+    n = writeStoves(world, grid, sel.selectedStoves, n);
 
-    geo.attributes.position.needsUpdate = true;
-    geo.setDrawRange(0, n * 8);
-    lines.visible = n > 0;
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.visible = n > 0;
+    edgeBuffer.setDrawRange(0, n * edgeVertCount);
+    edgeBuffer.attributes.position.needsUpdate = true;
+    edges.visible = n > 0;
+  }
+
+  /**
+   * @param {import('../ecs/world.js').World} world
+   * @param {import('../world/tileGrid.js').TileGrid} grid
+   * @param {Set<number>} selected
+   * @param {number} startN
+   * @param {number} footprint
+   * @param {number} height
+   */
+  function writeSquares(world, grid, selected, startN, footprint, height) {
+    let n = startN;
+    for (const id of selected) {
+      if (n >= CAPACITY) break;
+      const a = world.get(id, 'TileAnchor');
+      if (!a) continue;
+      const w = tileToWorld(a.i, a.j, grid.W, grid.H);
+      const yBase = grid.getElevation(a.i, a.j);
+      _p.set(w.x, yBase + height * 0.5, w.z);
+      _q.identity();
+      _s.set(footprint, height, footprint);
+      _m.compose(_p, _q, _s);
+      writeInstance(n, _m);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * @param {import('../ecs/world.js').World} world
+   * @param {import('../world/tileGrid.js').TileGrid} grid
+   * @param {Set<number>} selected
+   * @param {number} startN
+   */
+  function writeStoves(world, grid, selected, startN) {
+    let n = startN;
+    for (const id of selected) {
+      if (n >= CAPACITY) break;
+      const a = world.get(id, 'TileAnchor');
+      const s = world.get(id, 'Stove');
+      if (!a || !s) continue;
+      const w = tileToWorld(a.i, a.j, grid.W, grid.H);
+      const yBase = grid.getElevation(a.i, a.j);
+      _p.set(w.x, yBase + STOVE_BODY_HEIGHT * 0.5, w.z);
+      // Rotate the box around Y so the long axis aligns with the body span
+      // (perpendicular to `facing`). Uses the same yaw table the renderer uses.
+      _q.setFromAxisAngle(_yAxis, FACING_YAWS[s.facing | 0] ?? 0);
+      _s.set(STOVE_BODY_SPAN, STOVE_BODY_HEIGHT, STOVE_BODY_DEPTH);
+      _m.compose(_p, _q, _s);
+      writeInstance(n, _m);
+      n++;
+    }
+    return n;
+  }
+
+  /** @param {number} idx @param {THREE.Matrix4} m */
+  function writeInstance(idx, m) {
+    mesh.setMatrixAt(idx, m);
+    writeEdges(edgePositions, idx * edgeVertCount * 3, edgeBasePositions, m);
   }
 
   return { update };
 }
 
 /**
- * @param {Float32Array} positions
- * @param {number} startN
- * @param {import('../ecs/world.js').World} world
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {Set<number>} selected
+ * @param {Float32Array} out
+ * @param {number} off
+ * @param {ArrayLike<number>} base
+ * @param {THREE.Matrix4} m
  */
-function drawSquares(positions, startN, world, grid, selected) {
-  let n = startN;
-  for (const id of selected) {
-    if (n >= CAPACITY) break;
-    const a = world.get(id, 'TileAnchor');
-    if (!a) continue;
-    const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-    const y = grid.getElevation(a.i, a.j) + SELECT_Y_OFFSET;
-    writeSquareOutline(positions, n * 8 * 3, w.x, y, w.z, SELECT_RADIUS);
-    n++;
+function writeEdges(out, off, base, m) {
+  const e = m.elements;
+  let p = off;
+  for (let i = 0; i < base.length; i += 3) {
+    const x = base[i];
+    const y = base[i + 1];
+    const z = base[i + 2];
+    out[p++] = e[0] * x + e[4] * y + e[8] * z + e[12];
+    out[p++] = e[1] * x + e[5] * y + e[9] * z + e[13];
+    out[p++] = e[2] * x + e[6] * y + e[10] * z + e[14];
   }
-  return n;
-}
-
-/**
- * Stove body spans three tiles. Compute the bounding rectangle across the
- * footprint and draw a single outline — one long box feels more like
- * "selected that appliance" than three stacked squares would.
- *
- * @param {Float32Array} positions
- * @param {number} startN
- * @param {import('../ecs/world.js').World} world
- * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {Set<number>} selected
- */
-function drawStoves(positions, startN, world, grid, selected) {
-  let n = startN;
-  for (const id of selected) {
-    if (n >= CAPACITY) break;
-    const a = world.get(id, 'TileAnchor');
-    const s = world.get(id, 'Stove');
-    if (!a || !s) continue;
-    const tiles = stoveFootprintTiles(a, s.facing | 0);
-    const ends = [tiles[0], tiles[2]];
-    const w0 = tileToWorld(ends[0].i, ends[0].j, grid.W, grid.H);
-    const w1 = tileToWorld(ends[1].i, ends[1].j, grid.W, grid.H);
-    const cx = (w0.x + w1.x) * 0.5;
-    const cz = (w0.z + w1.z) * 0.5;
-    const horizontal = Math.abs(w1.x - w0.x) > Math.abs(w1.z - w0.z);
-    const rx = horizontal ? STOVE_HALF_LONG : STOVE_HALF_SHORT;
-    const rz = horizontal ? STOVE_HALF_SHORT : STOVE_HALF_LONG;
-    const y = grid.getElevation(a.i, a.j) + SELECT_Y_OFFSET;
-    writeRectOutline(positions, n * 8 * 3, cx, y, cz, rx, rz);
-    n++;
-  }
-  return n;
 }
