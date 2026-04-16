@@ -69,6 +69,10 @@ import { dispatch } from './hotkeys.js';
  *   click-selection order dispatcher. Hotkeys (B/C/X/L/Y/F) fall through to
  *   this when the world has objects selected so a keybind fires the same
  *   path as clicking the panel button.
+ * @property {import('../render/buildTab.js').BuildTabApi} buildTab
+ *   build palette API — hotkeys call toggleOpen / openCategory / activateEntry
+ *   so B, the category letters, and per-buildable letters all route through
+ *   the same UI state the buttons manipulate.
  */
 
 /** @param {InputCtx} ctx */

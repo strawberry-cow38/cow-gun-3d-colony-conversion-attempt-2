@@ -34,6 +34,9 @@ import { colorToCss } from './dragSizeLabel.js';
  * @property {string} activeColor - CSS color applied when the designator is active
  * @property {string} categoryId - which category column this entry lives under
  * @property {ToggleableDesignator} designator
+ * @property {string} [hotkey] - KeyboardEvent.code that activates this entry while
+ *   its owning category is open (e.g. "KeyT"). Same letter may repeat across
+ *   categories; scope keeps them from colliding.
  * @property {boolean} [stuffed] - if true, right-click opens the material picker and
  *   the button shows a swatch reflecting the designator's currentStuff
  * @property {boolean} [croppable] - if true, right-click opens the crop-kind picker
@@ -45,6 +48,8 @@ import { colorToCss } from './dragSizeLabel.js';
  * @property {string} id
  * @property {string} label
  * @property {string} icon
+ * @property {string} [hotkey] - KeyboardEvent.code that opens this category when
+ *   the build palette is open (e.g. "KeyO" for Orders).
  */
 
 /**
@@ -56,15 +61,49 @@ import { colorToCss } from './dragSizeLabel.js';
  * @type {BuildCategory[]}
  */
 const CATEGORIES = [
-  { id: 'orders', label: 'Orders', icon: '📋' },
-  { id: 'zones', label: 'Zones', icon: '📐' },
-  { id: 'structure', label: 'Structure', icon: '🏗️' },
-  { id: 'furniture', label: 'Furniture', icon: '🪑' },
-  { id: 'production', label: 'Production', icon: '⚙️' },
-  { id: 'lighting', label: 'Lighting', icon: '💡' },
+  { id: 'orders', label: 'Orders', icon: '📋', hotkey: 'KeyO' },
+  { id: 'zones', label: 'Zones', icon: '📐', hotkey: 'KeyZ' },
+  { id: 'structure', label: 'Structure', icon: '🏗️', hotkey: 'KeyU' },
+  { id: 'furniture', label: 'Furniture', icon: '🪑', hotkey: 'KeyI' },
+  { id: 'production', label: 'Production', icon: '⚙️', hotkey: 'KeyM' },
+  { id: 'lighting', label: 'Lighting', icon: '💡', hotkey: 'KeyG' },
 ];
 
+// Cancel + Demolish are injected into every category that doesn't already
+// host them (Orders does). Keeps C / X available as the last row of every
+// palette tab — matching RimWorld muscle memory.
+const SHARED_ORDER_ENTRIES = /** @type {const} */ ([
+  {
+    baseId: 'cancel',
+    label: 'Cancel',
+    icon: '❌',
+    hotkey: 'KeyC',
+    activeColor: '#ffe24a',
+    hotkeyHint: 'drag to cancel blueprints + pending demolition (refunds delivered resources)',
+    designatorKey: 'cancelDesignator',
+  },
+  {
+    baseId: 'deconstruct',
+    label: 'Demolish',
+    icon: '🔨',
+    hotkey: 'KeyX',
+    activeColor: '#ff4a4a',
+    hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
+    designatorKey: 'deconstructDesignator',
+  },
+]);
+
 /**
+ * @typedef {Object} BuildTabApi
+ * @property {() => void} update
+ * @property {HTMLElement} root
+ * @property {{ open: boolean, openCategoryId: string | null }} state
+ * @property {() => void} toggleOpen
+ * @property {(id: string) => void} openCategory
+ * @property {(id: string) => boolean} activateEntry
+ * @property {(code: string) => BuildTabEntry | null} findEntryByHotkey
+ * @property {(code: string) => BuildCategory | null} findCategoryByHotkey
+ *
  * @typedef {Object} BuildTabOpts
  * @property {ToggleableDesignator} chopDesignator
  * @property {ToggleableDesignator} cutDesignator
@@ -100,6 +139,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'mark mature trees for felling (≥50% grown)',
       activeColor: '#ffae4a',
       categoryId: 'orders',
+      hotkey: 'KeyT',
       designator: opts.chopDesignator,
     },
     {
@@ -110,6 +150,7 @@ export function createBuildTab(opts) {
         'snip saplings, unripe crops, brush — yields whatever they\u2019re currently worth',
       activeColor: '#9fdc5a',
       categoryId: 'orders',
+      hotkey: 'KeyK',
       designator: opts.cutDesignator,
     },
     {
@@ -119,6 +160,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'mark boulders for mining',
       activeColor: '#bad9ff',
       categoryId: 'orders',
+      hotkey: 'KeyN',
       designator: opts.mineDesignator,
     },
     {
@@ -128,6 +170,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to demolish walls, doors, torches (50% refund)',
       activeColor: '#ff4a4a',
       categoryId: 'orders',
+      hotkey: 'KeyX',
       designator: opts.deconstructDesignator,
     },
     {
@@ -137,6 +180,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to remove roofs only (leaves the walls under them standing)',
       activeColor: '#ff8fd0',
       categoryId: 'orders',
+      hotkey: 'KeyY',
       designator: opts.removeRoofDesignator,
     },
     {
@@ -146,6 +190,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to tear up floors only (walls/doors/roofs untouched)',
       activeColor: '#d4a14a',
       categoryId: 'orders',
+      hotkey: 'KeyL',
       designator: opts.removeFloorDesignator,
     },
     {
@@ -155,6 +200,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a painting on a wall to pry it off and return it to storage',
       activeColor: '#ff8fd0',
       categoryId: 'orders',
+      hotkey: 'KeyJ',
       designator: opts.uninstallDesignator,
     },
     {
@@ -164,6 +210,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to cancel blueprints + pending demolition (refunds delivered resources)',
       activeColor: '#ffe24a',
       categoryId: 'orders',
+      hotkey: 'KeyC',
       designator: opts.cancelDesignator,
     },
 
@@ -175,6 +222,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'designate storage tiles',
       activeColor: '#90d0ff',
       categoryId: 'zones',
+      hotkey: 'KeyT',
       designator: opts.stockpileDesignator,
     },
     {
@@ -184,6 +232,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'designate growing zones (right-click for crop kind)',
       activeColor: '#6fe2a0',
       categoryId: 'zones',
+      hotkey: 'KeyK',
       designator: opts.farmZoneDesignator,
       croppable: true,
     },
@@ -194,6 +243,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'drag to mark tiles the auto-roofer should skip',
       activeColor: '#d060ff',
       categoryId: 'zones',
+      hotkey: 'KeyN',
       designator: opts.ignoreRoofDesignator,
     },
 
@@ -205,6 +255,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'build walls (right-click for material)',
       activeColor: '#e9d477',
       categoryId: 'structure',
+      hotkey: 'KeyL',
       designator: opts.wallDesignator,
       stuffed: true,
     },
@@ -215,6 +266,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a door (right-click for material)',
       activeColor: '#ffb070',
       categoryId: 'structure',
+      hotkey: 'KeyK',
       designator: opts.doorDesignator,
       stuffed: true,
     },
@@ -226,6 +278,7 @@ export function createBuildTab(opts) {
         'drag to designate roofs (free; right-click for material — walls must match to support)',
       activeColor: '#c0a080',
       categoryId: 'structure',
+      hotkey: 'KeyT',
       designator: opts.roofDesignator,
       stuffed: true,
     },
@@ -237,6 +290,7 @@ export function createBuildTab(opts) {
         'drag to designate floors — cows walk at full speed on floors, 85% off them (right-click for material)',
       activeColor: '#bf9a6a',
       categoryId: 'structure',
+      hotkey: 'KeyJ',
       designator: opts.floorDesignator,
       stuffed: true,
     },
@@ -249,6 +303,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a furnace (15 stone)',
       activeColor: '#d2785a',
       categoryId: 'production',
+      hotkey: 'KeyT',
       designator: opts.furnaceDesignator,
     },
     {
@@ -258,6 +313,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place an easel (8 wood) — R rotates facing',
       activeColor: '#d8b26a',
       categoryId: 'production',
+      hotkey: 'KeyJ',
       designator: opts.easelDesignator,
     },
     {
@@ -267,6 +323,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click to place a 3x1 stove (25 stone) — R rotates facing',
       activeColor: '#d2b98a',
       categoryId: 'production',
+      hotkey: 'KeyK',
       designator: opts.stoveDesignator,
     },
 
@@ -278,6 +335,7 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile to place a torch',
       activeColor: '#ffb84a',
       categoryId: 'lighting',
+      hotkey: 'KeyT',
       designator: opts.torchDesignator,
     },
     {
@@ -287,9 +345,30 @@ export function createBuildTab(opts) {
       hotkeyHint: 'click a tile next to a wall to mount a torch on it',
       activeColor: '#ffd070',
       categoryId: 'lighting',
+      hotkey: 'KeyK',
       designator: opts.wallTorchDesignator,
     },
   ];
+
+  // Cancel + Demolish appear in every non-orders tab too — same designator
+  // reference, suffixed id to keep each button uniquely addressable.
+  for (const cat of CATEGORIES) {
+    if (cat.id === 'orders') continue;
+    for (const shared of SHARED_ORDER_ENTRIES) {
+      entries.push({
+        id: `${shared.baseId}-${cat.id}`,
+        label: shared.label,
+        icon: shared.icon,
+        hotkeyHint: shared.hotkeyHint,
+        activeColor: shared.activeColor,
+        categoryId: cat.id,
+        hotkey: shared.hotkey,
+        designator: /** @type {ToggleableDesignator} */ (
+          /** @type {Record<string, ToggleableDesignator>} */ (opts)[shared.designatorKey]
+        ),
+      });
+    }
+  }
 
   const root = document.createElement('div');
   root.id = 'build-tab';
@@ -488,7 +567,51 @@ export function createBuildTab(opts) {
   document.body.appendChild(root);
   syncPanels();
 
-  return { update, root };
+  function toggleOpen() {
+    state.open = !state.open;
+    if (!state.open) {
+      state.openCategoryId = null;
+      deactivateActive();
+    }
+    syncPanels();
+  }
+
+  function openCategory(/** @type {string} */ id) {
+    if (!CATEGORIES.some((c) => c.id === id)) return;
+    if (!state.open) state.open = true;
+    state.openCategoryId = state.openCategoryId === id ? null : id;
+    deactivateActive();
+    syncPanels();
+  }
+
+  function activateEntry(/** @type {string} */ id) {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return false;
+    if (entry.designator.active) entry.designator.deactivate();
+    else entry.designator.activate();
+    return true;
+  }
+
+  // Entry hotkeys are category-scoped — same letter can repeat across tabs.
+  function findEntryByHotkey(/** @type {string} */ code) {
+    if (!state.openCategoryId) return null;
+    return entries.find((e) => e.hotkey === code && e.categoryId === state.openCategoryId) ?? null;
+  }
+
+  function findCategoryByHotkey(/** @type {string} */ code) {
+    return CATEGORIES.find((c) => c.hotkey === code) ?? null;
+  }
+
+  return {
+    update,
+    root,
+    state,
+    toggleOpen,
+    openCategory,
+    activateEntry,
+    findEntryByHotkey,
+    findCategoryByHotkey,
+  };
 }
 
 /**

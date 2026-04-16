@@ -167,6 +167,49 @@ export const HOTKEYS = [
       ctx.objectPanel?.runKey(e.code);
     },
   },
+  // Build palette entry hotkey — only fires when a category is open and the
+  // key matches a per-buildable letter in that category. Must come before
+  // the category/global handlers so T-in-Orders activates chop rather than
+  // getting eaten by something generic.
+  {
+    match: (e, ctx) => ctx.buildTab.findEntryByHotkey(e.code) !== null,
+    run: (ctx, e) => {
+      const entry = ctx.buildTab.findEntryByHotkey(e.code);
+      if (entry) ctx.buildTab.activateEntry(entry.id);
+    },
+  },
+  // Build palette category hotkey — runs when the palette is open, picks
+  // which column of buildables is showing.
+  {
+    match: (e, ctx) =>
+      ctx.buildTab.state.open && ctx.buildTab.findCategoryByHotkey(e.code) !== null,
+    run: (ctx, e) => {
+      const cat = ctx.buildTab.findCategoryByHotkey(e.code);
+      if (cat) ctx.buildTab.openCategory(cat.id);
+    },
+  },
+  // B — toggle the build palette.
+  {
+    match: (e) => e.code === 'KeyB',
+    run: (ctx) => {
+      ctx.buildTab.toggleOpen();
+      ctx.audio.play(ctx.buildTab.state.open ? 'toggle_on' : 'toggle_off');
+    },
+  },
+  // C — activate Cancel anywhere (no category needs to be open).
+  {
+    match: (e) => e.code === 'KeyC',
+    run: (ctx) => {
+      ctx.buildTab.activateEntry('cancel');
+    },
+  },
+  // X — activate Demolish anywhere (no category needs to be open).
+  {
+    match: (e) => e.code === 'KeyX',
+    run: (ctx) => {
+      ctx.buildTab.activateEntry('deconstruct');
+    },
+  },
   // F — toggle camera follow. Auto-selects the first cow if nothing's
   // selected so pressing F on a fresh world still does something.
   {
