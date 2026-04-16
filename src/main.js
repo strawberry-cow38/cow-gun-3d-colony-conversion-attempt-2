@@ -20,6 +20,7 @@ import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
 import { makeHaulPostingSystem } from './jobs/haul.js';
+import { createBedPanel } from './render/bedPanel.js';
 import { createBuildTab } from './render/buildTab.js';
 import { createCowCamOverlay } from './render/cowCamOverlay.js';
 import { createCowPanel } from './render/cowPanel.js';
@@ -248,6 +249,7 @@ const {
   stationSelectionViz,
   easelInstancer,
   stoveInstancer,
+  bedInstancer,
   paintingInstancer,
   wallArtInstancer,
   buildSiteInstancer,
@@ -310,6 +312,8 @@ const state = {
   primaryEasel: null,
   selectedStoves: new Set(),
   primaryStove: null,
+  selectedBeds: new Set(),
+  primaryBed: null,
   selectedObjects: new Set(),
   primaryObject: null,
   lastPick: null,
@@ -332,7 +336,7 @@ const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
  * (non-additive) pick is exclusive: picking a cow drops item/station/object
  * selections, picking an object drops cow/item/station, and so on.
  *
- * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'objects'} keep
+ * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'objects'} keep
  */
 const clearOtherSelections = (keep) => {
   if (keep !== 'cows') {
@@ -353,6 +357,10 @@ const clearOtherSelections = (keep) => {
   if (keep !== 'stoves') {
     state.selectedStoves.clear();
     state.primaryStove = null;
+  }
+  if (keep !== 'beds') {
+    state.selectedBeds.clear();
+    state.primaryBed = null;
   }
   if (keep !== 'objects') {
     state.selectedObjects.clear();
@@ -570,6 +578,45 @@ const selectStove = (id, additive) => {
   updateHud();
 };
 
+/**
+ * Bed selection mirrors the other station selections — mutex with cows,
+ * items, and other stations. The selected bed's panel lets the player
+ * assign an owner from the colony roster.
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectBed = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
+      state.selectedBeds.clear();
+      state.primaryBed = null;
+    }
+  } else if (additive) {
+    if (state.selectedBeds.has(id)) {
+      state.selectedBeds.delete(id);
+      if (state.primaryBed === id) {
+        state.primaryBed =
+          state.selectedBeds.size > 0
+            ? /** @type {number} */ (state.selectedBeds.values().next().value)
+            : null;
+      }
+    } else {
+      state.selectedBeds.add(id);
+      state.primaryBed = id;
+    }
+    audio.play('click');
+  } else {
+    clearOtherSelections('beds');
+    state.selectedBeds.clear();
+    state.selectedBeds.add(id);
+    state.primaryBed = id;
+    audio.play('click');
+  }
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
 new ItemSelector(
   canvas,
   camera,
@@ -653,17 +700,19 @@ const routeObjectPick = (id, additive) => {
     if (world.get(id, 'Furnace')) return selectFurnace(id, additive);
     if (world.get(id, 'Easel')) return selectEasel(id, additive);
     if (world.get(id, 'Stove')) return selectStove(id, additive);
+    if (world.get(id, 'Bed')) return selectBed(id, additive);
     selectObject(id, additive);
     return;
   }
   // Ground click: clear every bucket ObjectSelector owns (objects + all
-  // stations) so clicking empty terrain deselects a furnace/easel/stove
+  // stations) so clicking empty terrain deselects a furnace/easel/stove/bed
   // the same way it drops a tree or wall selection.
   selectObject(null, additive);
   if (!additive) {
     selectFurnace(null, false);
     selectEasel(null, false);
     selectStove(null, false);
+    selectBed(null, false);
   }
 };
 
@@ -836,6 +885,15 @@ const stovePanel = createStovePanel({
   },
 });
 
+const bedPanel = createBedPanel({
+  world,
+  state,
+  onChange: () => {
+    bedInstancer.markDirty();
+    updateHud();
+  },
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -909,6 +967,7 @@ const { render, getFps } = createRenderFrame({
   furnacePanel,
   easelPanel,
   stovePanel,
+  bedPanel,
   objectPanel,
   buildTab,
   workTab,

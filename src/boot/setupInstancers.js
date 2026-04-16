@@ -9,6 +9,7 @@
 
 import { createAmbientParticles } from '../render/ambientParticles.js';
 import { createBedInstancer } from '../render/bedInstancer.js';
+import { createBedNameTags } from '../render/bedNameTags.js';
 import { createBoulderInstancer } from '../render/boulderInstancer.js';
 import { createBuildSiteInstancer } from '../render/buildSiteInstancer.js';
 import { createCowChatBubbles } from '../render/cowChatBubbles.js';
@@ -86,6 +87,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     easelInstancer: createEaselInstancer(scene, 64),
     stoveInstancer: createStoveInstancer(scene, 32),
     bedInstancer: createBedInstancer(scene, 64),
+    bedNameTags: createBedNameTags(scene),
     paintingInstancer: createPaintingInstancer(scene, 128),
     wallArtInstancer: createWallArtInstancer(scene, 128),
     buildSiteInstancer: createBuildSiteInstancer(scene, 1024),

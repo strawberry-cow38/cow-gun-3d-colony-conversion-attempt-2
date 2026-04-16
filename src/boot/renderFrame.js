@@ -45,6 +45,7 @@ function speedIcon(speed) {
  *   furnacePanel: { update: () => void },
  *   easelPanel: { update: () => void },
  *   stovePanel: { update: () => void },
+ *   bedPanel: { update: () => void },
  *   objectPanel: { update: () => void },
  *   buildTab: { update: () => void },
  *   workTab: { update: () => void },
@@ -80,6 +81,7 @@ export function createRenderFrame({
   furnacePanel,
   easelPanel,
   stovePanel,
+  bedPanel,
   objectPanel,
   buildTab,
   workTab,
@@ -116,6 +118,7 @@ export function createRenderFrame({
     easelInstancer,
     stoveInstancer,
     bedInstancer,
+    bedNameTags,
     paintingInstancer,
     wallArtInstancer,
     buildSiteInstancer,
@@ -179,6 +182,7 @@ export function createRenderFrame({
     cowInstancer.update(world, alpha, tSec, tileGrid, hiddenCowId);
     cowHitboxes.update(world);
     cowNameTags.update(world, camera, alpha);
+    bedNameTags.update(world, tileGrid, camera);
     cowThoughtBubbles.update(world, camera, alpha);
     cowChatBubbles.update(world, camera, alpha, simTick);
     draftBadge.update(world, tSec);
@@ -201,6 +205,7 @@ export function createRenderFrame({
       selectedFurnaces: state.selectedFurnaces,
       selectedEasels: state.selectedEasels,
       selectedStoves: state.selectedStoves,
+      selectedBeds: state.selectedBeds,
     });
     easelInstancer.update(world, tileGrid);
     stoveInstancer.update(world, tileGrid);
@@ -227,6 +232,7 @@ export function createRenderFrame({
     furnacePanel.update();
     easelPanel.update();
     stovePanel.update();
+    bedPanel.update();
     objectPanel.update();
     buildTab.update();
     workTab.update();

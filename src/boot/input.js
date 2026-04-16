@@ -20,6 +20,8 @@ import { dispatch } from './hotkeys.js';
  * @property {number|null} primaryEasel
  * @property {Set<number>} selectedStoves
  * @property {number|null} primaryStove
+ * @property {Set<number>} selectedBeds
+ * @property {number|null} primaryBed
  * @property {Set<number>} selectedObjects
  * @property {number|null} primaryObject
  * @property {{ i: number, j: number } | null} lastPick

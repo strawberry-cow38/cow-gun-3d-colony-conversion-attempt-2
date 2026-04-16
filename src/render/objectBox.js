@@ -10,8 +10,9 @@
 import { objectTypeFor } from '../ui/objectTypes.js';
 import { BOULDER_VISUALS } from '../world/boulders.js';
 import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
-import { FACING_YAWS } from '../world/facing.js';
+import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { TREE_VISUALS, growthScale } from '../world/trees.js';
+import { BED_HEADBOARD_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
 import { STOVE_BODY_DEPTH, STOVE_BODY_HEIGHT, STOVE_BODY_SPAN } from './stoveInstancer.js';
@@ -41,7 +42,7 @@ export const TRACKED_COMPONENTS = ['Tree', 'Boulder', 'Wall', 'Door', 'Torch', '
 /** Crafting stations. Tracked separately because they live outside the
  * OBJECT_TYPES registry (they have dedicated panels) but still want
  * click-what-you-see 3D hitbox picking. */
-export const STATION_COMPONENTS = /** @type {const} */ (['Furnace', 'Easel', 'Stove']);
+export const STATION_COMPONENTS = /** @type {const} */ (['Furnace', 'Easel', 'Stove', 'Bed']);
 
 /**
  * @param {import('../ui/objectTypes.js').ObjectType} entry
@@ -134,7 +135,7 @@ export function boxForEntity(world, id) {
  *
  * @param {import('../ecs/world.js').World} world
  * @param {number} id
- * @returns {{ w: number, h: number, d: number, yBase: number, yaw: number } | null}
+ * @returns {{ w: number, h: number, d: number, yBase: number, yaw: number, offsetX?: number, offsetZ?: number } | null}
  */
 export function boxForStation(world, id) {
   if (world.get(id, 'Furnace')) {
@@ -151,6 +152,22 @@ export function boxForStation(world, id) {
       d: STOVE_BODY_DEPTH,
       yBase: 0,
       yaw: FACING_YAWS[stove.facing | 0] ?? 0,
+    };
+  }
+  const bed = world.get(id, 'Bed');
+  if (bed) {
+    // Mattress center sits half a tile forward of the anchor (bed spans anchor
+    // → forward tile), so shift the box so it covers both tiles rather than
+    // floating over just the foot.
+    const off = FACING_OFFSETS[bed.facing | 0] ?? FACING_OFFSETS[0];
+    return {
+      w: BED_WIDTH,
+      h: BED_HEADBOARD_HEIGHT,
+      d: BED_LENGTH,
+      yBase: 0,
+      yaw: FACING_YAWS[bed.facing | 0] ?? 0,
+      offsetX: off.di * (TILE_SIZE / 2),
+      offsetZ: off.dj * (TILE_SIZE / 2),
     };
   }
   return null;

@@ -10,8 +10,9 @@
  */
 
 import * as THREE from 'three';
-import { tileToWorld } from '../world/coords.js';
-import { FACING_YAWS } from '../world/facing.js';
+import { TILE_SIZE, tileToWorld } from '../world/coords.js';
+import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { BED_HEADBOARD_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
 import { STOVE_BODY_DEPTH, STOVE_BODY_HEIGHT, STOVE_BODY_SPAN } from './stoveInstancer.js';
@@ -71,6 +72,7 @@ export function createStationSelectionViz(scene) {
    *   selectedFurnaces: Set<number>,
    *   selectedEasels: Set<number>,
    *   selectedStoves: Set<number>,
+   *   selectedBeds: Set<number>,
    * }} sel
    */
   function update(world, grid, sel) {
@@ -81,6 +83,10 @@ export function createStationSelectionViz(scene) {
       const s = world.get(id, 'Stove');
       sig += `S${id}:${s?.facing ?? 0},`;
     }
+    for (const id of sel.selectedBeds) {
+      const b = world.get(id, 'Bed');
+      sig += `B${id}:${b?.facing ?? 0},`;
+    }
     if (sig === lastSig) return;
     lastSig = sig;
 
@@ -88,6 +94,7 @@ export function createStationSelectionViz(scene) {
     n = writeSquares(world, grid, sel.selectedFurnaces, n, FURNACE_FOOTPRINT, FURNACE_HEIGHT);
     n = writeSquares(world, grid, sel.selectedEasels, n, EASEL_FOOTPRINT, EASEL_HEIGHT);
     n = writeStoves(world, grid, sel.selectedStoves, n);
+    n = writeBeds(world, grid, sel.selectedBeds, n);
 
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
@@ -143,6 +150,37 @@ export function createStationSelectionViz(scene) {
       // (perpendicular to `facing`). Uses the same yaw table the renderer uses.
       _q.setFromAxisAngle(_yAxis, FACING_YAWS[s.facing | 0] ?? 0);
       _s.set(STOVE_BODY_SPAN, STOVE_BODY_HEIGHT, STOVE_BODY_DEPTH);
+      _m.compose(_p, _q, _s);
+      writeInstance(n, _m);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * @param {import('../ecs/world.js').World} world
+   * @param {import('../world/tileGrid.js').TileGrid} grid
+   * @param {Set<number>} selected
+   * @param {number} startN
+   */
+  function writeBeds(world, grid, selected, startN) {
+    let n = startN;
+    for (const id of selected) {
+      if (n >= CAPACITY) break;
+      const a = world.get(id, 'TileAnchor');
+      const b = world.get(id, 'Bed');
+      if (!a || !b) continue;
+      const anchor = tileToWorld(a.i, a.j, grid.W, grid.H);
+      const off = FACING_OFFSETS[b.facing | 0] ?? FACING_OFFSETS[0];
+      // Mattress center is half a tile forward from the anchor — match the
+      // renderer so the box hugs the mattress rather than floating over the
+      // foot tile.
+      const cx = anchor.x + off.di * (TILE_SIZE / 2);
+      const cz = anchor.z + off.dj * (TILE_SIZE / 2);
+      const yBase = grid.getElevation(a.i, a.j);
+      _p.set(cx, yBase + BED_HEADBOARD_HEIGHT * 0.5, cz);
+      _q.setFromAxisAngle(_yAxis, FACING_YAWS[b.facing | 0] ?? 0);
+      _s.set(BED_WIDTH, BED_HEADBOARD_HEIGHT, BED_LENGTH);
       _m.compose(_p, _q, _s);
       writeInstance(n, _m);
       n++;

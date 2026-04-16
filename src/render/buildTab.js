@@ -56,7 +56,7 @@ import { colorToCss } from './dragSizeLabel.js';
  * Categories are declarative: add a row here to get a new tab. An entry lands
  * in a tab by matching on `categoryId`. Empty categories render as a greyed-
  * out tab so the palette can advertise upcoming buckets before their contents
- * exist (e.g. furniture sits here while beds/chairs/tables are still TBD).
+ * exist (e.g. furniture holds beds; chairs/tables are still TBD).
  *
  * @type {BuildCategory[]}
  */
@@ -333,7 +333,7 @@ export function createBuildTab(opts) {
       icon: '🛏️',
       hotkeyHint: 'click to place a 2x1 bed (8 wood) — R rotates facing; cows walk on it',
       activeColor: '#8fbcdb',
-      categoryId: 'production',
+      categoryId: 'furniture',
       hotkey: 'KeyL',
       designator: opts.bedDesignator,
     },

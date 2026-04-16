@@ -80,7 +80,7 @@ export function createObjectHitboxes(scene, capacity) {
         const anchor = components.TileAnchor;
         const center = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
         const yBase = grid.getElevation(anchor.i, anchor.j) + box.yBase;
-        _p.set(center.x, yBase + box.h * 0.5, center.z);
+        _p.set(center.x + (box.offsetX ?? 0), yBase + box.h * 0.5, center.z + (box.offsetZ ?? 0));
         _s.set(box.w, box.h, box.d);
         if (box.yaw) _q.setFromAxisAngle(_yAxis, box.yaw);
         else _q.identity();
