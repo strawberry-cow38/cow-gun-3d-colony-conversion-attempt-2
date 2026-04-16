@@ -145,6 +145,7 @@ export function createHud(ctx) {
     if (selCount > 0 && state.primaryCow !== null) {
       const brain = world.get(state.primaryCow, 'Brain');
       const hunger = world.get(state.primaryCow, 'Hunger');
+      const tiredness = world.get(state.primaryCow, 'Tiredness');
       const job = world.get(state.primaryCow, 'Job');
       const path = world.get(state.primaryCow, 'Path');
       const pos = world.get(state.primaryCow, 'Position');
@@ -166,6 +167,7 @@ export function createHud(ctx) {
           header,
           `  pos: x=${pos.x.toFixed(1)} z=${pos.z.toFixed(1)}`,
           `  hunger: ${(hunger.value * 100).toFixed(0)}%`,
+          `  tiredness: ${(tiredness.value * 100).toFixed(0)}%`,
           `  job: ${job.kind} / ${job.state}`,
           `  path: ${path.index}/${path.steps.length} steps`,
           walkLine,

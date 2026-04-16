@@ -107,6 +107,24 @@ export function createCowPanel(opts) {
   headerText.append(nameEl, genderEl);
   header.append(avatar, headerText);
 
+  // Always-visible needs block: hunger + tiredness bars + the cow's assigned
+  // bed. Sits above the tab bar so vitals stay visible no matter which tab
+  // the player has open.
+  const needsBlock = document.createElement('div');
+  Object.assign(needsBlock.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    margin: '6px 0 2px',
+    fontSize: '11px',
+    color: '#c8d0d8',
+  });
+  const hungerBar = createNeedBar('Hunger', '#f4c860');
+  const tirednessBar = createNeedBar('Tiredness', '#8fbcdb');
+  const bedLine = document.createElement('div');
+  Object.assign(bedLine.style, { marginTop: '2px', color: '#b5c0cc' });
+  needsBlock.append(hungerBar.root, tirednessBar.root, bedLine);
+
   const stats = document.createElement('div');
   Object.assign(stats.style, {
     display: 'grid',
@@ -180,7 +198,7 @@ export function createCowPanel(opts) {
   const socialBody = document.createElement('div');
   Object.assign(socialBody.style, { fontSize: '12px', color: '#d8dfe6' });
 
-  root.append(header, tabBar, bioBody, skillsBody, medicalBody, socialBody);
+  root.append(header, needsBlock, tabBar, bioBody, skillsBody, medicalBody, socialBody);
   document.body.appendChild(root);
 
   /** @type {'bio'|'skills'|'medical'|'social'} */
@@ -247,6 +265,29 @@ export function createCowPanel(opts) {
     showTraitDetail(null);
   }
 
+  /**
+   * Walk the Bed query once to find the bed owned by this cow. O(n) but n is
+   * the colony bed count, which stays small, and we only pay it once per panel
+   * update (one cow primary at a time).
+   * @param {number} cowId
+   */
+  function updateBedLine(cowId) {
+    let ownedAnchor = null;
+    for (const { components } of world.query(['Bed', 'TileAnchor'])) {
+      if (components.Bed.ownerId === cowId) {
+        ownedAnchor = components.TileAnchor;
+        break;
+      }
+    }
+    if (ownedAnchor) {
+      bedLine.textContent = `Bed: assigned @ ${ownedAnchor.i},${ownedAnchor.j}`;
+      bedLine.style.color = '#b5c0cc';
+    } else {
+      bedLine.textContent = 'Bed: none (floor-sleep)';
+      bedLine.style.color = '#e29999';
+    }
+  }
+
   /** @param {string | null} id */
   function showTraitDetail(id) {
     if (!id) {
@@ -291,6 +332,13 @@ export function createCowPanel(opts) {
     const childhood = identity.childhood ?? '';
     const profession = identity.profession ?? '';
     const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}|${childhood}|${profession}`;
+    // Needs bars tick every update — values change continuously, so no cache
+    // key gate. Setting style.width is a cheap op the browser batches.
+    const hunger = world.get(id, 'Hunger');
+    const tiredness = world.get(id, 'Tiredness');
+    if (hunger) hungerBar.update(hunger.value);
+    if (tiredness) tirednessBar.update(tiredness.value);
+    updateBedLine(id);
     if (activeTab === 'social') renderSocial(id);
     if (activeTab === 'medical') renderMedical(id);
     if (activeTab === 'skills') renderSkills(id);
@@ -952,6 +1000,65 @@ function makeTraitChip(def, onActivate) {
     onActivate();
   });
   return chip;
+}
+
+/**
+ * Small horizontal progress bar with a label + value text. Returns the root
+ * node and an `update(value, text?)` closure so callers can poke it without
+ * having to touch the DOM directly.
+ *
+ * @param {string} label
+ * @param {string} color
+ */
+function createNeedBar(label, color) {
+  const root = document.createElement('div');
+  Object.assign(root.style, { display: 'flex', alignItems: 'center', gap: '6px' });
+  const labelEl = document.createElement('div');
+  Object.assign(labelEl.style, {
+    width: '60px',
+    color: '#9ba6b1',
+    flex: '0 0 60px',
+  });
+  labelEl.textContent = label;
+  const track = document.createElement('div');
+  Object.assign(track.style, {
+    position: 'relative',
+    flex: '1 1 auto',
+    height: '10px',
+    background: 'rgba(255, 255, 255, 0.06)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '3px',
+    overflow: 'hidden',
+  });
+  const fill = document.createElement('div');
+  Object.assign(fill.style, {
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    bottom: '0',
+    width: '0%',
+    background: color,
+    transition: 'width 120ms linear',
+  });
+  const text = document.createElement('div');
+  Object.assign(text.style, {
+    width: '32px',
+    textAlign: 'right',
+    color: '#d8dfe6',
+    flex: '0 0 32px',
+  });
+  track.appendChild(fill);
+  root.append(labelEl, track, text);
+  /**
+   * @param {number} value 0..1
+   * @param {string=} overrideText
+   */
+  function update(value, overrideText) {
+    const pct = Math.max(0, Math.min(1, value)) * 100;
+    fill.style.width = `${pct.toFixed(1)}%`;
+    text.textContent = overrideText ?? `${pct.toFixed(0)}%`;
+  }
+  return { root, update };
 }
 
 /**
