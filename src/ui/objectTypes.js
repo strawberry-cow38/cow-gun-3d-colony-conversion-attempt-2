@@ -14,13 +14,24 @@
  * want one panel to rule them all.
  */
 
+import { buildTicksForKind } from '../jobs/build.js';
+import { releaseBuildSite } from '../render/buildDesignator.js';
 import { TREE_MAX_WOOD, TREE_MIN_YIELD_GROWTH, woodYieldFor } from '../world/trees.js';
 
 /**
  * @typedef {Object} ObjectOrderCtx
  * @property {import('../ecs/world.js').World} world
  * @property {import('../jobs/board.js').JobBoard} board
+ * @property {import('../world/tileGrid.js').TileGrid} [tileGrid]
+ *   needed by orders that despawn tile-anchored entities (blueprint cancel)
  * @property {{ play: (kind: string) => void }} [audio]
+ */
+
+/**
+ * @typedef {Object} ObjectInfoCtx
+ * @property {import('../jobs/board.js').JobBoard} [board]
+ *   lets subtitle/description callbacks reach into the job board for live
+ *   info (e.g. "Bessie is on the way").
  */
 
 /**
@@ -40,9 +51,9 @@ import { TREE_MAX_WOOD, TREE_MIN_YIELD_GROWTH, woodYieldFor } from '../world/tre
  * @property {string} component             primary ECS component to query
  * @property {(world: import('../ecs/world.js').World, id: number) => string} label
  *   display label for a single selected entity
- * @property {(world: import('../ecs/world.js').World, id: number) => string} [subtitle]
+ * @property {(world: import('../ecs/world.js').World, id: number, info?: ObjectInfoCtx) => string} [subtitle]
  *   short sub-line under the title (e.g. "mature · 100% grown")
- * @property {(world: import('../ecs/world.js').World, id: number) => string} description
+ * @property {(world: import('../ecs/world.js').World, id: number, info?: ObjectInfoCtx) => string} description
  * @property {(world: import('../ecs/world.js').World, id: number) => string | null} [kindOf]
  *   double-click "select-similar" bucket. Return a sub-key (e.g. 'oak',
  *   'stone') and only entities with the same key are picked up. Omit to
@@ -318,6 +329,117 @@ export const OBJECT_TYPES = [
       return 'A constructed floor tile. Faster to walk across than raw terrain.';
     },
     orders: [deconstructOrder('floor', 'Floor'), cancelDeconstructOrder('Floor')],
+  },
+  {
+    type: 'buildsite',
+    component: 'BuildSite',
+    kindOf(world, id) {
+      return world.get(id, 'BuildSite')?.kind ?? null;
+    },
+    label(world, id) {
+      const site = world.get(id, 'BuildSite');
+      if (!site) return 'Blueprint';
+      // Kinds whose finished instancer ignores `stuff` (torches are metal,
+      // furnaces are brick) — don't prefix them with "Wooden"/"Stone".
+      const stuffless =
+        site.kind === 'torch' || site.kind === 'wallTorch' || site.kind === 'furnace';
+      const stuff = stuffless ? '' : site.stuff === 'stone' ? 'Stone ' : 'Wooden ';
+      const label = `${stuff}${site.kind} blueprint`;
+      return label[0].toUpperCase() + label.slice(1);
+    },
+    subtitle(world, id) {
+      const site = world.get(id, 'BuildSite');
+      if (!site) return '';
+      if (site.forbidden) return 'forbidden · construction paused';
+      return `${site.delivered}/${site.required} ${site.requiredKind} delivered`;
+    },
+    description(world, id, info) {
+      const site = world.get(id, 'BuildSite');
+      if (!site) return '';
+      const lines = [];
+      if (site.buildJobId > 0 && info?.board) {
+        const job = info.board.get(site.buildJobId);
+        const cowId = job?.claimedBy ?? null;
+        if (cowId !== null) {
+          const name = world.get(cowId, 'Brain')?.name;
+          lines.push(name ? `${name} is on the way.` : 'A cow is on the way.');
+        }
+        if (site.progress > 0) {
+          const total = buildTicksForKind(site.kind);
+          const remaining = Math.max(0, Math.round((1 - site.progress) * total));
+          lines.push(`~${remaining} work ticks remaining.`);
+        }
+      } else if (site.delivered < site.required) {
+        lines.push('Waiting for haulers to bring materials.');
+      } else {
+        lines.push('Waiting for a builder.');
+      }
+      return lines.join(' ');
+    },
+    orders: [
+      {
+        id: 'cancel-blueprint',
+        label: 'Cancel blueprint',
+        enabled() {
+          return true;
+        },
+        apply(ctx, ids) {
+          if (!ctx.tileGrid) return 0;
+          let n = 0;
+          for (const id of ids) {
+            const site = ctx.world.get(id, 'BuildSite');
+            const anchor = ctx.world.get(id, 'TileAnchor');
+            if (!site || !anchor) continue;
+            releaseBuildSite(ctx.world, ctx.board, ctx.tileGrid, site, anchor.i, anchor.j);
+            ctx.world.despawn(id);
+            n++;
+          }
+          return n;
+        },
+      },
+      {
+        id: 'forbid',
+        label: 'Forbid',
+        enabled(world, id) {
+          return world.get(id, 'BuildSite')?.forbidden === false;
+        },
+        apply(ctx, ids) {
+          let n = 0;
+          for (const id of ids) {
+            const site = ctx.world.get(id, 'BuildSite');
+            if (!site || site.forbidden) continue;
+            site.forbidden = true;
+            // Cancel the outstanding build job so the claimed cow drops it on
+            // her next tick. The haul poster also skips posting a new one
+            // while forbidden stays true.
+            if (site.buildJobId > 0) {
+              const job = ctx.board.get(site.buildJobId);
+              if (job && !job.completed) ctx.board.complete(job.id);
+              site.buildJobId = 0;
+            }
+            n++;
+          }
+          return n;
+        },
+      },
+      {
+        id: 'unforbid',
+        label: 'Unforbid',
+        enabled(world, id) {
+          return world.get(id, 'BuildSite')?.forbidden === true;
+        },
+        apply(ctx, ids) {
+          let n = 0;
+          for (const id of ids) {
+            const site = ctx.world.get(id, 'BuildSite');
+            if (!site || !site.forbidden) continue;
+            site.forbidden = false;
+            n++;
+          }
+          return n;
+        },
+      },
+    ],
   },
 ];
 

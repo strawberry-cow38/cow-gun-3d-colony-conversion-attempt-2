@@ -851,11 +851,22 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
   const { siteId, jobId } = /** @type {{ siteId: number, jobId: number }} */ (job.payload);
 
   // Site despawned (player cancelled the blueprint) OR the board job was
-  // completed externally → bail cleanly.
+  // completed externally OR the player just forbade the site mid-build → bail
+  // cleanly. On forbid we also complete the board job and zero buildJobId so
+  // the haul poster won't immediately repost it; un-forbidding resumes the
+  // normal flow where pass 0b reposts a fresh build job.
   const site = world.get(siteId, 'BuildSite');
   const boardJob = board.get(jobId);
-  if (!site || !boardJob || boardJob.completed) {
-    if (boardJob && !boardJob.completed) board.release(jobId);
+  const forbidden = !!site?.forbidden;
+  if (!site || !boardJob || boardJob.completed || forbidden) {
+    if (boardJob && !boardJob.completed) {
+      if (forbidden) {
+        board.complete(jobId);
+        if (site) site.buildJobId = 0;
+      } else {
+        board.release(jobId);
+      }
+    }
     if (site) site.progress = 0;
     job.kind = 'none';
     job.state = 'idle';
@@ -1793,8 +1804,12 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
           const activeSiteId =
             typeof siteId === 'number' ? siteId : findBuildSiteAt(world, toI, toJ);
           const site = activeSiteId !== null ? world.get(activeSiteId, 'BuildSite') : null;
+          // A site forbidden mid-delivery refuses the credit — spill the whole
+          // carry onto the drop tile so the haul pool can reclaim it once the
+          // player un-forbids or cancels.
+          const accepting = site && !site.forbidden;
           for (const stack of inv.items) {
-            if (site && stack.kind === site.requiredKind) {
+            if (accepting && stack.kind === site.requiredKind) {
               const need = Math.max(0, site.required - site.delivered);
               const deliver = Math.min(stack.count, need);
               site.delivered += deliver;

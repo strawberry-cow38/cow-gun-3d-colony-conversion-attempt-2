@@ -18,6 +18,7 @@ import { objectTypeFor } from '../ui/objectTypes.js';
  * @property {import('../ecs/world.js').World} world
  * @property {import('../boot/input.js').BootState} state
  * @property {import('../jobs/board.js').JobBoard} board
+ * @property {import('../world/tileGrid.js').TileGrid} tileGrid
  * @property {{ play: (kind: string) => void }} [audio]
  * @property {() => void} onChange
  */
@@ -61,6 +62,10 @@ export function createObjectPanel(opts) {
   root.append(title, subtitle, desc, orderRow);
   document.body.appendChild(root);
 
+  // Reused across frames — the board reference is stable for the panel's
+  // lifetime, so we don't need to allocate this object every update().
+  const info = { board: opts.board };
+
   /** @type {HTMLButtonElement[]} */
   const buttonPool = [];
 
@@ -101,8 +106,8 @@ export function createObjectPanel(opts) {
       state.primaryObject ?? /** @type {number} */ (state.selectedObjects.values().next().value);
     const primaryEntry = objectTypeFor(world, primary);
     const label = primaryEntry ? primaryEntry.label(world, primary) : 'Object';
-    const subtitleText = primaryEntry?.subtitle?.(world, primary) ?? '';
-    const descText = primaryEntry ? primaryEntry.description(world, primary) : '';
+    const subtitleText = primaryEntry?.subtitle?.(world, primary, info) ?? '';
+    const descText = primaryEntry ? primaryEntry.description(world, primary, info) : '';
 
     // Cheap key first: if nothing visible changed, we can skip the rest —
     // especially the per-entity partition + order.enabled() loop below.
@@ -180,7 +185,15 @@ export function createObjectPanel(opts) {
    * @param {number[]} ids
    */
   function runOrder(order, ids) {
-    const applied = order.apply({ world: opts.world, board: opts.board, audio: opts.audio }, ids);
+    const applied = order.apply(
+      {
+        world: opts.world,
+        board: opts.board,
+        tileGrid: opts.tileGrid,
+        audio: opts.audio,
+      },
+      ids,
+    );
     if (applied > 0) {
       opts.audio?.play('command');
       opts.onChange();

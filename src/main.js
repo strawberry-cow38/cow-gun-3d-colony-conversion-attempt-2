@@ -773,6 +773,7 @@ const objectPanel = createObjectPanel({
   world,
   state,
   board: jobBoard,
+  tileGrid,
   audio,
   onChange: () => {
     // Mark the instancers whose per-instance visuals flip on job post/cancel.

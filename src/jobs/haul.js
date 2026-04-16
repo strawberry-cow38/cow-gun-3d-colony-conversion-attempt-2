@@ -362,6 +362,11 @@ export function makeHaulPostingSystem(board, grid) {
         const a = components.TileAnchor;
         blueprintTiles.add(grid.idx(a.i, a.j));
         if (site.kind === 'wall') wallBlueprintTiles.push({ i: a.i, j: a.j });
+        // Forbidden blueprints are inert: no deliveries, no build job. Already-
+        // delivered materials stay on the tile until the player un-forbids or
+        // cancels. Keeping them in the wallBlueprintTiles loop above so the
+        // forbidden-stack-clear pass still unblocks wall footings.
+        if (site.forbidden) continue;
         // Door-over-wall: don't haul resources onto the tile until the wall's
         // gone. Otherwise the item would land on a blocked tile the haulers
         // can't pathfind back to.

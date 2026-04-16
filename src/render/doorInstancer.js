@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { doorOrientationAt } from '../world/doorOrientation.js';
 import { getStuff } from '../world/stuff.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
@@ -123,9 +124,7 @@ export function createDoorInstancer(scene, capacity, audio) {
       // Axis selection: if adjacent walls sit east/west, run the slab along
       // X (baseAngle=0). If they sit north/south, run it along Z (baseAngle=
       // π/2). Pure cardinal test — mixed runs default to EW.
-      const wallsEW = grid.isWall(a.i - 1, a.j) || grid.isWall(a.i + 1, a.j);
-      const wallsNS = grid.isWall(a.i, a.j - 1) || grid.isWall(a.i, a.j + 1);
-      const rotateNS = wallsNS && !wallsEW;
+      const { wallsEW, wallsNS, rotateNS } = doorOrientationAt(grid, a.i, a.j);
       const baseAngle = rotateNS ? Math.PI / 2 : 0;
       const hasAdjacentWalls = wallsEW || wallsNS;
 

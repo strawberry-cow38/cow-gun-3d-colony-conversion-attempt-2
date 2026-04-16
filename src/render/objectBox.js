@@ -11,6 +11,7 @@ import { objectTypeFor } from '../ui/objectTypes.js';
 import { BOULDER_VISUALS } from '../world/boulders.js';
 import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
 import { TREE_VISUALS, growthScale } from '../world/trees.js';
+import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
 
 export const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = WALL_HEIGHT;
@@ -27,7 +28,16 @@ const BOULDER_HEIGHT_M = 0.9;
 const TORCH_RADIUS_M = 0.22;
 
 /** Every ObjectType.component that participates in box-based hit/ghost logic. */
-export const TRACKED_COMPONENTS = ['Tree', 'Boulder', 'Wall', 'Door', 'Torch', 'Roof', 'Floor'];
+export const TRACKED_COMPONENTS = [
+  'Tree',
+  'Boulder',
+  'Wall',
+  'Door',
+  'Torch',
+  'Roof',
+  'Floor',
+  'BuildSite',
+];
 
 /**
  * @param {import('../ui/objectTypes.js').ObjectType} entry
@@ -73,6 +83,28 @@ export function boxFor(entry, world, id) {
       return { w: TILE_SIZE, h: ROOF_THICKNESS, d: TILE_SIZE, yBase: WALL_HEIGHT };
     case 'floor':
       return { w: TILE_SIZE, h: FLOOR_THICKNESS, d: TILE_SIZE, yBase: 0 };
+    case 'buildsite': {
+      const site = world.get(id, 'BuildSite');
+      if (!site) return null;
+      switch (site.kind) {
+        case 'roof':
+          return { w: TILE_SIZE, h: ROOF_THICKNESS, d: TILE_SIZE, yBase: WALL_HEIGHT };
+        case 'floor':
+          return { w: TILE_SIZE, h: FLOOR_THICKNESS, d: TILE_SIZE, yBase: 0 };
+        case 'torch':
+        case 'wallTorch':
+          return {
+            w: 2 * TORCH_RADIUS_M * UNITS_PER_METER,
+            h: TORCH_TOTAL_HEIGHT,
+            d: 2 * TORCH_RADIUS_M * UNITS_PER_METER,
+            yBase: 0,
+          };
+        case 'furnace':
+          return { w: FURNACE_FOOTPRINT, h: FURNACE_HEIGHT, d: FURNACE_FOOTPRINT, yBase: 0 };
+        default:
+          return { w: TILE_SIZE, h: WALL_HEIGHT, d: TILE_SIZE, yBase: 0 };
+      }
+    }
     default:
       return null;
   }

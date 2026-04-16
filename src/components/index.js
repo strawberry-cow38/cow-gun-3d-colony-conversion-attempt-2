@@ -261,6 +261,7 @@ export function registerComponents(world) {
     buildJobId: 0,
     progress: 0,
     facing: 0,
+    forbidden: false,
   }));
   world.defineComponent('BuildSiteViz', () => ({}));
   world.defineComponent('Wall', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
