@@ -650,8 +650,18 @@ const routeObjectPick = (id, additive) => {
     if (world.get(id, 'Furnace')) return selectFurnace(id, additive);
     if (world.get(id, 'Easel')) return selectEasel(id, additive);
     if (world.get(id, 'Stove')) return selectStove(id, additive);
+    selectObject(id, additive);
+    return;
   }
-  selectObject(id, additive);
+  // Ground click: clear every bucket ObjectSelector owns (objects + all
+  // stations) so clicking empty terrain deselects a furnace/easel/stove
+  // the same way it drops a tree or wall selection.
+  selectObject(null, additive);
+  if (!additive) {
+    selectFurnace(null, false);
+    selectEasel(null, false);
+    selectStove(null, false);
+  }
 };
 
 new ObjectSelector({
