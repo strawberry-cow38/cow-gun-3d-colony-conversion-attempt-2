@@ -3,27 +3,20 @@
  * `src/ui/objectTypes.js` — trees, boulders, walls, doors, torches, roofs,
  * floors, plus anything added to the registry later.
  *
- * Tile-based pick: raycast the tile mesh, read (i, j), look for registered
- * entities on that tile. When several stack on one tile (e.g. torch sitting
- * on a floor tile, wall covering a roof), the priority list below picks the
- * most likely intended target — "things you probably meant to click" — rather
- * than the arbitrary query order.
+ * Picks against the invisible `objectHitboxes` InstancedMesh: each registered
+ * entity owns a box sized by `boxForEntity`, same dimensions as the selection
+ * ghost. Whichever box the ray hits closest to the camera wins — so clicking
+ * a tree's canopy, a wall's upper half, or a roof tile all route to the right
+ * entity even when they extend past their anchor tile.
  *
  * Runs in capture-phase AFTER the specialized selectors (cow, item, station,
- * wall-art) so those keep priority on their own tiles. Double-click a target
- * to select every entity of the same type currently inside the camera
+ * wall-art) so those keep priority on overlapping geometry. Double-click a
+ * target to select every entity of the same type currently inside the camera
  * frustum, mirroring `ItemSelector`'s behaviour.
  */
 
 import { objectTypeFor } from '../ui/objectTypes.js';
-import { frustumVisibleIds, pickTileFromEvent } from './tilePickUtils.js';
-
-/**
- * Tile pick order when multiple objects share a tile. Torches/walls/doors are
- * the visible vertical structure and win over ground-plane stuff (roof/floor).
- * Trees and boulders sit on terrain and come after the built structures.
- */
-const TILE_LOOKUP_ORDER = ['Wall', 'Door', 'Torch', 'Tree', 'Boulder', 'Roof', 'Floor'];
+import { frustumVisibleIds, pickEntityFromEvent, pickTileFromEvent } from './tilePickUtils.js';
 
 export class ObjectSelector {
   /**
@@ -33,16 +26,18 @@ export class ObjectSelector {
    *   tileMesh: () => import('three').Mesh,
    *   grid: { W: number, H: number },
    *   world: import('../ecs/world.js').World,
+   *   hitboxes: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
    *   onSelect: (id: number | null, additive: boolean) => void,
    *   onSelectMany: (ids: number[]) => void,
    * }} opts
    */
-  constructor({ canvas, camera, tileMesh, grid, world, onSelect, onSelectMany }) {
+  constructor({ canvas, camera, tileMesh, grid, world, hitboxes, onSelect, onSelectMany }) {
     this.dom = canvas;
     this.camera = camera;
     this.getTileMesh = tileMesh;
     this.grid = grid;
     this.world = world;
+    this.hitboxes = hitboxes;
     this.onSelect = onSelect;
     this.onSelectMany = onSelectMany;
     canvas.addEventListener('click', (e) => this.#onClick(e), { capture: true });
@@ -52,16 +47,13 @@ export class ObjectSelector {
   /** @param {MouseEvent} e */
   #onClick(e) {
     if (e.button !== 0) return;
-    const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
-    if (!tile) {
-      // Leave "click on empty space clears everything" to the cow/item
-      // selectors — they run first and handle the null case. If we got here
-      // with no tile hit, they already cleared state.
-      return;
-    }
-    const id = this.#objectAt(tile.i, tile.j);
+    const id = pickEntityFromEvent(e, this.dom, this.camera, this.hitboxes);
     if (id === null) {
-      if (!e.shiftKey) this.onSelect(null, false);
+      // Still check whether the click landed on terrain at all — on a tile
+      // miss, let the cow/item selectors decide (they run first); on a tile
+      // hit with no object, honour the non-additive "clear" gesture.
+      const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
+      if (tile && !e.shiftKey) this.onSelect(null, false);
       return;
     }
     this.onSelect(id, e.shiftKey);
@@ -71,9 +63,7 @@ export class ObjectSelector {
   /** @param {MouseEvent} e */
   #onDouble(e) {
     if (e.button !== 0) return;
-    const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
-    if (!tile) return;
-    const id = this.#objectAt(tile.i, tile.j);
+    const id = pickEntityFromEvent(e, this.dom, this.camera, this.hitboxes);
     if (id === null) return;
     const entry = objectTypeFor(this.world, id);
     if (!entry) return;
@@ -91,16 +81,5 @@ export class ObjectSelector {
     if (ids.length === 0) return;
     this.onSelectMany(ids);
     e.stopImmediatePropagation();
-  }
-
-  /** @param {number} i @param {number} j */
-  #objectAt(i, j) {
-    for (const comp of TILE_LOOKUP_ORDER) {
-      for (const { id, components } of this.world.query([comp, 'TileAnchor'])) {
-        const a = components.TileAnchor;
-        if (a.i === i && a.j === j) return id;
-      }
-    }
-    return null;
   }
 }

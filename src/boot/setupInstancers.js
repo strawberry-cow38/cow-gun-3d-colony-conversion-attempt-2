@@ -30,6 +30,7 @@ import { createIgnoreRoofOverlay } from '../render/ignoreRoofOverlay.js';
 import { createItemInstancer } from '../render/itemInstancer.js';
 import { createItemLabels } from '../render/itemLabels.js';
 import { createItemSelectionViz } from '../render/itemSelectionViz.js';
+import { createObjectHitboxes } from '../render/objectHitboxes.js';
 import { createObjectSelectionViz } from '../render/objectSelectionViz.js';
 import { createPaintingInstancer } from '../render/paintingInstancer.js';
 import { createPickTileOverlay } from '../render/pickTileOverlay.js';
@@ -64,6 +65,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     selectionViz: createSelectionViz(scene),
     itemSelectionViz: createItemSelectionViz(scene),
     objectSelectionViz: createObjectSelectionViz(scene),
+    objectHitboxes: createObjectHitboxes(scene, tiles + 4096),
     treeInstancer: createTreeInstancer(scene, 2048),
     boulderInstancer: createBoulderInstancer(scene, 4096),
     wallInstancer: createWallInstancer(scene, 2048),

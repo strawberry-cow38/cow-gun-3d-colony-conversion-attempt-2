@@ -12,28 +12,12 @@
  */
 
 import * as THREE from 'three';
-import { objectTypeFor } from '../ui/objectTypes.js';
-import { BOULDER_VISUALS } from '../world/boulders.js';
-import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
-import { TREE_VISUALS, growthScale } from '../world/trees.js';
+import { tileToWorld } from '../world/coords.js';
+import { boxForEntity } from './objectBox.js';
 
 const SELECT_COLOR = 0xffe14a;
 const DEMO_COLOR = 0xff3a3a;
 const CAPACITY = 1024;
-
-const WALL_HEIGHT = 3 * UNITS_PER_METER;
-const DOOR_HEIGHT = WALL_HEIGHT; // door frame fills to the top of the wall
-const ROOF_THICKNESS = 4;
-const FLOOR_THICKNESS = 1;
-const TORCH_TOTAL_HEIGHT = (1.6 + 0.5) * UNITS_PER_METER; // stick + flame
-const TRUNK_HEIGHT_M = 2.2;
-const CONE_CANOPY_HEIGHT_M = 1.6;
-const SPHERE_CANOPY_HEIGHT_M = 1.8; // 2 * 0.9m radius
-const TRUNK_RADIUS_M = 0.18;
-const CANOPY_RADIUS_M = 0.9;
-const BOULDER_RADIUS_M = 0.55;
-const BOULDER_HEIGHT_M = 0.9;
-const TORCH_RADIUS_M = 0.22;
 
 /**
  * Maps a Tree/Boulder/Wall/... entity to the component field that holds the
@@ -82,9 +66,7 @@ export function createObjectSelectionViz(scene) {
     const visit = (id, isDemo) => {
       const anchor = world.get(id, 'TileAnchor');
       if (!anchor) return;
-      const entry = objectTypeFor(world, id);
-      if (!entry) return;
-      const box = boxFor(entry, world, id);
+      const box = boxForEntity(world, id);
       if (!box) return;
       const center = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const yBase = grid.getElevation(anchor.i, anchor.j) + box.yBase;
@@ -128,55 +110,6 @@ function collectDemoIds(world) {
     }
   }
   return ids;
-}
-
-/**
- * @param {import('../ui/objectTypes.js').ObjectType} entry
- * @param {import('../ecs/world.js').World} world
- * @param {number} id
- * @returns {{ w: number, h: number, d: number, yBase: number } | null}
- */
-function boxFor(entry, world, id) {
-  switch (entry.type) {
-    case 'tree': {
-      const tree = world.get(id, 'Tree');
-      if (!tree) return null;
-      const v = TREE_VISUALS[tree.kind] ?? TREE_VISUALS.oak;
-      const g = growthScale(tree.growth);
-      const canopyH = v.canopyShape === 'sphere' ? SPHERE_CANOPY_HEIGHT_M : CONE_CANOPY_HEIGHT_M;
-      const h =
-        (TRUNK_HEIGHT_M * v.trunkScale[1] + canopyH * v.canopyScale[1]) * g * UNITS_PER_METER;
-      const radiusM = Math.max(
-        TRUNK_RADIUS_M * Math.max(v.trunkScale[0], v.trunkScale[2]),
-        CANOPY_RADIUS_M * Math.max(v.canopyScale[0], v.canopyScale[2]),
-      );
-      const side = 2 * radiusM * g * UNITS_PER_METER;
-      return { w: side, h, d: side, yBase: 0 };
-    }
-    case 'boulder': {
-      const b = world.get(id, 'Boulder');
-      const v = (b && BOULDER_VISUALS[b.kind]) ?? BOULDER_VISUALS.stone;
-      const side = 2 * BOULDER_RADIUS_M * Math.max(v.scale[0], v.scale[2]) * UNITS_PER_METER;
-      const h = BOULDER_HEIGHT_M * v.scale[1] * UNITS_PER_METER;
-      return { w: side, h, d: side, yBase: 0 };
-    }
-    case 'wall':
-      return { w: TILE_SIZE, h: WALL_HEIGHT, d: TILE_SIZE, yBase: 0 };
-    case 'door':
-      return { w: TILE_SIZE, h: DOOR_HEIGHT, d: TILE_SIZE, yBase: 0 };
-    case 'torch': {
-      const t = world.get(id, 'Torch');
-      const baseY = t?.wallMounted ? 1.8 * UNITS_PER_METER : 0;
-      const side = 2 * TORCH_RADIUS_M * UNITS_PER_METER;
-      return { w: side, h: TORCH_TOTAL_HEIGHT, d: side, yBase: baseY };
-    }
-    case 'roof':
-      return { w: TILE_SIZE, h: ROOF_THICKNESS, d: TILE_SIZE, yBase: WALL_HEIGHT };
-    case 'floor':
-      return { w: TILE_SIZE, h: FLOOR_THICKNESS, d: TILE_SIZE, yBase: 0 };
-    default:
-      return null;
-  }
 }
 
 /**

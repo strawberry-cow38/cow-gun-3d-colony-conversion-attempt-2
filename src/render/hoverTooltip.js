@@ -1,11 +1,12 @@
 /**
- * Bottom-right "what's under the cursor" readout. Listens for mousemove on the
- * canvas, resolves the hovered tile via the shared tilePickUtils raycaster,
- * then walks a priority chain to pick the most specific label: cow > built
- * station > built structure > plant / boulder > item > terrain biome.
+ * Bottom-right "what's under the cursor" readout. Listens for mousemove on
+ * the canvas and runs three raycasts against the cow instancer, the object
+ * hitbox mesh, and the tile mesh; whichever reports the closest hit decides
+ * the label. Fallbacks handle items, furnaces/easels, nearby-cow proximity,
+ * and bare terrain.
  *
  * Throttled to one resolve per rAF so a 120 Hz mouse still only does one
- * raycast per frame.
+ * pass per frame.
  */
 
 import * as THREE from 'three';
@@ -40,9 +41,10 @@ export class HoverTooltip {
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
    *   world: import('../ecs/world.js').World,
    *   cowInstancer: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
+   *   objectHitboxes: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
    * }} opts
    */
-  constructor({ dom, el, camera, tileMesh, grid, tileGrid, world, cowInstancer }) {
+  constructor({ dom, el, camera, tileMesh, grid, tileGrid, world, cowInstancer, objectHitboxes }) {
     this.dom = dom;
     this.el = el;
     this.camera = camera;
@@ -51,6 +53,7 @@ export class HoverTooltip {
     this.tileGrid = tileGrid;
     this.world = world;
     this.cowInstancer = cowInstancer;
+    this.objectHitboxes = objectHitboxes;
     this.pending = /** @type {MouseEvent | null} */ (null);
     this.scheduled = false;
     this.lastText = '';
@@ -100,54 +103,56 @@ export class HoverTooltip {
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     _raycaster.setFromCamera(_ndc, this.camera);
 
-    // Direct cow raycast wins — a cow standing between camera and tile would
-    // otherwise be masked by the tile-only chain below.
-    const cowHits = _raycaster.intersectObject(this.cowInstancer.mesh, false);
-    if (cowHits.length > 0 && cowHits[0].instanceId !== undefined) {
-      const ent = this.cowInstancer.entityFromInstanceId(cowHits[0].instanceId);
+    // Three parallel picks: whichever reports the closest hit wins, so a wall
+    // in front of a cow behind a roof all sort correctly without manual
+    // priority rules.
+    const cowHit = _raycaster.intersectObject(this.cowInstancer.mesh, false)[0];
+    const objHit = _raycaster.intersectObject(this.objectHitboxes.mesh, false)[0];
+    const tileHit = _raycaster.intersectObject(this.getTileMesh(), false)[0];
+
+    const cowDist = cowHit?.instanceId !== undefined ? cowHit.distance : Number.POSITIVE_INFINITY;
+    const objDist = objHit?.instanceId !== undefined ? objHit.distance : Number.POSITIVE_INFINITY;
+
+    if (cowDist < objDist) {
+      const ent = this.cowInstancer.entityFromInstanceId(/** @type {number} */ (cowHit.instanceId));
       if (ent !== null) return this.#cowLabel(ent);
     }
+    if (objDist < Number.POSITIVE_INFINITY) {
+      const ent = this.objectHitboxes.entityFromInstanceId(
+        /** @type {number} */ (objHit.instanceId),
+      );
+      if (ent !== null) return this.#objectLabel(ent);
+    }
 
+    if (!tileHit) return null;
     const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
     if (!tile) return null;
 
-    // Stations first: furnace/easel occupy a whole tile and read as their own
-    // thing rather than the floor beneath.
+    // Stations occupy a whole tile but aren't in the object hitbox registry
+    // (they have their own StationSelector UX), so they need a separate
+    // tile-based lookup.
     if (this.#entityAt(tile.i, tile.j, 'Furnace') !== null) return 'Furnace';
     if (this.#entityAt(tile.i, tile.j, 'Easel') !== null) return 'Easel';
 
-    // Cow fallback: nearest cow within a tile of the tile-raycast hit, for the
-    // RTS zoom-out case where the cow instance isn't directly under the ray.
-    const tileHits = _raycaster.intersectObject(this.getTileMesh(), false);
-    if (tileHits.length > 0) {
-      const p = tileHits[0].point;
-      let best = /** @type {number | null} */ (null);
-      let bestD2 = PICK_RADIUS * PICK_RADIUS;
-      for (const { id, components } of this.world.query(['Cow', 'Position'])) {
-        const pos = components.Position;
-        const dx = pos.x - p.x;
-        const dz = pos.z - p.z;
-        const d2 = dx * dx + dz * dz;
-        if (d2 < bestD2) {
-          bestD2 = d2;
-          best = id;
-        }
+    // Cow proximity fallback: at RTS zoom a moving cow can be a few pixels
+    // wide, so grab any cow within a tile of the tile-hit point.
+    const p = tileHit.point;
+    let best = /** @type {number | null} */ (null);
+    let bestD2 = PICK_RADIUS * PICK_RADIUS;
+    for (const { id, components } of this.world.query(['Cow', 'Position'])) {
+      const pos = components.Position;
+      const dx = pos.x - p.x;
+      const dz = pos.z - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = id;
       }
-      if (best !== null) return this.#cowLabel(best);
     }
-
-    for (const comp of ['Wall', 'Door', 'Torch', 'Tree', 'Boulder']) {
-      const id = this.#entityAt(tile.i, tile.j, comp);
-      if (id !== null) return this.#objectLabel(id);
-    }
+    if (best !== null) return this.#cowLabel(best);
 
     const itemId = this.#entityAt(tile.i, tile.j, 'Item');
     if (itemId !== null) return this.#itemLabel(itemId);
-
-    for (const comp of ['Roof', 'Floor']) {
-      const id = this.#entityAt(tile.i, tile.j, comp);
-      if (id !== null) return this.#objectLabel(id);
-    }
 
     return this.#terrainLabel(tile.i, tile.j);
   }

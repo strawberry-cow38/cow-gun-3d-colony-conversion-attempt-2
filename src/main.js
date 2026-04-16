@@ -227,6 +227,7 @@ const {
   cowThoughtBubbles,
   selectionViz,
   itemSelectionViz,
+  objectHitboxes,
   treeInstancer,
   boulderInstancer,
   wallInstancer,
@@ -609,6 +610,7 @@ new ObjectSelector({
   tileMesh: () => state.tileMesh,
   grid: { W: gridW, H: gridH },
   world,
+  hitboxes: objectHitboxes,
   onSelect: selectObject,
   onSelectMany: selectObjectsMany,
 });
@@ -632,6 +634,7 @@ new HoverTooltip({
   tileGrid,
   world,
   cowInstancer,
+  objectHitboxes,
 });
 
 const prioritizeMenu = createPrioritizeMenu();

@@ -94,6 +94,7 @@ export function createRenderFrame({
     selectionViz,
     itemSelectionViz,
     objectSelectionViz,
+    objectHitboxes,
     treeInstancer,
     boulderInstancer,
     wallInstancer,
@@ -216,6 +217,7 @@ export function createRenderFrame({
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     itemSelectionViz.update(world, tileGrid, state.selectedItems);
     objectSelectionViz.update(world, tileGrid, state.selectedObjects);
+    objectHitboxes.update(world, tileGrid);
     const simDate = tickToSimDate(simTick);
     clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}`;
     // Anchor the sky sphere to the camera so no amount of zoom-out or pan

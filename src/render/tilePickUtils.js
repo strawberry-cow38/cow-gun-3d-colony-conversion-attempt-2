@@ -38,6 +38,25 @@ export function pickTileFromEvent(e, dom, camera, tileMesh, grid) {
 }
 
 /**
+ * Raycast against a hitbox InstancedMesh. Returns the entity id of the
+ * closest intersected box, or null when the ray misses everything.
+ *
+ * @param {MouseEvent} e
+ * @param {HTMLElement} dom
+ * @param {THREE.PerspectiveCamera} camera
+ * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} hitboxes
+ */
+export function pickEntityFromEvent(e, dom, camera, hitboxes) {
+  const rect = dom.getBoundingClientRect();
+  _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  _raycaster.setFromCamera(_ndc, camera);
+  const hits = _raycaster.intersectObject(hitboxes.mesh, false);
+  if (hits.length === 0 || hits[0].instanceId === undefined) return null;
+  return hitboxes.entityFromInstanceId(hits[0].instanceId);
+}
+
+/**
  * Iterate a world query and collect ids whose Position is inside the camera
  * frustum. `predicate` can filter further (e.g. "only items of kind X").
  *
