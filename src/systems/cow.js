@@ -52,6 +52,7 @@ import { XP_PER_WORK, awardXp } from '../world/skills.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { BIOME } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
+import { canCowDoJobKind } from '../world/workPriorities.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 
 export const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
@@ -290,7 +291,12 @@ export function makeCowBrainSystem(deps) {
             // ignore freshly designated trees / dropped items.
             if (job.kind === 'wander' || job.kind === 'none') {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+              const wp = world.get(id, 'WorkPriorities');
               const candidate = board.findUnclaimed(near, (j) => {
+                // Respect the cow's per-category work priorities. Unknown
+                // kinds soft-pass; missing component is treated as "all on"
+                // to keep legacy / test flows working.
+                if (!canCowDoJobKind(wp, j.kind)) return false;
                 // Paint/cook jobs can be cook-locked: only the cow who first
                 // started the bill may resume it after an interruption.
                 if (j.kind !== 'paint' && j.kind !== 'cook') return true;

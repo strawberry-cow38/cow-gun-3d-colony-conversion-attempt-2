@@ -42,6 +42,7 @@ import { SelectionBox } from './render/selectionBox.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
+import { createWorkTab } from './render/workTab.js';
 import { dayFractionOfTick } from './sim/calendar.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
@@ -790,6 +791,8 @@ const buildTab = createBuildTab({
   cancelDesignator,
 });
 
+const workTab = createWorkTab({ world });
+
 const itemStackPanel = createItemStackPanel({
   world,
   state,
@@ -904,6 +907,7 @@ const { render, getFps } = createRenderFrame({
   stovePanel,
   objectPanel,
   buildTab,
+  workTab,
   clockEl,
   getSpeed: () => loop.speed,
   getTick: () => loop.tick,

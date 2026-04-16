@@ -47,6 +47,7 @@ function speedIcon(speed) {
  *   stovePanel: { update: () => void },
  *   objectPanel: { update: () => void },
  *   buildTab: { update: () => void },
+ *   workTab: { update: () => void },
  *   clockEl: HTMLElement,
  *   getSpeed: () => number,
  *   getTick: () => number,
@@ -81,6 +82,7 @@ export function createRenderFrame({
   stovePanel,
   objectPanel,
   buildTab,
+  workTab,
   clockEl,
   getSpeed,
   getTick,
@@ -225,6 +227,7 @@ export function createRenderFrame({
     stovePanel.update();
     objectPanel.update();
     buildTab.update();
+    workTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     itemSelectionViz.update(world, tileGrid, state.selectedItems);
     objectSelectionViz.update(world, tileGrid, state.selectedObjects);

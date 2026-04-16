@@ -10,6 +10,7 @@ import { tileToWorld } from '../world/coords.js';
 import { pickCowName } from '../world/cowNames.js';
 import { fullName, rollCowIdentity } from '../world/identity.js';
 import { rollStartingSkills } from '../world/skills.js';
+import { deriveDefaultsFromSkills } from '../world/workPriorities.js';
 
 /**
  * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
@@ -85,6 +86,7 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
     Health: { injuries: [], nextInjuryId: 1, dead: false },
     Skills: skills,
+    WorkPriorities: deriveDefaultsFromSkills(skills),
     CowViz: {},
   });
 }

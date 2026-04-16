@@ -270,6 +270,10 @@ export function registerComponents(world) {
      * honors it so the system doesn't need re-plumbing later. */
     learnRateMultiplier: 1,
   }));
+  world.defineComponent('WorkPriorities', () => ({
+    /** @type {Record<string, number>} Category → priority. 0 = disabled, 1..8 = enabled (lower = sooner). */
+    priorities: {},
+  }));
   world.defineComponent('Tree', () => ({
     markedJobId: 0,
     progress: 0,

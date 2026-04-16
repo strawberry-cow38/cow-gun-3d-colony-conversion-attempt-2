@@ -36,6 +36,7 @@ import { tileToWorld } from './coords.js';
 import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
 import { stoveFootprintTiles } from './stove.js';
 import { TileGrid } from './tileGrid.js';
+import { deriveDefaultsFromSkills, sanitizePriorities } from './workPriorities.js';
 
 /**
  * Coerce a free-form `levels` bag into the strict `{ level, xp }` shape.
@@ -90,6 +91,11 @@ function sanitizeSkillLevels(levels) {
  */
 
 /**
+ * @typedef SerializedWorkPriorities
+ * @property {Record<string, number>} priorities
+ */
+
+/**
  * @typedef SerializedCow
  * @property {string} name
  * @property {boolean} drafted
@@ -103,6 +109,7 @@ function sanitizeSkillLevels(levels) {
  * @property {SerializedOpinions} [opinions]
  * @property {SerializedHealth} [health]
  * @property {SerializedSkills} [skills]
+ * @property {SerializedWorkPriorities} [workPriorities]
  */
 
 /**
@@ -329,10 +336,12 @@ export function serializeState(tileGrid, world) {
     'Opinions',
     'Health',
     'Skills',
+    'WorkPriorities',
   ])) {
     const op = components.Opinions;
     const health = components.Health;
     const skills = components.Skills;
+    const workPriorities = components.WorkPriorities;
     const serialized = {
       name: components.Brain.name,
       drafted: components.Cow.drafted === true,
@@ -372,6 +381,9 @@ export function serializeState(tileGrid, world) {
       skills: {
         levels: sanitizeSkillLevels(skills.levels),
         learnRateMultiplier: +skills.learnRateMultiplier || 1,
+      },
+      workPriorities: {
+        priorities: sanitizePriorities(workPriorities.priorities),
       },
     };
     idToIndex.set(id, pending.length);
@@ -749,6 +761,9 @@ export function hydrateCows(world, state) {
         levels: sanitizeSkillLevels(c.skills?.levels),
         learnRateMultiplier: +(c.skills?.learnRateMultiplier ?? 1) || 1,
       },
+      WorkPriorities: c.workPriorities
+        ? { priorities: sanitizePriorities(c.workPriorities.priorities) }
+        : deriveDefaultsFromSkills(c.skills),
       CowViz: {},
     });
     spawnedIds.push(newId);
