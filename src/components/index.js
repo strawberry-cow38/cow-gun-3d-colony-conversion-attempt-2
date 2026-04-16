@@ -200,6 +200,7 @@ export function registerComponents(world) {
   world.defineComponent('StressViz', () => ({}));
   world.defineComponent('Cow', () => ({ drafted: false }));
   world.defineComponent('Hunger', () => ({ value: 1 }));
+  world.defineComponent('Tiredness', () => ({ value: 1 }));
   world.defineComponent('FoodPoisoning', () => ({
     /** ticks until the debuff lifts; 0 = not poisoned. */
     ticksRemaining: 0,

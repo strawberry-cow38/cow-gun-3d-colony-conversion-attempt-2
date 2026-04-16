@@ -58,6 +58,9 @@ import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
 export const COW_SPEED_UNITS_PER_SEC = 85.7; // ≈2 tiles/sec at 1.5m tile
 const ARRIVE_DIST_SQ = 4 * 4; // within 4 units of a step center counts as arrived
 const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
+// Tiredness empties over 16 in-game hours (2/3 of a day = 28800 ticks at 30Hz).
+// Sleep restores it over 8 hours (see TIREDNESS_RESTORE_PER_TICK).
+const TIREDNESS_DRAIN_PER_TICK = 1 / 28800;
 // While food-poisoned, hunger drains this fast — roughly 3x normal, so the
 // cow ends up hungry again sooner than if the bad meal had been tasty.
 const HUNGER_DRAIN_POISONED_MULT = 3;
@@ -3008,6 +3011,21 @@ export function makeHungerSystem() {
         if (h.value < HUNGER_EAT_THRESHOLD) {
           components.Brain.vitalsDirty = true;
         }
+      }
+    },
+  };
+}
+
+/** @returns {import('../ecs/schedule.js').SystemDef} */
+export function makeTirednessSystem() {
+  return {
+    name: 'tirednessDrain',
+    tier: 'rare',
+    run(world) {
+      const drain = TIREDNESS_DRAIN_PER_TICK * 8;
+      for (const { components } of world.query(['Tiredness', 'Brain'])) {
+        const t = components.Tiredness;
+        t.value = Math.max(0, t.value - drain);
       }
     },
   };

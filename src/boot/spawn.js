@@ -76,6 +76,7 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     PrevPosition: { x: w.x, y, z: w.z },
     Velocity: { x: 0, y: 0, z: 0 },
     Hunger: { value: 1 },
+    Tiredness: { value: 1 },
     FoodPoisoning: { ticksRemaining: 0 },
     Brain: { name },
     Identity: { name, ...id },

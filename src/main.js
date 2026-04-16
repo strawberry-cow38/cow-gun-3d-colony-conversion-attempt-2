@@ -53,6 +53,7 @@ import {
   makeCowFollowPathSystem,
   makeCowWallCollisionSystem,
   makeHungerSystem,
+  makeTirednessSystem,
 } from './systems/cow.js';
 import { makeEaselSystem } from './systems/easel.js';
 import { makeFarmPostingSystem } from './systems/farm.js';
@@ -147,6 +148,7 @@ scheduler.add(applyVelocity);
 scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
+scheduler.add(makeTirednessSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
 scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world));
 scheduler.add(

@@ -101,6 +101,7 @@ function sanitizeSkillLevels(levels) {
  * @property {boolean} drafted
  * @property {{ x: number, y: number, z: number }} position
  * @property {number} hunger
+ * @property {number} [tiredness]
  * @property {{ ticksRemaining: number }} [foodPoisoning]
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
@@ -327,6 +328,7 @@ export function serializeState(tileGrid, world) {
     'Cow',
     'Position',
     'Hunger',
+    'Tiredness',
     'FoodPoisoning',
     'Brain',
     'Identity',
@@ -347,6 +349,7 @@ export function serializeState(tileGrid, world) {
       drafted: components.Cow.drafted === true,
       position: { x: components.Position.x, y: components.Position.y, z: components.Position.z },
       hunger: components.Hunger.value,
+      tiredness: components.Tiredness.value,
       foodPoisoning: { ticksRemaining: components.FoodPoisoning.ticksRemaining | 0 },
       job: {
         kind: components.Job.kind,
@@ -732,6 +735,7 @@ export function hydrateCows(world, state) {
       PrevPosition: { ...c.position },
       Velocity: { x: 0, y: 0, z: 0 },
       Hunger: { value: c.hunger },
+      Tiredness: { value: typeof c.tiredness === 'number' ? c.tiredness : 1 },
       FoodPoisoning: { ticksRemaining: c.foodPoisoning?.ticksRemaining ?? 0 },
       Brain: { name: c.name },
       Identity: {
