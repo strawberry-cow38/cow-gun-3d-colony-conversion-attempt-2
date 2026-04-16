@@ -333,7 +333,7 @@ export const HOTKEYS = [
       ctx.updateHud();
     },
   },
-  // G/J — drop a stone/food stack at the last picked tile.
+  // G/J — drop a stone/corn stack at the last picked tile.
   {
     match: (e, ctx) => ctx.state.debugEnabled && (e.code === 'KeyG' || e.code === 'KeyJ'),
     run: (ctx, e) => {
@@ -341,7 +341,7 @@ export const HOTKEYS = [
         i: Math.floor(ctx.gridW / 2),
         j: Math.floor(ctx.gridH / 2),
       };
-      const kind = e.code === 'KeyG' ? 'stone' : 'food';
+      const kind = e.code === 'KeyG' ? 'stone' : 'corn';
       addItemToTile(ctx.world, ctx.tileGrid, kind, tile.i, tile.j);
       ctx.itemInstancer.markDirty();
       ctx.audio.play('drop');

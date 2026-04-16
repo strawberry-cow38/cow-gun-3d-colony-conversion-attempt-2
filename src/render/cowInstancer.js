@@ -105,7 +105,9 @@ const CARRY_OFFSET_Y = 0.25 * UNITS_PER_METER;
 const CARRY_COLORS = {
   wood: new THREE.Color(0x8a5a2e),
   stone: new THREE.Color(0x8a8a92),
-  food: new THREE.Color(0xd64a4a),
+  corn: new THREE.Color(0xd9c24a),
+  carrot: new THREE.Color(0xe07b2a),
+  potato: new THREE.Color(0x8a5a2a),
 };
 const CARRY_FALLBACK = new THREE.Color(0xffffff);
 

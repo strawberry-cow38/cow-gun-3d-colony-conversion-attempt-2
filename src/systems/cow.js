@@ -41,6 +41,7 @@ import {
   addItemToTile,
   addItemsToTile,
   inventoryAdd,
+  itemHasTag,
   stackAdd,
   stackCount,
   stackRemove,
@@ -930,7 +931,7 @@ function finishCut(world, grid, entityId, jobId, board, pos, deps) {
       deps.onChopComplete(pos);
     } else if (crop) {
       if (cropIsReady(crop.kind, crop.growthTicks)) {
-        addItemToTile(world, grid, 'food', anchor.i, anchor.j);
+        addItemToTile(world, grid, crop.kind, anchor.i, anchor.j);
         yieldedAnything = true;
       }
       deps.onHarvestComplete(pos);
@@ -1691,7 +1692,7 @@ function runHarvestJob(world, cowId, job, path, pos, grid, paths, board, deps) {
     job.payload.ticksRemaining = remaining;
     if (remaining <= 0) {
       world.despawn(cropId);
-      addItemToTile(world, grid, 'food', i, j);
+      addItemToTile(world, grid, crop.kind, i, j);
       deps.onHarvestComplete(pos);
       deps.onItemChange();
       board.complete(jobId);
@@ -2734,7 +2735,7 @@ function collectBlueprintTiles(world, grid, excludeSiteId) {
  * State machine for the self-assigned eat job: walk to food → consume one unit
  * → restore hunger. Bails if the food vanishes mid-trip.
  *
- * Works on both raw food (`kind === 'food'`) and cooked meals (`kind === 'meal'`).
+ * Works on both raw food (`rawFood`-tagged kinds) and cooked meals (`kind === 'meal'`).
  * Meals apply a quality-scaled nutrition multiplier and may inflict food
  * poisoning on lower-tier dishes — see world/quality.js for the table.
  *
@@ -2920,7 +2921,7 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
 
 /** @param {string} kind */
 function isEdibleKind(kind) {
-  return kind === 'food' || kind === 'meal';
+  return itemHasTag(kind, 'rawFood') || kind === 'meal';
 }
 
 /** Raw food has no `quality`; sort it between 'unpleasant' and 'decent'. */

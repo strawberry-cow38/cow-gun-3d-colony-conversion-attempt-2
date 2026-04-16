@@ -9,7 +9,9 @@ import { ingredientsSig } from './quality.js';
 export const ITEM_KINDS = /** @type {const} */ ([
   'wood',
   'stone',
-  'food',
+  'corn',
+  'carrot',
+  'potato',
   'metal_ore',
   'coal',
   'iron',
@@ -21,7 +23,9 @@ export const ITEM_KINDS = /** @type {const} */ ([
 export const MAX_STACK = {
   wood: 50,
   stone: 30,
-  food: 20,
+  corn: 20,
+  carrot: 20,
+  potato: 20,
   metal_ore: 30,
   coal: 30,
   iron: 30,
@@ -39,9 +43,17 @@ export const ITEM_INFO = {
     label: 'Stone',
     description: 'Heavy raw material for sturdier builds.',
   },
-  food: {
-    label: 'Food',
-    description: 'Harvested crops. Cows eat one unit to restore hunger.',
+  corn: {
+    label: 'Corn',
+    description: 'Raw food. Cows eat one unit to restore hunger; cooks into meals.',
+  },
+  carrot: {
+    label: 'Carrot',
+    description: 'Raw food. Cows eat one unit to restore hunger; cooks into meals.',
+  },
+  potato: {
+    label: 'Potato',
+    description: 'Raw food. Cows eat one unit to restore hunger; cooks into meals.',
   },
   metal_ore: {
     label: 'Metal Ore',
@@ -66,6 +78,48 @@ export const ITEM_INFO = {
   },
 };
 
+/**
+ * Item tags — an item kind can carry zero or more tags. Recipes can request
+ * ingredients by tag (e.g. `{ tag: 'rawFood', count: 2 }`) and the stove
+ * will pull from any matching kind in its supply. `mealIngredients` records
+ * the actually-consumed kinds so two meals made from different crops form
+ * distinct stacks and the panel can show "Corn + Carrot" vs "Potato + Potato".
+ *
+ * @type {Record<string, string[]>}
+ */
+export const ITEM_TAGS = {
+  wood: [],
+  stone: [],
+  corn: ['rawFood'],
+  carrot: ['rawFood'],
+  potato: ['rawFood'],
+  metal_ore: [],
+  coal: [],
+  iron: [],
+  painting: [],
+  meal: [],
+};
+
+/** @param {string} kind @param {string} tag */
+export function itemHasTag(kind, tag) {
+  return (ITEM_TAGS[kind] ?? []).includes(tag);
+}
+
+/**
+ * All item kinds that carry `tag`, in ITEM_KINDS declaration order so the
+ * stove's supply loop is deterministic.
+ *
+ * @param {string} tag
+ * @returns {string[]}
+ */
+export function kindsWithTag(tag) {
+  const out = [];
+  for (const k of ITEM_KINDS) {
+    if ((ITEM_TAGS[k] ?? []).includes(tag)) out.push(k);
+  }
+  return out;
+}
+
 /** Hunger restored per unit of food consumed (0..1 scale). */
 export const FOOD_NUTRITION = 0.35;
 
@@ -83,7 +137,9 @@ export const HUNGER_EAT_THRESHOLD = 0.45;
 export const WEIGHT_PER_UNIT = {
   wood: 5,
   stone: 6,
-  food: 0.5,
+  corn: 0.5,
+  carrot: 0.5,
+  potato: 0.5,
   metal_ore: 8,
   coal: 3,
   iron: 4,
@@ -203,7 +259,9 @@ export function stackRemove(arr, kind, count) {
 export const KIND_COLOR = {
   wood: 0x8a5a2b,
   stone: 0x9aa0a6,
-  food: 0xd66a3a,
+  corn: 0xd9c24a,
+  carrot: 0xe07b2a,
+  potato: 0x8a5a2a,
   metal_ore: 0xb0a48a,
   coal: 0x2a2a2e,
   iron: 0xc8cbd0,

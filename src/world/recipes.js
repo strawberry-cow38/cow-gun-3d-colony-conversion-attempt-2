@@ -7,8 +7,11 @@
 
 /**
  * @typedef {Object} Ingredient
- * @property {string} kind   item kind required (must exist in items.js)
- * @property {number} count  units consumed per craft
+ * @property {string} kind    item kind required (must exist in items.js). Set
+ *                            to '' when the ingredient is tag-keyed instead.
+ * @property {string} [tag]   optional — when set, any kind carrying this tag
+ *                            satisfies the ingredient. Overrides `kind`.
+ * @property {number} count   units consumed per craft
  *
  * @typedef {Object} Recipe
  * @property {string} id        stable key — "smelt_iron"
@@ -80,7 +83,7 @@ export const RECIPES = {
     label: 'Cook simple meal',
     ingredients: [
       { kind: 'wood', count: 1 },
-      { kind: 'food', count: 2 },
+      { kind: '', tag: 'rawFood', count: 2 },
     ],
     outputKind: 'meal',
     outputCount: 1,
