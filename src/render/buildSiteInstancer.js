@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { doorOrientationAt } from '../world/doorOrientation.js';
 import { getStuff } from '../world/stuff.js';
+import { BASE_LIFT as FLOOR_LIFT } from './floorInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
@@ -32,9 +33,6 @@ const TORCH_HEIGHT = 1.6 * UNITS_PER_METER;
 const TORCH_THICKNESS = TILE_SIZE * 0.25;
 const ROOF_THICKNESS = 4;
 const FLOOR_THICKNESS = 1;
-// Matches floorInstancer.js BASE_LIFT so the blueprint lines up with the
-// finished slab and doesn't z-fight the terrain.
-const FLOOR_LIFT = 2.0;
 
 const COLOR_EMPTY = 0x8a8a8a;
 const COLOR_TORCH_FILLED = 0xb87333;

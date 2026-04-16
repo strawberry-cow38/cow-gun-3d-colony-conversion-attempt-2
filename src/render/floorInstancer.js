@@ -24,7 +24,7 @@ import { getStuff } from '../world/stuff.js';
 // buffer loses precision at RTS zoom-out and we'd see stripes of flicker.
 // 2.0u ≈ 7cm real-world; plenty of separation at any supported zoom.
 const FLOOR_THICKNESS = 1;
-const BASE_LIFT = 2.0;
+export const BASE_LIFT = 2.0;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();

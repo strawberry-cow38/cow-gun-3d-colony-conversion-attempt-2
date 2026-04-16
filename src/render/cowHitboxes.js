@@ -4,9 +4,7 @@
  * zoom land reliably — the torso-only hit geometry the CowSelector used
  * before was barely a few pixels wide, which made selection feel fiddly.
  *
- * Mirrors the pattern in objectHitboxes.js: `visible = false` on the mesh
- * keeps it out of the draw path, but three's raycaster still hits it when
- * called non-recursively via `intersectObject(mesh, false)`.
+ * See objectHitboxes.js for the invisible-mesh raycast trick.
  */
 
 import * as THREE from 'three';
