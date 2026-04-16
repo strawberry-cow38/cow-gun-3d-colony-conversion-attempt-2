@@ -57,12 +57,27 @@
         text-align: center;
         line-height: 1.15;
       }
+      #hover-tooltip {
+        position: fixed;
+        bottom: 8px;
+        right: 8px;
+        padding: 4px 10px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #ffffff;
+        font-family: monospace;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+        white-space: nowrap;
+        display: none;
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
     <div id="hud">phase 0: scaffold</div>
     <div id="clock">00:00</div>
+    <div id="hover-tooltip"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

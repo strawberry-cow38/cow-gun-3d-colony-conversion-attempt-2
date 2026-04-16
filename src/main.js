@@ -28,6 +28,7 @@ import { CowSelector } from './render/cowSelector.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createEaselPanel, createFurnacePanel } from './render/furnacePanel.js';
+import { HoverTooltip } from './render/hoverTooltip.js';
 import { ItemSelector } from './render/itemSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
 import { CowMoveCommand } from './render/moveCommand.js';
@@ -621,6 +622,17 @@ new TilePicker(
     state.lastPick = hit;
   },
 );
+
+new HoverTooltip({
+  dom: canvas,
+  el: /** @type {HTMLElement} */ (document.getElementById('hover-tooltip')),
+  camera,
+  tileMesh: () => state.tileMesh,
+  grid: { W: gridW, H: gridH },
+  tileGrid,
+  world,
+  cowInstancer,
+});
 
 const prioritizeMenu = createPrioritizeMenu();
 
