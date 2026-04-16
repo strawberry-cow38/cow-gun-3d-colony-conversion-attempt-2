@@ -18,7 +18,7 @@ describe('backstories', () => {
     const rng = () => seq.shift() ?? 0;
     const p = pickProfession('Col.', rng);
     expect(p).toMatch(
-      /Stateside Base|Private Military|Desert Storm|ROTC|Military Surplus|Survivalist|Pentagon|Korean War|Marine|Airborne|VFW|Private Security|National Guard|Drill Sergeant|Submarine|Control Tower/,
+      /Domestic Base|Private Military|Desert Campaign|Cadet Corps|Military Surplus|Survivalist|Defense Bureaucracy|Foreign-War|Commando|Airborne Scout|Veterans Hall|Private Security|Home Guard|Drill Sergeant|Submarine|Control Tower/,
     );
   });
 

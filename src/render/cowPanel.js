@@ -11,6 +11,7 @@
  */
 
 import { ageYears, formatSimBirthday, tickToSimDate } from '../sim/calendar.js';
+import { getProfessionDescription } from '../world/backstories.js';
 import { opinionLabel } from '../world/chitchat.js';
 import { nameFontFor, nameFontScaleFor, traitDef } from '../world/traits.js';
 import { writeJitteredName } from './handwriting.js';
@@ -277,6 +278,12 @@ export function createCowPanel(opts) {
       backstoryBlock.style.display = 'block';
       fillBackstoryLine(childhoodLine, 'Grew up: ', childhood);
       fillBackstoryLine(professionLine, 'Worked as: ', profession);
+      const desc = profession ? getProfessionDescription(profession) : null;
+      if (desc) {
+        professionLine.title = `${brain.name} worked as ${articleFor(profession)} ${profession}, ${desc}.`;
+      } else {
+        professionLine.removeAttribute('title');
+      }
     } else {
       backstoryBlock.style.display = 'none';
     }
@@ -503,6 +510,18 @@ function hueForName(name) {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
   const hue = ((h % 360) + 360) % 360;
   return `hsl(${hue}, 55%, 72%)`;
+}
+
+/**
+ * Crude a/an picker: vowel-sound check on the first letter is wrong on
+ * "Honest" or "University" but our profession strings start with plain words
+ * so the naive rule reads right ~all of the time.
+ *
+ * @param {string} word
+ */
+function articleFor(word) {
+  const first = word.trim().charAt(0).toLowerCase();
+  return 'aeiou'.includes(first) ? 'an' : 'a';
 }
 
 /** @param {'male' | 'female' | 'nonbinary'} g */
