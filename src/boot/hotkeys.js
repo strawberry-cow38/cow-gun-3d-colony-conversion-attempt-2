@@ -30,6 +30,7 @@ import {
   hydrateItems,
   hydratePaintings,
   hydrateRoofs,
+  hydrateStoves,
   hydrateTileGrid,
   hydrateTorches,
   hydrateTrees,
@@ -432,6 +433,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Crop');
     despawnAllComp(world, 'Furnace');
     despawnAllComp(world, 'Easel');
+    despawnAllComp(world, 'Stove');
     despawnAllComp(world, 'Painting');
     jobBoard.clear();
     if (migrated.trees.length === 0) {
@@ -452,6 +454,7 @@ async function loadGame(ctx) {
     hydrateCrops(world, tileGrid, jobBoard, migrated);
     hydrateFurnaces(world, tileGrid, jobBoard, migrated);
     hydrateEasels(world, tileGrid, jobBoard, migrated);
+    hydrateStoves(world, tileGrid, jobBoard, migrated);
     hydratePaintings(world, tileGrid, migrated);
     hydrateWallArt(world, tileGrid, migrated);
     ctx.rooms.rebuild();

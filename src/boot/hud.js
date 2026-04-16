@@ -120,6 +120,15 @@ export function createHud(ctx) {
           ? /** @type {number} */ (state.selectedEasels.values().next().value)
           : null;
     }
+    for (const id of state.selectedStoves) {
+      if (!world.get(id, 'Stove')) state.selectedStoves.delete(id);
+    }
+    if (state.primaryStove !== null && !state.selectedStoves.has(state.primaryStove)) {
+      state.primaryStove =
+        state.selectedStoves.size > 0
+          ? /** @type {number} */ (state.selectedStoves.values().next().value)
+          : null;
+    }
     for (const id of state.selectedObjects) {
       if (!objectTypeFor(world, id)) state.selectedObjects.delete(id);
     }

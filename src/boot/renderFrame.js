@@ -44,6 +44,7 @@ function speedIcon(speed) {
  *   itemStackPanel: { update: () => void },
  *   furnacePanel: { update: () => void },
  *   easelPanel: { update: () => void },
+ *   stovePanel: { update: () => void },
  *   objectPanel: { update: () => void },
  *   buildTab: { update: () => void },
  *   clockEl: HTMLElement,
@@ -77,6 +78,7 @@ export function createRenderFrame({
   itemStackPanel,
   furnacePanel,
   easelPanel,
+  stovePanel,
   objectPanel,
   buildTab,
   clockEl,
@@ -110,6 +112,7 @@ export function createRenderFrame({
     furnaceProgressBars,
     furnaceSelectionViz,
     easelInstancer,
+    stoveInstancer,
     paintingInstancer,
     wallArtInstancer,
     buildSiteInstancer,
@@ -193,6 +196,7 @@ export function createRenderFrame({
     furnaceProgressBars.update(world, tileGrid, camera);
     furnaceSelectionViz.update(world, tileGrid, state.selectedFurnaces);
     easelInstancer.update(world, tileGrid);
+    stoveInstancer.update(world, tileGrid);
     paintingInstancer.update(world, tileGrid);
     wallArtInstancer.update(world, tileGrid);
     roofCollapseParticles.update(rdt);
@@ -214,6 +218,7 @@ export function createRenderFrame({
     itemStackPanel.update();
     furnacePanel.update();
     easelPanel.update();
+    stovePanel.update();
     objectPanel.update();
     buildTab.update();
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);

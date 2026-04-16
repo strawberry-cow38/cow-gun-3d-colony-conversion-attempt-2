@@ -75,6 +75,17 @@ export const RECIPES = {
     outputCount: 1,
     workTicks: 2400,
   },
+  cook_simple_meal: {
+    id: 'cook_simple_meal',
+    label: 'Cook simple meal',
+    ingredients: [
+      { kind: 'wood', count: 1 },
+      { kind: 'food', count: 2 },
+    ],
+    outputKind: 'meal',
+    outputCount: 1,
+    workTicks: 300,
+  },
 };
 
 /**
@@ -86,6 +97,7 @@ export const RECIPES = {
 export const STATION_RECIPES = {
   furnace: ['smelt_iron'],
   easel: ['paint_small', 'paint_medium', 'paint_large', 'paint_huge'],
+  stove: ['cook_simple_meal'],
 };
 
 /** Size in tiles (wall-mount span) per painting recipe. */

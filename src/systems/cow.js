@@ -46,6 +46,7 @@ import {
   qualityRank,
 } from '../world/quality.js';
 import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
+import { stoveFootprintTiles } from '../world/stove.js';
 import { BIOME } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -180,7 +181,8 @@ export function makeCowBrainSystem(deps) {
             job.kind === 'till' ||
             job.kind === 'plant' ||
             job.kind === 'harvest' ||
-            job.kind === 'paint'
+            job.kind === 'paint' ||
+            job.kind === 'cook'
           ) {
             if (job.payload?.jobId != null) board.release(job.payload.jobId);
             job.kind = 'none';
@@ -286,9 +288,9 @@ export function makeCowBrainSystem(deps) {
             if (job.kind === 'wander' || job.kind === 'none') {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
               const candidate = board.findUnclaimed(near, (j) => {
-                // Paint jobs can be artist-locked: only the cow who first
+                // Paint/cook jobs can be cook-locked: only the cow who first
                 // started the bill may resume it after an interruption.
-                if (j.kind !== 'paint') return true;
+                if (j.kind !== 'paint' && j.kind !== 'cook') return true;
                 const lock = j.payload.lockedCowId | 0;
                 return lock === 0 || lock === id;
               });
@@ -410,6 +412,17 @@ export function makeCowBrainSystem(deps) {
                 };
                 path.steps = [];
                 path.index = 0;
+              } else if (candidate && candidate.kind === 'cook' && board.claim(candidate.id, id)) {
+                job.kind = 'cook';
+                job.state = 'pathing';
+                job.payload = {
+                  jobId: candidate.id,
+                  stoveId: candidate.payload.stoveId,
+                  i: candidate.payload.i,
+                  j: candidate.payload.j,
+                };
+                path.steps = [];
+                path.index = 0;
               } else if (
                 candidate &&
                 candidate.kind === 'install' &&
@@ -464,6 +477,8 @@ export function makeCowBrainSystem(deps) {
           runHarvestJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'paint') {
           runPaintJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
+        } else if (job.kind === 'cook') {
+          runCookJob(world, id, job, path, pos, grid, paths, walkable, board, ctx, deps);
         } else if (job.kind === 'install') {
           runInstallJob(world, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'uninstall') {
@@ -939,12 +954,12 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
       // Roofs + floors don't block pathing so they skip this stall — cows
       // happily stand on finished flooring.
       const anchor = world.get(siteId, 'TileAnchor');
-      if (
-        site.kind !== 'roof' &&
-        site.kind !== 'floor' &&
-        anchor &&
-        cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId)
-      ) {
+      const stoveTiles =
+        site.kind === 'stove' && anchor ? stoveFootprintTiles(anchor, site.facing | 0) : null;
+      const someoneInFootprint = stoveTiles
+        ? stoveTiles.some((t) => cowOnTileExcluding(world, grid, t.i, t.j, builderId))
+        : anchor && cowOnTileExcluding(world, grid, anchor.i, anchor.j, builderId);
+      if (site.kind !== 'roof' && site.kind !== 'floor' && someoneInFootprint) {
         // One tick of pad keeps progress visually pegged at 99% and the audio
         // tap firing at the same cadence; we re-check next tick.
         job.payload.ticksRemaining = 1;
@@ -1087,6 +1102,22 @@ function finishBuild(world, grid, siteId, jobId, board, walkable) {
       TileAnchor: { i: anchor.i, j: anchor.j },
       Position: position,
     });
+  } else if (site.kind === 'stove') {
+    const facing = site.facing | 0;
+    // Work-spot is picked from the anchor's facing; the full 3-tile footprint
+    // then gets blocked. Pick BEFORE blocking so span tiles aren't rejected
+    // from the neighbor scan.
+    const workSpot = pickStationWorkSpot(grid, walkable, anchor, facing);
+    for (const t of stoveFootprintTiles(anchor, facing)) {
+      if (grid.inBounds(t.i, t.j)) grid.blockTile(t.i, t.j);
+    }
+    world.spawn({
+      Stove: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
+      StoveViz: {},
+      Bills: { list: [], nextBillId: 1 },
+      TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
   } else {
     grid.setWall(anchor.i, anchor.j, 1);
     world.spawn({
@@ -1159,6 +1190,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   floor: 'Floor',
   furnace: 'Furnace',
   easel: 'Easel',
+  stove: 'Stove',
 });
 
 /**
@@ -1179,9 +1211,9 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
 function runDeconstructJob(world, job, path, pos, grid, paths, walkable, board, deps) {
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
-  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'} */ (
+  const compName = /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'|'Stove'} */ (
     DECON_COMP_BY_KIND[
-      /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'} */ (kind)
+      /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'|'stove'} */ (kind)
     ] ?? 'Wall'
   );
   const tag = world.get(entityId, compName);
@@ -1274,6 +1306,13 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   else if (kind === 'roof') grid.setRoof(anchor.i, anchor.j, 0);
   else if (kind === 'floor') grid.setFloor(anchor.i, anchor.j, 0);
   else if (kind === 'furnace' || kind === 'easel') grid.unblockTile(anchor.i, anchor.j);
+  else if (kind === 'stove') {
+    const stoveEntity = world.get(entityId, 'Stove');
+    const facing = stoveEntity ? stoveEntity.facing | 0 : 0;
+    for (const t of stoveFootprintTiles(anchor, facing)) {
+      if (grid.inBounds(t.i, t.j)) grid.unblockTile(t.i, t.j);
+    }
+  }
   // Wall/door/torch cost 1 wood → 50% refund = 1. Roofs are free so they
   // refund nothing. Furnaces cost 15 stone → refund 7. Easels cost 8 wood →
   // refund 4, plus any in-progress craft's ingredients (already consumed at
@@ -1299,6 +1338,22 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
       if (recipe) {
         for (const ing of recipe.ingredients)
           addItemsToTile(world, grid, ing.kind, ing.count, anchor.i, anchor.j);
+      }
+    }
+  } else if (kind === 'stove') {
+    for (let k = 0; k < 12; k++) addItemToTile(world, grid, 'stone', anchor.i, anchor.j);
+    const stove = world.get(entityId, 'Stove');
+    const bills = world.get(entityId, 'Bills');
+    if (stove) {
+      for (const s of stove.stored)
+        addItemsToTile(world, grid, s.kind, s.count, anchor.i, anchor.j);
+      if (bills && stove.activeBillId > 0) {
+        const active = bills.list.find((b) => b.id === stove.activeBillId);
+        const recipe = active ? RECIPES[active.recipeId] : null;
+        if (recipe) {
+          for (const ing of recipe.ingredients)
+            addItemsToTile(world, grid, ing.kind, ing.count, anchor.i, anchor.j);
+        }
       }
     }
   } else {
@@ -1575,12 +1630,13 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
     toSupply,
     furnaceId,
     easelId,
+    stoveId,
     fromFurnaceId,
     fromI,
     fromJ,
     siteId,
   } =
-    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, easelId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, siteId?: number, kind?: string }} */ (
+    /** @type {{ jobId: number, itemId?: number, toI: number, toJ: number, toBuildSite?: boolean, toRelocation?: boolean, toSupply?: boolean, furnaceId?: number, easelId?: number, stoveId?: number, fromFurnaceId?: number, fromI?: number, fromJ?: number, siteId?: number, kind?: string }} */ (
       job.payload
     );
   const kind = /** @type {string | undefined} */ (job.payload.kind);
@@ -1590,7 +1646,7 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
   const targetGone = toBuildSite
     ? findBuildSiteAt(world, toI, toJ) === null
     : toSupply
-      ? !stationWorkSpotMatches(world, furnaceId, easelId, toI, toJ)
+      ? !stationWorkSpotMatches(world, furnaceId, easelId, stoveId, toI, toJ)
       : !toRelocation && !grid.isStockpile(toI, toJ);
   if (targetGone) {
     if (inv.items.length > 0) {
@@ -1624,7 +1680,9 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
         ? world.get(furnaceId, 'Furnace')
         : typeof easelId === 'number'
           ? world.get(easelId, 'Easel')
-          : null;
+          : typeof stoveId === 'number'
+            ? world.get(stoveId, 'Stove')
+            : null;
     if (station && station.activeBillId > 0) {
       board.complete(jobId);
       job.kind = 'none';
@@ -1830,11 +1888,18 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
               addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
             }
           }
-        } else if (toSupply && (typeof furnaceId === 'number' || typeof easelId === 'number')) {
+        } else if (
+          toSupply &&
+          (typeof furnaceId === 'number' ||
+            typeof easelId === 'number' ||
+            typeof stoveId === 'number')
+        ) {
           const station =
             typeof furnaceId === 'number'
               ? world.get(furnaceId, 'Furnace')
-              : world.get(/** @type {number} */ (easelId), 'Easel');
+              : typeof easelId === 'number'
+                ? world.get(easelId, 'Easel')
+                : world.get(/** @type {number} */ (stoveId), 'Stove');
           for (const stack of inv.items) {
             if (station && stack.kind === kind) {
               // Matching ingredient → deposit into station.stored so the
@@ -2026,6 +2091,129 @@ function finishPaint(world, grid, cowId, easelId, easel, bills, tick, deps) {
     PaintingViz: {},
     TileAnchor: { i: anchor.i, j: anchor.j },
     Position: { x: w.x, y: grid.getElevation(anchor.i, anchor.j), z: w.z },
+  });
+  deps.onItemChange();
+}
+
+/**
+ * Manned cook state machine — structurally mirrors runPaintJob. Quality was
+ * rolled at craft start (makeStoveSystem) so the meal's stack-identity tuple
+ * is fixed before this job ever runs.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} cowId
+ * @param {{ kind: string, state: string, payload: Record<string, any> }} job
+ * @param {{ steps: { i: number, j: number }[], index: number }} path
+ * @param {{ x: number, y: number, z: number }} pos
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} paths
+ * @param {(g: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ tick: number }} ctx
+ * @param {BrainDeps} deps
+ */
+function runCookJob(world, cowId, job, path, pos, grid, paths, walkable, board, ctx, deps) {
+  const { stoveId, jobId } = /** @type {{ stoveId: number, jobId: number }} */ (job.payload);
+  const stove = world.get(stoveId, 'Stove');
+  const bills = world.get(stoveId, 'Bills');
+  const boardJob = board.get(jobId);
+
+  if (!stove || !bills || !boardJob || boardJob.completed || stove.activeBillId === 0) {
+    if (boardJob && !boardJob.completed) board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    path.steps = [];
+    path.index = 0;
+    return;
+  }
+
+  const lock = boardJob.payload.lockedCowId | 0 || stove.cookCowId | 0;
+  if (lock > 0 && lock !== cowId) {
+    board.release(jobId);
+    job.kind = 'none';
+    job.state = 'idle';
+    job.payload = {};
+    return;
+  }
+
+  if (job.state === 'pathing') {
+    const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+    const target = { i: stove.workI, j: stove.workJ };
+    const route = paths.find(start, target);
+    if (!route || route.length === 0) {
+      board.release(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+      return;
+    }
+    path.steps = route;
+    path.index = 0;
+    job.state = 'walking';
+    return;
+  }
+
+  if (job.state === 'walking') {
+    if (path.index >= path.steps.length) {
+      if (stove.cookCowId === 0) stove.cookCowId = cowId;
+      boardJob.payload.lockedCowId = cowId;
+      if (stove.startTick === 0) stove.startTick = ctx.tick;
+      job.state = 'cooking';
+      path.steps = [];
+      path.index = 0;
+    }
+    return;
+  }
+
+  if (job.state === 'cooking') {
+    stove.workTicksRemaining = Math.max(0, stove.workTicksRemaining - 1);
+    stove.progress = 1 - stove.workTicksRemaining / Math.max(1, getActiveRecipeTicks(stove, bills));
+    if (stove.workTicksRemaining > 0 && stove.workTicksRemaining % 30 === 0) {
+      deps.onCowHammer(pos);
+    }
+    if (stove.workTicksRemaining <= 0) {
+      finishCook(world, grid, stoveId, stove, bills, deps);
+      board.complete(jobId);
+      job.kind = 'none';
+      job.state = 'idle';
+      job.payload = {};
+    }
+  }
+}
+
+/**
+ * Spawn the meal stack on the stove's anchor tile, then clear the active
+ * craft slot so the next bill can start. Quality + ingredient kinds were
+ * latched at craft start; they ride onto the Item so stack-identity sorts
+ * gourmet/yucky batches apart.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} stoveId
+ * @param {{ activeBillId: number, cookCowId: number, workTicksRemaining: number, progress: number, startTick: number, mealQuality: string, mealIngredients: string[] }} stove
+ * @param {{ list: import('../world/recipes.js').Bill[] }} bills
+ * @param {BrainDeps} deps
+ */
+function finishCook(world, grid, stoveId, stove, bills, deps) {
+  const bill = bills.list.find((b) => b.id === stove.activeBillId);
+  const anchor = world.get(stoveId, 'TileAnchor');
+  const quality = stove.mealQuality;
+  const ingredients = stove.mealIngredients.slice();
+  stove.activeBillId = 0;
+  stove.cookCowId = 0;
+  stove.workTicksRemaining = 0;
+  stove.progress = 0;
+  stove.startTick = 0;
+  stove.mealQuality = '';
+  stove.mealIngredients = [];
+  if (!bill || !anchor) return;
+  const recipe = RECIPES[bill.recipeId];
+  if (!recipe) return;
+  bill.done += 1;
+  addItemsToTile(world, grid, recipe.outputKind, recipe.outputCount, anchor.i, anchor.j, {
+    quality,
+    ingredients,
   });
   deps.onItemChange();
 }
@@ -2379,16 +2567,17 @@ function findBuildSiteAt(world, i, j) {
 
 /**
  * True when the target station entity still exists and its work spot is still
- * (i, j). Checks Furnace then Easel — supply jobs target whichever station
- * posted them. If the station was deconstructed mid-haul, the supply job no
- * longer has a valid drop target.
+ * (i, j). Checks Furnace then Easel then Stove — supply jobs target whichever
+ * station posted them. If the station was deconstructed mid-haul, the supply
+ * job no longer has a valid drop target.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {number | undefined} furnaceId
  * @param {number | undefined} easelId
+ * @param {number | undefined} stoveId
  * @param {number} i @param {number} j
  */
-function stationWorkSpotMatches(world, furnaceId, easelId, i, j) {
+function stationWorkSpotMatches(world, furnaceId, easelId, stoveId, i, j) {
   if (typeof furnaceId === 'number') {
     const f = world.get(furnaceId, 'Furnace');
     if (f !== undefined && f.workI === i && f.workJ === j) return true;
@@ -2396,6 +2585,10 @@ function stationWorkSpotMatches(world, furnaceId, easelId, i, j) {
   if (typeof easelId === 'number') {
     const e = world.get(easelId, 'Easel');
     if (e !== undefined && e.workI === i && e.workJ === j) return true;
+  }
+  if (typeof stoveId === 'number') {
+    const s = world.get(stoveId, 'Stove');
+    if (s !== undefined && s.workI === i && s.workJ === j) return true;
   }
   return false;
 }

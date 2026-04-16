@@ -79,6 +79,7 @@ const CATEGORIES = [
  * @property {ToggleableDesignator} floorDesignator
  * @property {ToggleableDesignator} furnaceDesignator
  * @property {ToggleableDesignator} easelDesignator
+ * @property {ToggleableDesignator} stoveDesignator
  * @property {ToggleableDesignator} ignoreRoofDesignator
  * @property {ToggleableDesignator} deconstructDesignator
  * @property {ToggleableDesignator} removeRoofDesignator
@@ -258,6 +259,15 @@ export function createBuildTab(opts) {
       activeColor: '#d8b26a',
       categoryId: 'production',
       designator: opts.easelDesignator,
+    },
+    {
+      id: 'stove',
+      label: 'Stove',
+      icon: '🥄',
+      hotkeyHint: 'click to place a 3x1 stove (25 stone) — R rotates facing',
+      activeColor: '#d2b98a',
+      categoryId: 'production',
+      designator: opts.stoveDesignator,
     },
 
     // Lighting.

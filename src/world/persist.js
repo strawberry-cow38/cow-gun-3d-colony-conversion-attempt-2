@@ -21,6 +21,7 @@
  *   crops: [ { i, j, kind: string, growthTicks: number } ],
  *   furnaces: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, stored: { kind, count }[], outputs: { kind, count }[], bills, nextBillId } ],
  *   easels: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, artistCowId, startTick, stored: { kind, count }[], bills, nextBillId } ],
+ *   stoves: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, cookCowId, startTick, mealQuality, mealIngredients: string[], stored: { kind, count }[], bills, nextBillId } ],
  *   paintings: [ { i, j, size, title, palette, shapes, quality, artistCowId, artistName, easelI, easelJ, startTick, finishTick, forbidden } ],
  *   wallArt: [ { i, j, face, size, title, palette, shapes, quality, artistCowId, artistName, easelI, easelJ, startTick, finishTick } ]
  * }
@@ -33,6 +34,7 @@
 
 import { tileToWorld } from './coords.js';
 import { CURRENT_VERSION, runMigrations } from './migrations/index.js';
+import { stoveFootprintTiles } from './stove.js';
 import { TileGrid } from './tileGrid.js';
 
 /**
@@ -194,6 +196,27 @@ import { TileGrid } from './tileGrid.js';
  * @property {number} artistCowId
  * @property {number} startTick
  * @property {number} [facing]
+ * @property {{ kind: string, count: number }[]} [stored]
+ * @property {import('./recipes.js').Bill[]} [bills]
+ * @property {number} [nextBillId]
+ */
+
+/**
+ * @typedef SerializedStove
+ * @property {number} i
+ * @property {number} j
+ * @property {string} stuff
+ * @property {number} workI
+ * @property {number} workJ
+ * @property {boolean} decon
+ * @property {number} progress
+ * @property {number} workTicksRemaining
+ * @property {number} activeBillId
+ * @property {number} cookCowId
+ * @property {number} startTick
+ * @property {number} [facing]
+ * @property {string} [mealQuality]
+ * @property {string[]} [mealIngredients]
  * @property {{ kind: string, count: number }[]} [stored]
  * @property {import('./recipes.js').Bill[]} [bills]
  * @property {number} [nextBillId]
@@ -521,6 +544,29 @@ export function serializeState(tileGrid, world) {
       nextBillId: components.Bills.nextBillId,
     });
   }
+  /** @type {SerializedStove[]} */
+  const stoves = [];
+  for (const { components } of world.query(['Stove', 'TileAnchor', 'Bills'])) {
+    stoves.push({
+      i: components.TileAnchor.i,
+      j: components.TileAnchor.j,
+      stuff: components.Stove.stuff ?? 'stone',
+      workI: components.Stove.workI,
+      workJ: components.Stove.workJ,
+      decon: components.Stove.deconstructJobId > 0,
+      progress: components.Stove.progress ?? 0,
+      workTicksRemaining: components.Stove.workTicksRemaining ?? 0,
+      activeBillId: components.Stove.activeBillId ?? 0,
+      cookCowId: components.Stove.cookCowId ?? 0,
+      startTick: components.Stove.startTick ?? 0,
+      facing: components.Stove.facing ?? 0,
+      mealQuality: components.Stove.mealQuality ?? '',
+      mealIngredients: (components.Stove.mealIngredients ?? []).slice(),
+      stored: (components.Stove.stored ?? []).map((s) => ({ kind: s.kind, count: s.count })),
+      bills: components.Bills.list.map((b) => ({ ...b })),
+      nextBillId: components.Bills.nextBillId,
+    });
+  }
   /** @type {SerializedPainting[]} */
   const paintings = [];
   for (const { components } of world.query(['Painting', 'Item', 'TileAnchor'])) {
@@ -594,6 +640,7 @@ export function serializeState(tileGrid, world) {
     crops,
     furnaces,
     easels,
+    stoves,
     paintings,
     wallArt,
   };
@@ -1033,6 +1080,53 @@ export function hydrateEasels(world, grid, board, state) {
 /**
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
+ * @param {import('../jobs/board.js').JobBoard} board
+ * @param {{ stoves?: SerializedStove[] }} state
+ */
+export function hydrateStoves(world, grid, board, state) {
+  const stoves = state.stoves ?? [];
+  for (const s of stoves) {
+    if (!grid.inBounds(s.i, s.j)) continue;
+    const facing = s.facing ?? 0;
+    const footprint = stoveFootprintTiles({ i: s.i, j: s.j }, facing);
+    if (footprint.some((t) => !grid.inBounds(t.i, t.j) || grid.isBlocked(t.i, t.j))) continue;
+    for (const t of footprint) grid.blockTile(t.i, t.j);
+    const w = tileToWorld(s.i, s.j, grid.W, grid.H);
+    const id = world.spawn({
+      Stove: {
+        deconstructJobId: 0,
+        progress: s.progress ?? 0,
+        stuff: s.stuff ?? 'stone',
+        workI: s.workI,
+        workJ: s.workJ,
+        workTicksRemaining: s.workTicksRemaining ?? 0,
+        activeBillId: s.activeBillId ?? 0,
+        cookCowId: s.cookCowId ?? 0,
+        startTick: s.startTick ?? 0,
+        facing,
+        mealQuality: s.mealQuality ?? '',
+        mealIngredients: (s.mealIngredients ?? []).slice(),
+        stored: (s.stored ?? []).map((st) => ({ kind: st.kind, count: st.count })),
+      },
+      StoveViz: {},
+      Bills: {
+        list: (s.bills ?? []).map((b) => ({ ...b })),
+        nextBillId: s.nextBillId ?? 1,
+      },
+      TileAnchor: { i: s.i, j: s.j },
+      Position: { x: w.x, y: grid.getElevation(s.i, s.j), z: w.z },
+    });
+    if (s.decon) {
+      const job = board.post('deconstruct', { entityId: id, kind: 'stove', i: s.i, j: s.j });
+      const rec = world.get(id, 'Stove');
+      if (rec) rec.deconstructJobId = job.id;
+    }
+  }
+}
+
+/**
+ * @param {import('../ecs/world.js').World} world
+ * @param {import('./tileGrid.js').TileGrid} grid
  * @param {{ paintings?: SerializedPainting[] }} state
  */
 export function hydratePaintings(world, grid, state) {
@@ -1100,7 +1194,7 @@ export function hydrateWallArt(world, grid, state) {
  * Migrate a parsed save state up to CURRENT_VERSION and return it as the
  * current schema shape.
  * @param {{ version: number, [k: string]: any }} parsed
- * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[], easels: SerializedEasel[], paintings: SerializedPainting[], wallArt: SerializedWallArt[] }}
+ * @returns {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[] }, cows: SerializedCow[], trees: SerializedTree[], boulders: SerializedBoulder[], items: SerializedItem[], buildSites: SerializedBuildSite[], walls: SerializedWall[], doors: SerializedDoor[], torches: SerializedTorch[], roofs: SerializedRoof[], floors: SerializedFloor[], crops: SerializedCrop[], furnaces: SerializedFurnace[], easels: SerializedEasel[], stoves: SerializedStove[], paintings: SerializedPainting[], wallArt: SerializedWallArt[] }}
  */
 export function loadState(parsed) {
   return /** @type {any} */ (runMigrations(parsed));

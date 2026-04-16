@@ -20,16 +20,16 @@ import {
 } from '../world/recipes.js';
 import { computeStockByKind } from '../world/stock.js';
 
-/** @typedef {'furnace' | 'easel'} StationKind */
+/** @typedef {'furnace' | 'easel' | 'stove'} StationKind */
 
 /**
  * Kind-specific lookups. Isolated here so the panel body can stay generic.
  *
  * @type {Record<StationKind, {
  *   title: string,
- *   comp: 'Furnace' | 'Easel',
- *   selectedKey: 'selectedFurnaces' | 'selectedEasels',
- *   primaryKey: 'primaryFurnace' | 'primaryEasel',
+ *   comp: 'Furnace' | 'Easel' | 'Stove',
+ *   selectedKey: 'selectedFurnaces' | 'selectedEasels' | 'selectedStoves',
+ *   primaryKey: 'primaryFurnace' | 'primaryEasel' | 'primaryStove',
  *   accent: string,
  * }>}
  */
@@ -47,6 +47,13 @@ const KIND_META = {
     selectedKey: 'selectedEasels',
     primaryKey: 'primaryEasel',
     accent: 'rgba(216, 178, 106, 0.45)',
+  },
+  stove: {
+    title: 'Stove',
+    comp: 'Stove',
+    selectedKey: 'selectedStoves',
+    primaryKey: 'primaryStove',
+    accent: 'rgba(210, 185, 138, 0.45)',
   },
 };
 
@@ -555,4 +562,9 @@ export function createFurnacePanel(opts) {
 /** @param {StationPanelOpts} opts */
 export function createEaselPanel(opts) {
   return createFurnacePanel({ ...opts, kind: 'easel' });
+}
+
+/** @param {StationPanelOpts} opts */
+export function createStovePanel(opts) {
+  return createFurnacePanel({ ...opts, kind: 'stove' });
 }

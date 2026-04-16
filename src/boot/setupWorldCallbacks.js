@@ -48,6 +48,7 @@ export function setupWorldCallbacks({
     flowerInstancer,
     furnaceInstancer,
     easelInstancer,
+    stoveInstancer,
     paintingInstancer,
     wallArtInstancer,
     buildSiteInstancer,
@@ -134,14 +135,21 @@ export function setupWorldCallbacks({
       ambientParticles.markFlowersDirty();
       furnaceInstancer.markDirty();
       easelInstancer.markDirty();
+      stoveInstancer.markDirty();
       buildSiteInstancer.markDirty();
       deconstructOverlay.markDirty();
-      // Walls/doors/furnaces/easels all change walkability (stations block
-      // their tile via the generic occupancy bitmap; door deconstruct/build
-      // flips the door bit). Torches/floors/roofs stay passable, so skip the
-      // cache invalidation + topology rebuild for them — that keeps the
-      // stutter off when the player drops a row of torches or floors.
-      if (kind === 'wall' || kind === 'door' || kind === 'furnace' || kind === 'easel') {
+      // Walls/doors/furnaces/easels/stoves all change walkability (stations
+      // block their tile via the generic occupancy bitmap; door deconstruct/
+      // build flips the door bit). Torches/floors/roofs stay passable, so
+      // skip the cache invalidation + topology rebuild for them — that keeps
+      // the stutter off when the player drops a row of torches or floors.
+      if (
+        kind === 'wall' ||
+        kind === 'door' ||
+        kind === 'furnace' ||
+        kind === 'easel' ||
+        kind === 'stove'
+      ) {
         invalidatePathCacheAt(pos);
         scheduler.dirty.mark('topology');
       }

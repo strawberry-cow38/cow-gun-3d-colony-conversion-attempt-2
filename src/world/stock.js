@@ -56,5 +56,15 @@ export function computeStockByKind(world, opts) {
       }
     }
   }
+  for (const { components } of world.query(['Stove', 'Bills'])) {
+    const s = components.Stove;
+    if (includeActive && s.activeBillId > 0) {
+      const bill = components.Bills.list.find((b) => b.id === s.activeBillId);
+      const recipe = bill ? RECIPES[bill.recipeId] : null;
+      if (recipe) {
+        out.set(recipe.outputKind, (out.get(recipe.outputKind) ?? 0) + recipe.outputCount);
+      }
+    }
+  }
   return out;
 }

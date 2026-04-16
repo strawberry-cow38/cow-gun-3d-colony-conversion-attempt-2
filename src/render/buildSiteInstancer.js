@@ -21,9 +21,17 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { doorOrientationAt } from '../world/doorOrientation.js';
+import { FACING_YAWS } from '../world/facing.js';
 import { getStuff } from '../world/stuff.js';
 import { BASE_LIFT as FLOOR_LIFT } from './floorInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
+import {
+  STOVE_BODY_DEPTH,
+  STOVE_BODY_HEIGHT,
+  STOVE_BODY_SPAN,
+  STOVE_CHIMNEY_HEIGHT,
+  STOVE_CHIMNEY_WIDTH,
+} from './stoveInstancer.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = 2.4 * UNITS_PER_METER;
@@ -130,6 +138,28 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
               ? COLOR_EMPTY
               : filledColorFor('door', site.stuff, 'frame'),
         );
+        mesh.setColorAt(n, _color);
+        n++;
+        continue;
+      }
+
+      if (site.kind === 'stove') {
+        const yaw = FACING_YAWS[site.facing | 0] ?? 0;
+        _quat.setFromAxisAngle(Y_AXIS, yaw);
+        _scale.set(STOVE_BODY_SPAN, STOVE_BODY_HEIGHT, STOVE_BODY_DEPTH);
+        _position.set(w.x, y, w.z);
+        _matrix.compose(_position, _quat, _scale);
+        mesh.setMatrixAt(n, _matrix);
+        _color.setHex(baseHex);
+        mesh.setColorAt(n, _color);
+        n++;
+        if (n >= cap) break;
+
+        _scale.set(STOVE_CHIMNEY_WIDTH, STOVE_CHIMNEY_HEIGHT, STOVE_CHIMNEY_WIDTH);
+        _position.set(w.x, y + STOVE_BODY_HEIGHT, w.z);
+        _matrix.compose(_position, _quat, _scale);
+        mesh.setMatrixAt(n, _matrix);
+        _color.setHex(baseHex);
         mesh.setColorAt(n, _color);
         n++;
         continue;

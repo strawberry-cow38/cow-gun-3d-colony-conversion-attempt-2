@@ -26,9 +26,11 @@ import {
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { stoveFootprintTiles } from '../world/stove.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
+import { createStoveGhost } from './stoveInstancer.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -36,11 +38,11 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 const WORK_SPOT_COLOR = 0x7cffb0;
 
 /** Station kinds that have a facing (R-cycles) and a work-spot preview. */
-const FACING_KINDS = new Set(['furnace', 'easel']);
+const FACING_KINDS = new Set(['furnace', 'easel', 'stove']);
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -138,6 +140,17 @@ export const EASEL_DESIGNATOR_CONFIG = {
   requiredKind: 'wood',
 };
 
+/** @type {BuildDesignatorConfig} */
+export const STOVE_DESIGNATOR_CONFIG = {
+  kind: 'stove',
+  previewColorAdd: 0xd2b98a,
+  addVerb: 'stove',
+  cancelVerb: 'cancel stove',
+  singlePlace: true,
+  required: 25,
+  requiredKind: 'stone',
+};
+
 export class BuildDesignator {
   /**
    * `deconstructOverlay` is the dirty-flag sink for the door-on-wall path:
@@ -212,6 +225,7 @@ export class BuildDesignator {
     // the cursor so the player can see footprint AND facing-implied workspot
     // before committing.
     this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
+    this.stoveGhost = config.kind === 'stove' ? createStoveGhost(scene) : null;
     this.workSpotPreview = FACING_KINDS.has(config.kind)
       ? buildPreview(scene, WORK_SPOT_COLOR)
       : null;
@@ -400,6 +414,37 @@ export class BuildDesignator {
     const isDoor = kind === 'door';
     const isWallTorch = kind === 'wallTorch';
     const isFloor = kind === 'floor';
+    const isStove = kind === 'stove';
+    if (isStove) {
+      const footprint = stoveFootprintTiles({ i, j }, this.currentFacing);
+      for (const t of footprint) {
+        if (!this.tileGrid.inBounds(t.i, t.j)) return false;
+        if (this.tileGrid.isBlocked(t.i, t.j)) return false;
+        if (this.tileGrid.isDoor(t.i, t.j)) return false;
+        if (this.tileGrid.isTorch(t.i, t.j)) return false;
+        if (this.tileGrid.isStockpile(t.i, t.j)) return false;
+        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof' && k !== 'floor') !== null) {
+          return false;
+        }
+      }
+      const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
+      this.world.spawn({
+        BuildSite: {
+          kind,
+          stuff: 'stone',
+          requiredKind: this.config.requiredKind ?? 'stone',
+          required: this.config.required ?? 1,
+          delivered: 0,
+          buildJobId: 0,
+          progress: 0,
+          facing: this.currentFacing,
+        },
+        BuildSiteViz: {},
+        TileAnchor: { i, j },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+      });
+      return true;
+    }
     if (isRoof) {
       if (this.tileGrid.isRoof(i, j)) return false;
       if (!hasRoofSupport(this.tileGrid, this.world, i, j)) return false;
@@ -522,7 +567,10 @@ export class BuildDesignator {
     // Only cancel blueprints of our own kind so wall/door modes don't step on
     // each other's pending work on shared tiles.
     const kind = this.config.kind;
-    const id = this.#findSiteAt(i, j, (k) => k === kind);
+    const id =
+      kind === 'stove'
+        ? this.#findStoveSiteCovering(i, j)
+        : this.#findSiteAt(i, j, (k) => k === kind);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
@@ -544,16 +592,45 @@ export class BuildDesignator {
     return null;
   }
 
+  /**
+   * Cancel needs to match the stove blueprint whose 3-tile footprint includes
+   * the clicked tile, since the player can click any of the three positions.
+   * @param {number} i @param {number} j
+   */
+  #findStoveSiteCovering(i, j) {
+    for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+      const site = components.BuildSite;
+      if (site.kind !== 'stove') continue;
+      const anchor = components.TileAnchor;
+      for (const t of stoveFootprintTiles(anchor, site.facing | 0)) {
+        if (t.i === i && t.j === j) return id;
+      }
+    }
+    return null;
+  }
+
   #renderPreview() {
     if (!this.startTile || !this.curTile) {
       this.#hidePreview();
       return;
     }
     const grid = this.tileGrid;
-    const i0 = Math.min(this.startTile.i, this.curTile.i);
-    const i1 = Math.max(this.startTile.i, this.curTile.i);
-    const j0 = Math.min(this.startTile.j, this.curTile.j);
-    const j1 = Math.max(this.startTile.j, this.curTile.j);
+    let i0;
+    let i1;
+    let j0;
+    let j1;
+    if (this.config.kind === 'stove') {
+      const fp = stoveFootprintTiles(this.curTile, this.currentFacing);
+      i0 = Math.min(...fp.map((t) => t.i));
+      i1 = Math.max(...fp.map((t) => t.i));
+      j0 = Math.min(...fp.map((t) => t.j));
+      j1 = Math.max(...fp.map((t) => t.j));
+    } else {
+      i0 = Math.min(this.startTile.i, this.curTile.i);
+      i1 = Math.max(this.startTile.i, this.curTile.i);
+      j0 = Math.min(this.startTile.j, this.curTile.j);
+      j1 = Math.max(this.startTile.j, this.curTile.j);
+    }
     const nw = tileToWorld(i0, j0, grid.W, grid.H);
     const se = tileToWorld(i1, j1, grid.W, grid.H);
     const x0 = nw.x - TILE_SIZE * 0.5;
@@ -598,6 +675,13 @@ export class BuildDesignator {
       this.furnaceGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.furnaceGhost.group.visible = !this.removing;
     }
+    if (this.stoveGhost) {
+      const anchor = this.curTile;
+      const aw = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
+      this.stoveGhost.group.position.set(aw.x, grid.getElevation(anchor.i, anchor.j), aw.z);
+      this.stoveGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
+      this.stoveGhost.group.visible = !this.removing;
+    }
     if (this.workSpotPreview) {
       // Work spot is the tile the front faces. If that tile is blocked or
       // off-grid, fall back to any walkable cardinal neighbor so the player
@@ -620,6 +704,7 @@ export class BuildDesignator {
     this.preview.line.visible = false;
     if (this.radiusRing) this.radiusRing.line.visible = false;
     if (this.furnaceGhost) this.furnaceGhost.group.visible = false;
+    if (this.stoveGhost) this.stoveGhost.group.visible = false;
     if (this.workSpotPreview) this.workSpotPreview.line.visible = false;
   }
 

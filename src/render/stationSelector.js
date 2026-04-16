@@ -14,6 +14,7 @@
 
 import * as THREE from 'three';
 import { worldToTile } from '../world/coords.js';
+import { stoveFootprintTiles } from '../world/stove.js';
 
 const _ndc = new THREE.Vector2();
 
@@ -24,7 +25,7 @@ export class StationSelector {
    * @param {() => THREE.Mesh} getTileMesh
    * @param {{ W: number, H: number }} grid
    * @param {import('../ecs/world.js').World} world
-   * @param {'Furnace' | 'Easel'} compName
+   * @param {'Furnace' | 'Easel' | 'Stove'} compName
    * @param {(id: number | null, additive: boolean) => void} onSelect
    */
   constructor(dom, camera, getTileMesh, grid, world, compName, onSelect) {
@@ -59,9 +60,17 @@ export class StationSelector {
 
   /** @param {number} i @param {number} j */
   #stationAt(i, j) {
+    const isStove = this.compName === 'Stove';
     for (const { id, components } of this.world.query([this.compName, 'TileAnchor'])) {
       const a = components.TileAnchor;
-      if (a.i === i && a.j === j) return id;
+      if (isStove) {
+        const facing = components.Stove.facing | 0;
+        for (const t of stoveFootprintTiles(a, facing)) {
+          if (t.i === i && t.j === j) return id;
+        }
+      } else if (a.i === i && a.j === j) {
+        return id;
+      }
     }
     return null;
   }

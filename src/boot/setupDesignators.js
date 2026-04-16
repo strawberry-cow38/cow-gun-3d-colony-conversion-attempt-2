@@ -20,6 +20,7 @@ import {
   FLOOR_DESIGNATOR_CONFIG,
   FURNACE_DESIGNATOR_CONFIG,
   ROOF_DESIGNATOR_CONFIG,
+  STOVE_DESIGNATOR_CONFIG,
   TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
   WALL_TORCH_DESIGNATOR_CONFIG,
@@ -69,6 +70,7 @@ export function setupDesignators({
     floorInstancer,
     furnaceInstancer,
     easelInstancer,
+    stoveInstancer,
     buildSiteInstancer,
     cropInstancer,
     stockpileOverlay,
@@ -202,6 +204,14 @@ export function setupDesignators({
   });
   designators.push(easelDesignator);
 
+  const stoveDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: STOVE_DESIGNATOR_CONFIG,
+    buildSiteInstancer,
+    onChanged: () => notifyChanged(stoveDesignator),
+  });
+  designators.push(stoveDesignator);
+
   const ignoreRoofDesignator = new IgnoreRoofDesignator({
     ...baseArgs,
     overlay: ignoreRoofOverlay,
@@ -216,6 +226,7 @@ export function setupDesignators({
       floorInstancer,
       furnaceInstancer,
       easelInstancer,
+      stoveInstancer,
       deconstructOverlay,
     ],
     onChanged: () => notifyChanged(deconstructDesignator),
@@ -268,6 +279,7 @@ export function setupDesignators({
       floorInstancer,
       furnaceInstancer,
       easelInstancer,
+      stoveInstancer,
       deconstructOverlay,
     ],
     onChanged: () => notifyChanged(cancelDesignator),
@@ -293,6 +305,7 @@ export function setupDesignators({
     floorDesignator,
     furnaceDesignator,
     easelDesignator,
+    stoveDesignator,
     ignoreRoofDesignator,
     deconstructDesignator,
     removeRoofDesignator,

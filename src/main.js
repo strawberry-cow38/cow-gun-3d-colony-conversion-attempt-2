@@ -27,7 +27,7 @@ import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createDraftBadge } from './render/draftBadge.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
-import { createEaselPanel, createFurnacePanel } from './render/furnacePanel.js';
+import { createEaselPanel, createFurnacePanel, createStovePanel } from './render/furnacePanel.js';
 import { HoverTooltip } from './render/hoverTooltip.js';
 import { ItemSelector } from './render/itemSelector.js';
 import { createItemStackPanel } from './render/itemStackPanel.js';
@@ -64,6 +64,7 @@ import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { createRooms, makeRoomsSystem } from './systems/rooms.js';
 import { makeSocialSystem } from './systems/social.js';
+import { makeStoveSystem } from './systems/stove.js';
 import {
   makeSaplingSpawnSystem,
   makeTreeGrowthSystem,
@@ -160,6 +161,7 @@ scheduler.add(
 );
 scheduler.add(makeFurnaceExpelSystem(tileGrid));
 scheduler.add(makeEaselSystem(jobBoard, tileGrid));
+scheduler.add(makeStoveSystem(jobBoard, tileGrid));
 scheduler.add(makeItemRescueSystem(tileGrid, () => onWorldItemChange()));
 // Forward-declared so the rooms system can poke the overlay's dirty flag
 // once the renderer (constructed below) is in scope.
@@ -243,6 +245,7 @@ const {
   furnaceProgressBars,
   furnaceSelectionViz,
   easelInstancer,
+  stoveInstancer,
   paintingInstancer,
   wallArtInstancer,
   buildSiteInstancer,
@@ -303,6 +306,8 @@ const state = {
   primaryFurnace: null,
   selectedEasels: new Set(),
   primaryEasel: null,
+  selectedStoves: new Set(),
+  primaryStove: null,
   selectedObjects: new Set(),
   primaryObject: null,
   lastPick: null,
@@ -325,7 +330,7 @@ const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
  * (non-additive) pick is exclusive: picking a cow drops item/station/object
  * selections, picking an object drops cow/item/station, and so on.
  *
- * @param {'cows'|'items'|'furnaces'|'easels'|'objects'} keep
+ * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'objects'} keep
  */
 const clearOtherSelections = (keep) => {
   if (keep !== 'cows') {
@@ -342,6 +347,10 @@ const clearOtherSelections = (keep) => {
   if (keep !== 'easels') {
     state.selectedEasels.clear();
     state.primaryEasel = null;
+  }
+  if (keep !== 'stoves') {
+    state.selectedStoves.clear();
+    state.primaryStove = null;
   }
   if (keep !== 'objects') {
     state.selectedObjects.clear();
@@ -514,6 +523,43 @@ const selectEasel = (id, additive) => {
   updateHud();
 };
 
+/**
+ * Stove selection mirrors easel selection — mutex with cows/items/furnaces/easels.
+ *
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectStove = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
+      state.selectedStoves.clear();
+      state.primaryStove = null;
+    }
+  } else if (additive) {
+    if (state.selectedStoves.has(id)) {
+      state.selectedStoves.delete(id);
+      if (state.primaryStove === id) {
+        state.primaryStove =
+          state.selectedStoves.size > 0
+            ? /** @type {number} */ (state.selectedStoves.values().next().value)
+            : null;
+      }
+    } else {
+      state.selectedStoves.add(id);
+      state.primaryStove = id;
+    }
+    audio.play('click');
+  } else {
+    clearOtherSelections('stoves');
+    state.selectedStoves.clear();
+    state.selectedStoves.add(id);
+    state.primaryStove = id;
+    audio.play('click');
+  }
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
 // Station selectors fire in capture-phase BEFORE ItemSelector so a click on
 // a station tile wins even when an item stack sits on the same tile. Tile-
 // based picking resolves clicks anywhere within the station's footprint.
@@ -534,6 +580,15 @@ new StationSelector(
   world,
   'Easel',
   selectEasel,
+);
+new StationSelector(
+  canvas,
+  camera,
+  () => state.tileMesh,
+  { W: gridW, H: gridH },
+  world,
+  'Stove',
+  selectStove,
 );
 
 new ItemSelector(
@@ -670,6 +725,7 @@ const {
   floorDesignator,
   furnaceDesignator,
   easelDesignator,
+  stoveDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,
@@ -717,6 +773,7 @@ const buildTab = createBuildTab({
   floorDesignator,
   furnaceDesignator,
   easelDesignator,
+  stoveDesignator,
   ignoreRoofDesignator,
   deconstructDesignator,
   removeRoofDesignator,
@@ -751,6 +808,15 @@ const easelPanel = createEaselPanel({
   state,
   onChange: () => {
     easelInstancer.markDirty();
+    updateHud();
+  },
+});
+
+const stovePanel = createStovePanel({
+  world,
+  state,
+  onChange: () => {
+    stoveInstancer.markDirty();
     updateHud();
   },
 });
@@ -827,6 +893,7 @@ const { render, getFps } = createRenderFrame({
   itemStackPanel,
   furnacePanel,
   easelPanel,
+  stovePanel,
   objectPanel,
   buildTab,
   clockEl,

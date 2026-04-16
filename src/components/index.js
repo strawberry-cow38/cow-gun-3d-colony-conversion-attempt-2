@@ -141,6 +141,20 @@
  *              the bill pauses and only she can resume (preserves
  *              attribution).
  *
+ * Stove / StoveViz
+ *              { deconstructJobId, progress, stuff, workI, workJ, facing,
+ *                workTicksRemaining, activeBillId, cookCowId, startTick,
+ *                mealQuality, mealIngredients[], stored: { kind, count }[] }
+ *              A MANNED 3x1 cooking station. Anchor tile sits in the middle;
+ *              the two span-neighbors (perpendicular to facing) are also
+ *              blocked, presenting one long edge with a single work-spot.
+ *              Supply lands in `stored`; at craft start ingredients are
+ *              consumed and `mealQuality` is rolled against the cook's skill.
+ *              The cook stands on the work-spot for the full duration, then
+ *              spawns N `meal` Item stacks on the anchor tile with quality +
+ *              ingredients baked in so the poisoning/stack-match rules can
+ *              discriminate between gourmet and yucky dishes.
+ *
  * Painting / PaintingViz
  *              { size, title, palette[], shapes[], quality,
  *                artistCowId, artistName, easelI, easelJ, startTick, finishTick }
@@ -333,6 +347,25 @@ export function registerComponents(world) {
     stored: [],
   }));
   world.defineComponent('EaselViz', () => ({}));
+  world.defineComponent('Stove', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    stuff: 'stone',
+    workI: 0,
+    workJ: 0,
+    facing: 0,
+    workTicksRemaining: 0,
+    activeBillId: 0,
+    cookCowId: 0,
+    startTick: 0,
+    /** Quality tier rolled at craft start; written onto the spawned meal. */
+    mealQuality: '',
+    /** Ingredients consumed this craft; written onto the spawned meal. */
+    mealIngredients: /** @type {string[]} */ ([]),
+    /** @type {{ kind: string, count: number }[]} */
+    stored: [],
+  }));
+  world.defineComponent('StoveViz', () => ({}));
   world.defineComponent('Painting', () => ({
     size: 1,
     title: '',
