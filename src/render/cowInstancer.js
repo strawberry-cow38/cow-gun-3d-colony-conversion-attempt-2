@@ -1,43 +1,104 @@
 /**
- * Cow render: one InstancedMesh, one draw call.
+ * Colonist render: a chibi humanoid built from several InstancedMeshes that
+ * all share slot indices. One slot = one colonist. Each frame we compute a
+ * base matrix per colonist (world position + bob + yaw/pitch/roll + height
+ * scale) and multiply it with a static local offset per body part to get the
+ * final instance matrix.
  *
- * Per-frame: lerp PrevPosition→Position by alpha, add a small sin-wave bob on
- * Y when the cow is actually moving (Velocity nonzero). Yaw is derived from
- * Velocity direction.
+ * Per-colonist variation comes from Identity: heightCm scales the whole
+ * figure, hairColor tints the hair via setColorAt, and gender widens or
+ * narrows the torso. Everything else is shared material.
  *
- * `pickFromInstanceId` lets the selector translate a raycast hit's instanceId
- * back into the entity behind that slot.
+ * `pickFromInstanceId` / `.mesh` still expose a single InstancedMesh for the
+ * CowSelector raycast; we use the torso since it's the biggest single block.
+ * The selector's proximity fallback already handles misses on limbs.
  */
 
 import * as THREE from 'three';
 import { UNITS_PER_METER, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 
-const _matrix = new THREE.Matrix4();
-const _position = new THREE.Vector3();
-const _quat = new THREE.Quaternion();
-const _scale = new THREE.Vector3(1, 1, 1);
-const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _basePos = new THREE.Vector3();
+const _baseQuat = new THREE.Quaternion();
+const _baseEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _heightScale = new THREE.Vector3(1, 1, 1);
+const _baseMatrix = new THREE.Matrix4();
+const _finalMatrix = new THREE.Matrix4();
+const _unitScale = new THREE.Vector3(1, 1, 1);
+const _carryPos = new THREE.Vector3();
+const _carryMatrix = new THREE.Matrix4();
 
-// Rough cow dimensions in meters. Low-poly placeholder — real mesh comes later.
-const COW_WIDTH = 0.8 * UNITS_PER_METER;
-const COW_HEIGHT = 1.0 * UNITS_PER_METER;
-const COW_LENGTH = 1.8 * UNITS_PER_METER;
-const COW_BOB_AMPLITUDE = 0.08 * UNITS_PER_METER;
-const COW_BOB_FREQ_HZ = 6;
-// Chopping rhythm: forward-lean pulse at ~2.5 Hz, 25° max lean.
-const CHOP_PITCH_AMP = 0.44; // ≈ 25°
+const REF_HEIGHT_CM = 170;
+const REF_HEIGHT_M = REF_HEIGHT_CM / 100;
+
+// Canonical body part dimensions at 170cm. All in meters; converted to world
+// units at mesh build time. Local offsets are in the figure's local frame —
+// y=0 is the ground under the feet, +z is forward, +x is the colonist's left.
+// Base matrix centers the figure at y = half-height, so we subtract REF_HEIGHT/2
+// from each part's y to place it in the centered frame.
+//
+// `colorHex` is the material tint. `perInstanceColor: true` enables setColorAt
+// (used for hair).
+const PART_SPECS = [
+  {
+    name: 'head',
+    size: { x: 0.2, y: 0.24, z: 0.22 },
+    localPos: { x: 0, y: 1.58, z: 0 },
+    colorHex: 0xdcb192,
+  },
+  {
+    name: 'hair',
+    size: { x: 0.23, y: 0.14, z: 0.25 },
+    localPos: { x: 0, y: 1.72, z: 0 },
+    colorHex: 0xffffff,
+    perInstanceColor: true,
+  },
+  {
+    name: 'torso',
+    size: { x: 0.4, y: 0.6, z: 0.22 },
+    localPos: { x: 0, y: 1.15, z: 0 },
+    colorHex: 0x4a6a8a,
+  },
+  {
+    name: 'leftArm',
+    size: { x: 0.1, y: 0.6, z: 0.12 },
+    localPos: { x: 0.25, y: 1.15, z: 0 },
+    colorHex: 0x4a6a8a,
+  },
+  {
+    name: 'rightArm',
+    size: { x: 0.1, y: 0.6, z: 0.12 },
+    localPos: { x: -0.25, y: 1.15, z: 0 },
+    colorHex: 0x4a6a8a,
+  },
+  {
+    name: 'leftLeg',
+    size: { x: 0.14, y: 0.85, z: 0.16 },
+    localPos: { x: 0.1, y: 0.425, z: 0 },
+    colorHex: 0x2e3b4d,
+  },
+  {
+    name: 'rightLeg',
+    size: { x: 0.14, y: 0.85, z: 0.16 },
+    localPos: { x: -0.1, y: 0.425, z: 0 },
+    colorHex: 0x2e3b4d,
+  },
+];
+
+// Gender-driven horizontal scale applied to the torso only. Female torsos
+// render a bit narrower so the silhouette reads different at RTS zoom.
+const TORSO_X_SCALE = { male: 1.12, female: 0.94, nonbinary: 1.0 };
+
+const BOB_AMPLITUDE = 0.06 * UNITS_PER_METER;
+const BOB_FREQ_HZ = 2.4;
+const CHOP_PITCH_AMP = 0.44;
 const CHOP_PITCH_FREQ_HZ = 2.5;
-// Swim: cow sinks ~55% into the water; paddling shows as a slow vertical bob
-// plus a gentle side-to-side roll so the silhouette clearly reads as "wading"
-// rather than "standing" on a flat blue tile.
-const SWIM_SINK = 0.55 * COW_HEIGHT;
+const SWIM_SINK_M = 0.6;
 const SWIM_BOB_AMPLITUDE = 0.05 * UNITS_PER_METER;
 const SWIM_BOB_FREQ_HZ = 1.6;
-const SWIM_ROLL_AMP = 0.18; // ≈ 10°
+const SWIM_ROLL_AMP = 0.18;
 const SWIM_ROLL_FREQ_HZ = 1.2;
 
-// Carried-item indicator: a small tinted cube hovering above the cow.
 const CARRY_SIZE = 0.35 * UNITS_PER_METER;
 const CARRY_OFFSET_Y = 0.25 * UNITS_PER_METER;
 /** @type {Record<string, THREE.Color>} */
@@ -48,21 +109,59 @@ const CARRY_COLORS = {
 };
 const CARRY_FALLBACK = new THREE.Color(0xffffff);
 
+const _scratchColor = new THREE.Color();
+
 /**
  * @param {THREE.Scene} scene
  * @param {number} capacity
  */
 export function createCowInstancer(scene, capacity = 256) {
-  // Body is a brown box sized to real-ish cow dimensions. Real low-poly cow
-  // mesh comes later.
-  const geometry = new THREE.BoxGeometry(COW_WIDTH, COW_HEIGHT, COW_LENGTH);
-  const material = new THREE.MeshStandardMaterial({ color: 0x7a4a2a, flatShading: true });
-  const mesh = new THREE.InstancedMesh(geometry, material, capacity);
-  mesh.count = 0;
-  mesh.frustumCulled = false;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  // Build an InstancedMesh per body part. All share the same slot index so
+  // cow #3 is row 3 in every mesh.
+  /**
+   * @typedef {Object} PartRecord
+   * @property {string} name
+   * @property {THREE.InstancedMesh} mesh
+   * @property {THREE.Matrix4} localMatrix     T(local) applied inside base frame
+   * @property {{x:number, y:number, z:number}} localPos  meters, 170cm frame
+   * @property {boolean} isTorso
+   * @property {boolean} perInstanceColor
+   */
+  /** @type {PartRecord[]} */
+  const parts = [];
+  /** @type {THREE.InstancedMesh | null} */
+  let torsoMesh = null;
+
+  for (const spec of PART_SPECS) {
+    const geo = new THREE.BoxGeometry(
+      spec.size.x * UNITS_PER_METER,
+      spec.size.y * UNITS_PER_METER,
+      spec.size.z * UNITS_PER_METER,
+    );
+    const mat = new THREE.MeshStandardMaterial({ color: spec.colorHex, flatShading: true });
+    const mesh = new THREE.InstancedMesh(geo, mat, capacity);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    const local = new THREE.Matrix4().makeTranslation(
+      spec.localPos.x * UNITS_PER_METER,
+      (spec.localPos.y - REF_HEIGHT_M / 2) * UNITS_PER_METER,
+      spec.localPos.z * UNITS_PER_METER,
+    );
+    const rec = {
+      name: spec.name,
+      mesh,
+      localMatrix: local,
+      localPos: spec.localPos,
+      isTorso: spec.name === 'torso',
+      perInstanceColor: spec.perInstanceColor === true,
+    };
+    parts.push(rec);
+    if (rec.isTorso) torsoMesh = mesh;
+  }
+  if (!torsoMesh) throw new Error('cowInstancer: torso part missing from PART_SPECS');
 
   const carryGeo = new THREE.BoxGeometry(CARRY_SIZE, CARRY_SIZE, CARRY_SIZE);
   const carryMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
@@ -74,19 +173,17 @@ export function createCowInstancer(scene, capacity = 256) {
 
   /** @type {number[]} instance row → entity id */
   const slotToEntity = [];
-  /** @type {Map<number, number>} entity id → last yaw, so stationary cows keep facing the direction they last walked. */
+  /** @type {Map<number, number>} last yaw so stationary colonists keep facing forward */
   const lastYaw = new Map();
-  /** @type {Set<number>} scratch alive-set, cleared per frame to avoid per-frame Set allocation. */
+  /** @type {Set<number>} scratch alive-set */
   const seen = new Set();
 
   /**
    * @param {import('../ecs/world.js').World} world
    * @param {number} alpha
    * @param {number} timeSec
-   * @param {import('../world/tileGrid.js').TileGrid} [grid] required for chop-facing yaw
-   * @param {number | null} [hideId] cow to skip drawing entirely — used by the
-   *   FP camera so the viewed cow's own model doesn't block the view. The
-   *   cow still simulates normally, we just don't write an instance matrix.
+   * @param {import('../world/tileGrid.js').TileGrid} [grid]
+   * @param {number | null} [hideId]
    */
   function update(world, alpha, timeSec, grid, hideId = null) {
     let i = 0;
@@ -101,6 +198,7 @@ export function createCowInstancer(scene, capacity = 256) {
       'Job',
       'Inventory',
       'CowViz',
+      'Identity',
     ])) {
       if (i >= capacity) break;
       if (id === hideId) continue;
@@ -108,6 +206,7 @@ export function createCowInstancer(scene, capacity = 256) {
       const pp = components.PrevPosition;
       const v = components.Velocity;
       const job = components.Job;
+      const identity = components.Identity;
 
       const x = pp.x + (p.x - pp.x) * alpha;
       const y = pp.y + (p.y - pp.y) * alpha;
@@ -129,12 +228,11 @@ export function createCowInstancer(scene, capacity = 256) {
         bob = SWIM_BOB_AMPLITUDE * Math.sin(timeSec * SWIM_BOB_FREQ_HZ * Math.PI * 2);
         roll = SWIM_ROLL_AMP * Math.sin(timeSec * SWIM_ROLL_FREQ_HZ * Math.PI * 2);
       } else if (moving && !chopping) {
-        bob = COW_BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * COW_BOB_FREQ_HZ * Math.PI));
+        bob = BOB_AMPLITUDE * Math.abs(Math.sin(timeSec * BOB_FREQ_HZ * Math.PI));
       } else {
         bob = 0;
       }
 
-      // Face the tree while chopping so the forward-lean reads as "swinging at it".
       let yaw;
       if (chopping && grid && typeof job.payload.i === 'number') {
         const tw = tileToWorld(job.payload.i, job.payload.j, grid.W, grid.H);
@@ -145,44 +243,66 @@ export function createCowInstancer(scene, capacity = 256) {
       lastYaw.set(id, yaw);
       seen.add(id);
 
-      // Clamped positive lean — the cow rocks forward (toward the tree) and
-      // back to neutral, never backwards. |sin| gives the hit-then-recover feel.
-      // Suppressed while swimming so the roll animation reads cleanly.
       const pitch =
         chopping && !swimming
           ? CHOP_PITCH_AMP * Math.abs(Math.sin(timeSec * CHOP_PITCH_FREQ_HZ * Math.PI))
           : 0;
 
+      const heightFactor = (identity.heightCm || REF_HEIGHT_CM) / REF_HEIGHT_CM;
+      const figureHeight = REF_HEIGHT_M * heightFactor * UNITS_PER_METER;
+      const swimSink = SWIM_SINK_M * heightFactor * UNITS_PER_METER;
       const centerY = swimming
-        ? y + COW_HEIGHT * 0.5 - SWIM_SINK + bob
-        : y + COW_HEIGHT * 0.5 + bob;
-      _position.set(x, centerY, z);
-      _euler.set(pitch, yaw, roll);
-      _quat.setFromEuler(_euler);
-      _matrix.compose(_position, _quat, _scale);
-      mesh.setMatrixAt(i, _matrix);
+        ? y + figureHeight * 0.5 - swimSink + bob
+        : y + figureHeight * 0.5 + bob;
+
+      _basePos.set(x, centerY, z);
+      _baseEuler.set(pitch, yaw, roll);
+      _baseQuat.setFromEuler(_baseEuler);
+      _heightScale.set(heightFactor, heightFactor, heightFactor);
+      _baseMatrix.compose(_basePos, _baseQuat, _heightScale);
+
+      const torsoXScale = TORSO_X_SCALE[identity.gender] ?? 1;
+
+      for (const part of parts) {
+        if (part.isTorso && torsoXScale !== 1) {
+          _finalMatrix.copy(part.localMatrix);
+          _finalMatrix.elements[0] *= torsoXScale;
+          _finalMatrix.elements[4] *= torsoXScale;
+          _finalMatrix.elements[8] *= torsoXScale;
+          _finalMatrix.premultiply(_baseMatrix);
+        } else {
+          _finalMatrix.multiplyMatrices(_baseMatrix, part.localMatrix);
+        }
+        part.mesh.setMatrixAt(i, _finalMatrix);
+        if (part.perInstanceColor) {
+          _scratchColor.set(identity.hairColor || '#4a2f20');
+          part.mesh.setColorAt(i, _scratchColor);
+        }
+      }
       slotToEntity[i] = id;
       i++;
 
       const carrying = components.Inventory.items[0]?.kind ?? null;
       if (carrying && c < capacity) {
-        _euler.set(0, yaw, 0);
-        _quat.setFromEuler(_euler);
-        _position.set(x, y + COW_HEIGHT + CARRY_OFFSET_Y, z);
-        _matrix.compose(_position, _quat, _scale);
-        carryMesh.setMatrixAt(c, _matrix);
+        _baseEuler.set(0, yaw, 0);
+        _baseQuat.setFromEuler(_baseEuler);
+        _carryPos.set(x, y + figureHeight + CARRY_OFFSET_Y, z);
+        _carryMatrix.compose(_carryPos, _baseQuat, _unitScale);
+        carryMesh.setMatrixAt(c, _carryMatrix);
         carryMesh.setColorAt(c, CARRY_COLORS[carrying] ?? CARRY_FALLBACK);
         c++;
       }
     }
-    mesh.count = i;
-    mesh.instanceMatrix.needsUpdate = true;
+    for (const part of parts) {
+      part.mesh.count = i;
+      part.mesh.instanceMatrix.needsUpdate = true;
+      if (part.perInstanceColor && part.mesh.instanceColor && i > 0) {
+        part.mesh.instanceColor.needsUpdate = true;
+      }
+    }
     carryMesh.count = c;
     carryMesh.instanceMatrix.needsUpdate = true;
-    // setColorAt lazily creates instanceColor on first call; guard AFTER so we
-    // set needsUpdate even on the frame the attribute was just born.
     if (carryMesh.instanceColor && c > 0) carryMesh.instanceColor.needsUpdate = true;
-    // Drop yaw entries for cows that went away so the map doesn't leak.
     if (lastYaw.size > seen.size) {
       for (const entId of lastYaw.keys()) {
         if (!seen.has(entId)) lastYaw.delete(entId);
@@ -195,5 +315,5 @@ export function createCowInstancer(scene, capacity = 256) {
     return slotToEntity[instanceId] ?? null;
   }
 
-  return { mesh, update, entityFromInstanceId };
+  return { mesh: torsoMesh, update, entityFromInstanceId };
 }
