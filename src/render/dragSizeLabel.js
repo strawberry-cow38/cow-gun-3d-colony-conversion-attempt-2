@@ -29,22 +29,36 @@ export function createDragSizeLabel(config) {
   Object.assign(el.style, {
     position: 'fixed',
     display: 'none',
-    padding: '4px 8px',
-    background: 'rgba(14, 18, 24, 0.85)',
+    padding: '8px 14px',
+    background: 'rgba(14, 18, 24, 0.9)',
     color: '#ffffff',
-    font: '600 12px/1.2 system-ui, -apple-system, Segoe UI, sans-serif',
-    border: '1px solid #ffffff',
-    borderRadius: '3px',
+    font: '700 22px/1.1 system-ui, -apple-system, Segoe UI, sans-serif',
+    border: '2px solid #ffffff',
+    borderRadius: '4px',
     pointerEvents: 'none',
     zIndex: '50',
     whiteSpace: 'nowrap',
+    textAlign: 'center',
+    textShadow: '0 1px 2px rgba(0, 0, 0, 0.7)',
   });
+  const size = document.createElement('div');
+  const sub = document.createElement('div');
+  Object.assign(sub.style, {
+    marginTop: '3px',
+    font: '500 11px/1.2 system-ui, -apple-system, Segoe UI, sans-serif',
+    opacity: '0.75',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  });
+  el.appendChild(size);
+  el.appendChild(sub);
   document.body.appendChild(el);
 
   const addCss = colorToCss(config.addHex);
   const removeCss = colorToCss(config.removeHex ?? config.addHex);
   const cancelVerb = config.cancelVerb ?? config.addVerb;
-  let lastText = '';
+  let lastSize = '';
+  let lastSub = '';
   let lastBorder = '';
   let visible = false;
 
@@ -64,19 +78,23 @@ export function createDragSizeLabel(config) {
     const wm = (w * METERS_PER_TILE).toFixed(1);
     const hm = (h * METERS_PER_TILE).toFixed(1);
     const verb = removing ? cancelVerb : config.addVerb;
-    const text = `${verb}: ${w} × ${h} tiles (${wm}m × ${hm}m, ${w * h})`;
-    if (text !== lastText) {
-      el.textContent = text;
-      lastText = text;
+    const sizeText = `${w} × ${h}`;
+    const subText = `${verb} · ${wm}m × ${hm}m · ${w * h} tiles`;
+    if (sizeText !== lastSize) {
+      size.textContent = sizeText;
+      lastSize = sizeText;
+    }
+    if (subText !== lastSub) {
+      sub.textContent = subText;
+      lastSub = subText;
     }
     const border = removing ? removeCss : addCss;
     if (border !== lastBorder) {
       el.style.borderColor = border;
       lastBorder = border;
     }
-    // left/top change every pixel of mouse movement; no guard saves anything.
-    el.style.left = `${e.clientX + 16}px`;
-    el.style.top = `${e.clientY + 16}px`;
+    el.style.left = `${e.clientX + 20}px`;
+    el.style.top = `${e.clientY + 20}px`;
     if (!visible) {
       el.style.display = 'block';
       visible = true;

@@ -38,10 +38,7 @@ const BIOME_NAMES = /** @type {Record<number, string>} */ ({
  * @property {any} fpCamera
  * @property {{ active: boolean }} chopDesignator
  * @property {{ active: boolean }} stockpileDesignator
- * @property {{ setVisible(v: boolean): void }} cowNameTags
  * @property {{ setVisible(v: boolean): void }} cowThoughtBubbles
- * @property {{ setVisible(v: boolean): void }} itemLabels
- * @property {{ setVisible(v: boolean): void }} stockpileOverlay
  * @property {{ setVisible(v: boolean): void }} roomOverlay
  * @property {{ setVisible(v: boolean): void }} ignoreRoofOverlay
  * @property {{ setVisible(v: boolean): void }} roofInstancer
@@ -67,10 +64,7 @@ export function createHud(ctx) {
    * flag through the keydown handler.
    */
   function applyDebugVisibility() {
-    ctx.cowNameTags.setVisible(state.debugEnabled);
     ctx.cowThoughtBubbles.setVisible(state.debugEnabled);
-    ctx.itemLabels.setVisible(state.debugEnabled);
-    ctx.stockpileOverlay.setVisible(state.debugEnabled);
     ctx.roomOverlay.setVisible(state.debugEnabled);
     ctx.ignoreRoofOverlay.setVisible(state.debugEnabled);
     ctx.pickTileOverlay.setVisible(state.debugEnabled);
