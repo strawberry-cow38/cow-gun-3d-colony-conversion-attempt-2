@@ -19,6 +19,7 @@ import {
   MAX_PRIORITY,
   WORK_CATEGORIES,
   WORK_CATEGORY_LABELS,
+  deriveDefaultsFromSkills,
 } from '../world/workPriorities.js';
 
 /** @typedef {'check' | 'priority'} WorkTabMode */
@@ -125,6 +126,10 @@ export function createWorkTab(opts) {
   modeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     state.mode = state.mode === 'check' ? 'priority' : 'check';
+    // Per spec: swapping modes resets every cow's priorities back to the
+    // skill-derived defaults. Player customization doesn't survive a mode
+    // flip, so the two modes can't leave each other in a confusing state.
+    resetAllPrioritiesToDefaults();
     gridDirty = true;
     render();
   });
@@ -318,6 +323,17 @@ export function createWorkTab(opts) {
     if (brain) brain.jobDirty = true;
     gridDirty = true;
     render();
+  }
+
+  function resetAllPrioritiesToDefaults() {
+    for (const { id, components } of world.query(['Cow', 'WorkPriorities', 'Skills'])) {
+      const health = world.get(id, 'Health');
+      if (health?.dead) continue;
+      const fresh = deriveDefaultsFromSkills(components.Skills);
+      components.WorkPriorities.priorities = fresh.priorities;
+      const brain = world.get(id, 'Brain');
+      if (brain) brain.jobDirty = true;
+    }
   }
 
   function listCows() {
