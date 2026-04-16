@@ -56,6 +56,29 @@ describe('JobBoard', () => {
     expect(b.findUnclaimed({ i: 0, j: 0 })).toBe(open);
   });
 
+  it('findUnclaimed sorts by priority within the same tier', () => {
+    const b = new JobBoard();
+    const far = b.post('chop', { i: 30, j: 30 });
+    const near = b.post('chop', { i: 1, j: 1 });
+    // Caller ranks the far job as priority 1 and the near one as priority 4.
+    // Priority beats distance within a tier, so `far` wins.
+    const found = b.findUnclaimed({ i: 0, j: 0 }, undefined, (j) => (j === far ? 1 : 4));
+    expect(found).toBe(far);
+    // And when priorities tie, distance breaks the tie.
+    const tieFound = b.findUnclaimed({ i: 0, j: 0 }, undefined, () => 2);
+    expect(tieFound).toBe(near);
+  });
+
+  it('tier still beats priority across tiers', () => {
+    const b = new JobBoard();
+    // chop (tier 2) with priority 8 (lowest urgency) must still beat
+    // a haul (tier 3) with priority 1 (highest within its tier).
+    const chop = b.post('chop', { i: 10, j: 10 });
+    b.post('haul', { i: 0, j: 0 });
+    const found = b.findUnclaimed({ i: 0, j: 0 }, undefined, (j) => (j.kind === 'chop' ? 8 : 1));
+    expect(found).toBe(chop);
+  });
+
   it('reap drops completed jobs', () => {
     const b = new JobBoard();
     const a = b.post('chop');

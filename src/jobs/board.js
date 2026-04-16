@@ -70,20 +70,26 @@ export class JobBoard {
   }
 
   /**
-   * Find an unclaimed job. Ordering: lowest tier (most urgent) first, then
-   * nearest by Chebyshev tile distance within the same tier. A tier-2 chop at
-   * the far edge of the map still beats a tier-3 haul next door — urgency is
-   * the primary axis.
+   * Find an unclaimed job. Ordering (in order): lowest tier (most urgent)
+   * first → lowest caller-provided priority → nearest by Chebyshev tile
+   * distance. Tier always dominates priority so that eat (tier 1) still
+   * beats a player's priority-1 mining assignment (tier 2).
    *
    * Pass `canClaim` to exclude jobs this caller can't take — e.g. paint jobs
    * locked to a specific artist cow. Skipped jobs don't affect ordering.
    *
+   * Pass `priorityFor` to apply per-caller ordering within a tier — the
+   * return value is compared as-is, smaller wins. Returning the same number
+   * for every job degrades gracefully to the pre-priority ordering.
+   *
    * @param {{ i: number, j: number }} [near]
    * @param {(job: Job) => boolean} [canClaim]
+   * @param {(job: Job) => number} [priorityFor]
    */
-  findUnclaimed(near, canClaim) {
+  findUnclaimed(near, canClaim, priorityFor) {
     let best = null;
     let bestTier = Number.POSITIVE_INFINITY;
+    let bestPriority = Number.POSITIVE_INFINITY;
     let bestD = Number.POSITIVE_INFINITY;
     for (const job of this.jobs) {
       if (job.claimedBy !== null || job.completed) continue;
@@ -92,8 +98,14 @@ export class JobBoard {
       if (near && job.payload.i !== undefined && job.payload.j !== undefined) {
         d = Math.max(Math.abs(job.payload.i - near.i), Math.abs(job.payload.j - near.j));
       }
-      if (job.tier < bestTier || (job.tier === bestTier && d < bestD)) {
+      const p = priorityFor ? priorityFor(job) : 0;
+      if (
+        job.tier < bestTier ||
+        (job.tier === bestTier && p < bestPriority) ||
+        (job.tier === bestTier && p === bestPriority && d < bestD)
+      ) {
         bestTier = job.tier;
+        bestPriority = p;
         bestD = d;
         best = job;
       }
