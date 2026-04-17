@@ -39,8 +39,8 @@ import { createRoofCollapseParticles } from '../render/roofCollapseParticles.js'
 import { createRoofInstancer } from '../render/roofInstancer.js';
 import { createRoomOverlay } from '../render/roomOverlay.js';
 import { createSelectionViz } from '../render/selectionViz.js';
-import { createStationProgressBars } from '../render/stationProgressBars.js';
 import { createStairInstancer } from '../render/stairInstancer.js';
+import { createStationProgressBars } from '../render/stationProgressBars.js';
 import { createStationSelectionViz } from '../render/stationSelectionViz.js';
 import { createStockpileOverlay } from '../render/stockpileOverlay.js';
 import { createStoveInstancer } from '../render/stoveInstancer.js';

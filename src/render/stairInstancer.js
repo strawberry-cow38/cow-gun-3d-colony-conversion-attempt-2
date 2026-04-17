@@ -12,8 +12,8 @@
 import * as THREE from 'three';
 import { TILE_SIZE, tileToWorld } from '../world/coords.js';
 import { stairFootprintTiles } from '../world/stair.js';
-import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { getStuff } from '../world/stuff.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const TREAD_COUNT = 3;
 const SLABS_PER_STAIR = TREAD_COUNT + 1;

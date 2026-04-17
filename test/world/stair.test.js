@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { STAIR_LENGTH, stairFootprintTiles, stairRampTiles, stairTopLandingTile } from '../../src/world/stair.js';
+import {
+  STAIR_LENGTH,
+  stairFootprintTiles,
+  stairRampTiles,
+  stairTopLandingTile,
+} from '../../src/world/stair.js';
 
 describe('stairFootprintTiles', () => {
   it('spans 5 tiles in facing order from bottom landing to top landing', () => {
