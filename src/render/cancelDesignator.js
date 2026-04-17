@@ -38,7 +38,7 @@ export class CancelDesignator {
    * @param {{
    *   canvas: HTMLElement,
    *   camera: THREE.PerspectiveCamera,
-   *   tileMesh: () => THREE.Mesh,
+   *   tileMesh: () => THREE.Group,
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
    *   world: import('../ecs/world.js').World,
    *   jobBoard: import('../jobs/board.js').JobBoard,
@@ -291,7 +291,7 @@ export class CancelDesignator {
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
-    const hits = this.raycaster.intersectObject(this.getTileMesh(), false);
+    const hits = this.raycaster.intersectObject(this.getTileMesh(), true);
     if (hits.length === 0) return null;
     const p = hits[0].point;
     const t = worldToTile(p.x, p.z, this.tileGrid.W, this.tileGrid.H);

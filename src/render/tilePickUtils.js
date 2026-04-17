@@ -21,7 +21,7 @@ const _raycaster = new THREE.Raycaster();
  * @param {MouseEvent} e
  * @param {HTMLElement} dom
  * @param {THREE.PerspectiveCamera} camera
- * @param {THREE.Mesh} tileMesh
+ * @param {THREE.Object3D} tileMesh  chunked terrain Group (or a Mesh)
  * @param {{ W: number, H: number }} grid
  */
 export function pickTileFromEvent(e, dom, camera, tileMesh, grid) {
@@ -29,7 +29,9 @@ export function pickTileFromEvent(e, dom, camera, tileMesh, grid) {
   _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   _raycaster.setFromCamera(_ndc, camera);
-  const hits = _raycaster.intersectObject(tileMesh, false);
+  // `true` recurses into the chunked terrain Group — each chunk is its own
+  // Mesh, so non-recursive would test nothing.
+  const hits = _raycaster.intersectObject(tileMesh, true);
   if (hits.length === 0) return null;
   const p = hits[0].point;
   const t = worldToTile(p.x, p.z, grid.W, grid.H);

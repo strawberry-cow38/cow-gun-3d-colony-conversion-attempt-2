@@ -11,7 +11,7 @@
  *   - The bottom third is debug-gated; match closures hold that.
  */
 
-import { buildTileMesh, buildWaterSurface } from '../render/tileMesh.js';
+import { buildTileMesh, buildWaterSurface, disposeTileMesh } from '../render/tileMesh.js';
 import { TICKS_PER_SIM_HOUR } from '../sim/calendar.js';
 import { spawnInitialTrees } from '../systems/trees.js';
 import { addItemToTile } from '../world/items.js';
@@ -542,7 +542,7 @@ async function loadGame(ctx) {
     }
     const fresh = buildTileMesh(tileGrid);
     scene.remove(state.tileMesh);
-    state.tileMesh.geometry.dispose();
+    disposeTileMesh(state.tileMesh);
     state.tileMesh = fresh;
     scene.add(state.tileMesh);
     if (state.waterMesh) {

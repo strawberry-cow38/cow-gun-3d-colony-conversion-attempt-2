@@ -23,7 +23,7 @@ export class ObjectSelector {
    * @param {{
    *   canvas: HTMLElement,
    *   camera: import('three').PerspectiveCamera,
-   *   tileMesh: () => import('three').Mesh,
+   *   tileMesh: () => import('three').Group,
    *   grid: { W: number, H: number },
    *   world: import('../ecs/world.js').World,
    *   hitboxes: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },

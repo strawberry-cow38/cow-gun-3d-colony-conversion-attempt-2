@@ -14,7 +14,7 @@ export class TilePicker {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh  resolved per-click so Save/Load
+   * @param {() => THREE.Group} getTileMesh  resolved per-click so Save/Load
    *                                         mesh swaps don't strand a stale ref.
    * @param {{ W: number, H: number }} grid
    * @param {(hit: { i: number, j: number, x: number, z: number, point: THREE.Vector3 } | null) => void} onPick
@@ -35,7 +35,7 @@ export class TilePicker {
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
-    const hits = this.raycaster.intersectObject(this.getTileMesh(), false);
+    const hits = this.raycaster.intersectObject(this.getTileMesh(), true);
     if (hits.length === 0) {
       this.onPick(null);
       return;

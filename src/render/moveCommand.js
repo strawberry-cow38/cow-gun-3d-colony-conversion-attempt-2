@@ -45,7 +45,7 @@ export class CowMoveCommand {
   /**
    * @param {HTMLElement} dom
    * @param {THREE.PerspectiveCamera} camera
-   * @param {() => THREE.Mesh} getTileMesh  (tile mesh is rebuilt on load, so resolve lazily)
+   * @param {() => THREE.Group} getTileMesh  (tile mesh is rebuilt on load, so resolve lazily)
    * @param {import('../world/tileGrid.js').TileGrid} tileGrid
    * @param {import('../sim/pathfinding.js').PathCache} pathCache
    * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
@@ -381,7 +381,7 @@ export class CowMoveCommand {
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
-    const groundHits = this.raycaster.intersectObject(this.getTileMesh(), false);
+    const groundHits = this.raycaster.intersectObject(this.getTileMesh(), true);
     const hitbox = this.getHitboxMesh();
     const boxHits = hitbox ? this.raycaster.intersectObject(hitbox, false) : [];
     let best = null;

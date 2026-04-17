@@ -41,7 +41,7 @@ export class HoverTooltip {
    *   dom: HTMLElement,
    *   el: HTMLElement,
    *   camera: import('three').PerspectiveCamera,
-   *   tileMesh: () => import('three').Mesh,
+   *   tileMesh: () => import('three').Group,
    *   grid: { W: number, H: number },
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
    *   world: import('../ecs/world.js').World,
@@ -140,7 +140,7 @@ export class HoverTooltip {
       }
     }
 
-    const tileHit = _raycaster.intersectObject(this.getTileMesh(), false)[0];
+    const tileHit = _raycaster.intersectObject(this.getTileMesh(), true)[0];
     if (!tileHit) return null;
     const p = tileHit.point;
     const tile = worldToTile(p.x, p.z, this.grid.W, this.grid.H);

@@ -27,7 +27,8 @@ import { dispatch } from './hotkeys.js';
  * @property {Set<number>} selectedObjects
  * @property {number|null} primaryObject
  * @property {{ i: number, j: number } | null} lastPick
- * @property {import('three').Mesh} tileMesh
+ * @property {import('three').Group} tileMesh
+ *   chunked terrain Group — raycasts against it must use `recursive: true`.
  * @property {import('three').Mesh | null} [waterMesh]
  *   translucent surface plane over DEEP_WATER tiles at Y=0. Rebuilt on load
  *   alongside tileMesh so lakes stay see-through after restoring a save.

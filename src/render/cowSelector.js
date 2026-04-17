@@ -32,7 +32,7 @@ export class CowSelector {
    * @param {THREE.PerspectiveCamera} camera
    * @param {{ mesh: THREE.InstancedMesh, entityFromInstanceId: (i: number) => number | null }} hitboxes
    *   full-figure click target (see cowHitboxes.js).
-   * @param {() => THREE.Mesh} getTileMesh  resolved per-click so Save/Load
+   * @param {() => THREE.Group} getTileMesh  resolved per-click so Save/Load
    *                                         mesh swaps don't strand a stale ref.
    * @param {import('../ecs/world.js').World} world
    * @param {(entityId: number | null, additive: boolean) => void} onSelect
@@ -72,7 +72,7 @@ export class CowSelector {
     }
 
     // 2) fallback: pick nearest cow near the tile we clicked
-    const tileHit = this.raycaster.intersectObject(this.getTileMesh(), false);
+    const tileHit = this.raycaster.intersectObject(this.getTileMesh(), true);
     if (tileHit.length === 0) {
       this.onSelect(null, additive);
       return;

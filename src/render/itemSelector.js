@@ -23,7 +23,7 @@ export class ItemSelector {
   /**
    * @param {HTMLElement} dom
    * @param {import('three').PerspectiveCamera} camera
-   * @param {() => import('three').Mesh} getTileMesh
+   * @param {() => import('three').Group} getTileMesh
    * @param {{ W: number, H: number }} grid
    * @param {import('../ecs/world.js').World} world
    * @param {(id: number | null, additive: boolean) => void} onSelect

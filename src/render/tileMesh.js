@@ -1,5 +1,5 @@
 /**
- * Build a single BufferGeometry from a TileGrid.
+ * Build a chunked terrain mesh from a TileGrid.
  *
  * Each tile gets its own 4 top vertices (no sharing) so per-tile biome color
  * has hard boundaries (rimworld-style) instead of blending at corners. For
@@ -7,11 +7,29 @@
  * a vertical cliff quad is emitted dropping from the tile's top Y down to the
  * neighbor's top (or 0 at the boundary). That keeps the stepped heightmap
  * visually solid — no void behind the cliff.
+ *
+ * The full grid is split into fixed-size CHUNK_TILES×CHUNK_TILES submeshes
+ * parented under a single Group. Three's frustum culler descends into the
+ * Group and tests each chunk's bounding sphere independently, so looking at
+ * the sky or staring down at a small region only renders a few chunks worth
+ * of triangles instead of the whole map (40k+ tris). Raycasts against the
+ * Group with `recursive: true` get the same benefit — each chunk's sphere
+ * rejects before any triangle walk.
+ *
+ * Chunk geometry is standalone (no shared vertices across chunk seams) so
+ * chunk-level repair could work later; for now rebuilds are full-group via
+ * `disposeTileMesh` + a fresh `buildTileMesh`.
  */
 
 import * as THREE from 'three';
 import { TILE_SIZE } from '../world/coords.js';
 import { BIOME, SKIRT_TILES } from '../world/tileGrid.js';
+
+// 32×32 tiles per chunk → 49 chunks on a 200×200 map (plus a handful for
+// the skirt ring). Each chunk ~1k top quads + cliffs = small enough that
+// partial-camera views cull most of the world, large enough that we don't
+// blow the draw-call budget on chunk overhead.
+const CHUNK_TILES = 32;
 
 const BIOME_COLORS = {
   [BIOME.GRASS]: new THREE.Color(0x3a7a3a),
@@ -39,7 +57,12 @@ const CLIFF_COLORS = {
 const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
 
 /**
+ * Returns a Group of chunk Meshes. Callers add it to the scene with
+ * `scene.add(group)` and pass it to `Raycaster.intersectObject(group, true)`
+ * (the `true` is mandatory now — the returned object is a Group, not a Mesh).
+ *
  * @param {import('../world/tileGrid.js').TileGrid} tileGrid
+ * @returns {THREE.Group}
  */
 export function buildTileMesh(tileGrid) {
   const { W, H } = tileGrid;
@@ -52,17 +75,6 @@ export function buildTileMesh(tileGrid) {
   const iMax = W + S;
   const jMin = -S;
   const jMax = H + S;
-  const tileCount = (iMax - iMin) * (jMax - jMin);
-  // Worst case: every tile has 4 neighbors lower than itself → 4 cliff quads.
-  // Allocate the upper bound, slice at the end. Sub-typed arrays would be
-  // equivalent but this keeps the hot loop branch-free on `push`.
-  const maxVerts = tileCount * (4 + 4 * 4);
-  const maxIdx = tileCount * (6 + 4 * 6);
-
-  const positions = new Float32Array(maxVerts * 3);
-  const colors = new Float32Array(maxVerts * 3);
-  const indices = new Uint32Array(maxIdx);
-
   const halfW = (W * TILE_SIZE) / 2;
   const halfH = (H * TILE_SIZE) / 2;
 
@@ -73,15 +85,94 @@ export function buildTileMesh(tileGrid) {
     ? (i, j) => tileGrid.getSkirtBiome(i, j)
     : (i, j) => tileGrid.getBiome(i, j);
 
+  // One shared material across chunks — identical uniforms, only geometry
+  // differs per chunk, so Three batches shader setup across the draw calls.
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    flatShading: true,
+    metalness: 0,
+    roughness: 1,
+  });
+
+  const group = new THREE.Group();
+  group.name = 'terrain';
+
+  for (let cj0 = jMin; cj0 < jMax; cj0 += CHUNK_TILES) {
+    const cj1 = Math.min(cj0 + CHUNK_TILES, jMax);
+    for (let ci0 = iMin; ci0 < iMax; ci0 += CHUNK_TILES) {
+      const ci1 = Math.min(ci0 + CHUNK_TILES, iMax);
+      const mesh = buildChunkMesh(
+        ci0,
+        ci1,
+        cj0,
+        cj1,
+        iMin,
+        iMax,
+        jMin,
+        jMax,
+        halfW,
+        halfH,
+        getElev,
+        getBiome,
+        material,
+      );
+      if (mesh) group.add(mesh);
+    }
+  }
+  return group;
+}
+
+/**
+ * Dispose every chunk's geometry. Call before dropping a terrain Group so
+ * GPU buffers are released; the shared material stays alive on the caller's
+ * side if they're about to rebuild (cheap to recreate, but disposed here for
+ * symmetry with the old `mesh.geometry.dispose()` pattern).
+ *
+ * @param {THREE.Group} group
+ */
+export function disposeTileMesh(group) {
+  for (const child of group.children) {
+    const mesh = /** @type {THREE.Mesh} */ (child);
+    mesh.geometry.dispose();
+  }
+  const firstMesh = /** @type {THREE.Mesh | undefined} */ (group.children[0]);
+  if (firstMesh) {
+    const mat = /** @type {THREE.Material} */ (firstMesh.material);
+    mat.dispose();
+  }
+}
+
+/**
+ * Build one chunk mesh over the sub-rect [i0, i1) × [j0, j1). Cliff edge
+ * checks use the global `iMin/iMax/jMin/jMax` so cliffs at the outer map
+ * border drop to Y=0 (not to the neighboring chunk's in-bounds tile).
+ */
+function buildChunkMesh(
+  i0,
+  i1,
+  j0,
+  j1,
+  iMin,
+  iMax,
+  jMin,
+  jMax,
+  halfW,
+  halfH,
+  getElev,
+  getBiome,
+  material,
+) {
+  const tileCount = (i1 - i0) * (j1 - j0);
+  // Worst case: every tile has 4 neighbors lower than itself → 4 cliff quads.
+  const maxVerts = tileCount * (4 + 4 * 4);
+  const maxIdx = tileCount * (6 + 4 * 6);
+  const positions = new Float32Array(maxVerts * 3);
+  const colors = new Float32Array(maxVerts * 3);
+  const indices = new Uint32Array(maxIdx);
+
   let v = 0;
   let ix = 0;
 
-  /**
-   * Emit a vertical cliff quad along one edge of the tile.
-   * Vertex order: upper-left, upper-right, lower-right, lower-left, where
-   * "upper" is at `topY` and "lower" at `bottomY`. Caller picks corners so
-   * the outward-facing normal is correct for the edge.
-   */
   const pushCliff = (ax, az, bx, bz, topY, bottomY, r, g, b) => {
     const baseV = v / 3;
     positions[v++] = ax;
@@ -110,8 +201,8 @@ export function buildTileMesh(tileGrid) {
     indices[ix++] = baseV + 3;
   };
 
-  for (let j = jMin; j < jMax; j++) {
-    for (let i = iMin; i < iMax; i++) {
+  for (let j = j0; j < j1; j++) {
+    for (let i = i0; i < i1; i++) {
       const x0 = i * TILE_SIZE - halfW;
       const x1 = x0 + TILE_SIZE;
       const z0 = j * TILE_SIZE - halfH;
@@ -164,30 +255,23 @@ export function buildTileMesh(tileGrid) {
       const yE = i < iMax - 1 ? getElev(i + 1, j) : 0;
       const yN = j > jMin ? getElev(i, j - 1) : 0;
       const yS = j < jMax - 1 ? getElev(i, j + 1) : 0;
-      // West edge: outward normal is -X. Winding so the lower-corner triangle
-      // pair faces outward: (x0,z1,y) → (x0,z0,y) → down, then back.
       if (yW < y) pushCliff(x0, z1, x0, z0, y, yW, cr, cg, cb);
-      // East edge: outward normal +X.
       if (yE < y) pushCliff(x1, z0, x1, z1, y, yE, cr, cg, cb);
-      // North edge (-Z): outward normal -Z.
       if (yN < y) pushCliff(x0, z0, x1, z0, y, yN, cr, cg, cb);
-      // South edge (+Z): outward normal +Z.
       if (yS < y) pushCliff(x1, z1, x0, z1, y, yS, cr, cg, cb);
     }
   }
+
+  if (v === 0) return null;
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, v), 3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, v), 3));
   geometry.setIndex(new THREE.BufferAttribute(indices.subarray(0, ix), 1));
   geometry.computeVertexNormals();
-
-  const material = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    flatShading: true,
-    metalness: 0,
-    roughness: 1,
-  });
+  // Explicit bounding sphere so Three's frustum culler has real bounds from
+  // the first frame instead of falling back to "always visible".
+  geometry.computeBoundingSphere();
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
