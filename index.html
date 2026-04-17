@@ -118,6 +118,31 @@
       <span id="layer-label">Z0</span>
       <button id="layer-down" type="button" aria-label="Layer down">▼</button>
     </div>
+    <div id="error-overlay" style="position:fixed;left:8px;bottom:8px;max-width:calc(100% - 16px);max-height:40vh;overflow:auto;padding:8px 10px;background:rgba(120,0,0,0.92);color:#fff;font:12px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;z-index:9999;border-radius:6px;display:none;pointer-events:auto;"></div>
+    <script>
+      (function(){
+        var el = document.getElementById('error-overlay');
+        var seen = 0;
+        function show(label, msg){
+          seen++;
+          el.style.display = 'block';
+          el.textContent = '[' + seen + '] ' + label + ': ' + msg;
+        }
+        window.addEventListener('error', function(ev){
+          var stack = (ev.error && ev.error.stack) ? ev.error.stack : (ev.message || String(ev));
+          show('error', stack);
+        });
+        window.addEventListener('unhandledrejection', function(ev){
+          var r = ev.reason;
+          show('unhandledrejection', (r && r.stack) ? r.stack : String(r));
+        });
+        el.addEventListener('click', function(){ el.style.display = 'none'; });
+        window.__simError = function(where, err){
+          var stack = (err && err.stack) ? err.stack : String(err);
+          show('sim:' + where, stack);
+        };
+      })();
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

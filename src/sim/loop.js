@@ -75,6 +75,7 @@ export class SimLoop {
           this.step(SIM_DT, this.tick);
         } catch (err) {
           console.error('[sim] step threw at tick', this.tick, err);
+          /** @type {any} */ (globalThis).__simError?.('step@' + this.tick, err);
         }
         this.tick++;
         this.accumulator -= SIM_DT;
@@ -91,6 +92,7 @@ export class SimLoop {
         this.render(alpha);
       } catch (err) {
         console.error('[sim] render threw', err);
+        /** @type {any} */ (globalThis).__simError?.('render', err);
       }
       this.rafId = requestAnimationFrame(frame);
     };
