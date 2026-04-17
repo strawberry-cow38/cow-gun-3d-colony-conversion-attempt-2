@@ -22,11 +22,21 @@ const BIOME_COLORS = {
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 
-// Cliff faces show exposed earth rather than the top biome. A fixed warm
-// brown reads fine under any lighting — horizontal normals barely pick up
-// the hemisphere light's ground term, so tying cliff colour to the (often
-// dark) top biome × 0.55 made them look pure black.
-const CLIFF_COLOR = new THREE.Color(0x8a6b48);
+// Cliff faces are coloured per biome so stone tiles expose grey rock, sand
+// shows sand, and water tiles keep their water tint through the cliff. Grass
+// and dirt default to a warm earth brown — they're meant to read as exposed
+// subsoil rather than "green wall" / "brown wall". Values are intentionally
+// bright-ish so horizontal normals (which barely pick up the hemisphere
+// light's ground term) still read as a colour rather than pure black.
+const CLIFF_COLORS = {
+  [BIOME.GRASS]: new THREE.Color(0x8a6b48),
+  [BIOME.DIRT]: new THREE.Color(0x8a6b48),
+  [BIOME.STONE]: new THREE.Color(0x7a7e84),
+  [BIOME.SAND]: new THREE.Color(0xc8b27a),
+  [BIOME.SHALLOW_WATER]: new THREE.Color(0x5aa0c8),
+  [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
+};
+const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
 
 /**
  * @param {import('../world/tileGrid.js').TileGrid} tileGrid
@@ -130,9 +140,10 @@ export function buildTileMesh(tileGrid) {
 
       // Out-of-bounds neighbors drop to Y=0 (the water plane). Same-or-higher
       // neighbors get skipped — their own face will cover it when rendered.
-      const cr = CLIFF_COLOR.r;
-      const cg = CLIFF_COLOR.g;
-      const cb = CLIFF_COLOR.b;
+      const cliff = CLIFF_COLORS[biome] || DEFAULT_CLIFF;
+      const cr = cliff.r;
+      const cg = cliff.g;
+      const cb = cliff.b;
       const yW = i > 0 ? tileGrid.getElevation(i - 1, j) : 0;
       const yE = i < W - 1 ? tileGrid.getElevation(i + 1, j) : 0;
       const yN = j > 0 ? tileGrid.getElevation(i, j - 1) : 0;
