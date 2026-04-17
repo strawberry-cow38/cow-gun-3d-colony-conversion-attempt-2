@@ -53,6 +53,17 @@ const PART_SPECS = [
     colorHex: 0xffffff,
     perInstanceColor: true,
   },
+  // Trailing mane for female colonists — an elongated box draped behind the
+  // head + upper torso. Non-female slots collapse this to a zero-scale matrix
+  // so the instance renders invisible but keeps slot indices aligned.
+  {
+    name: 'hairLong',
+    size: { x: 0.23, y: 0.45, z: 0.08 },
+    localPos: { x: 0, y: 1.38, z: -0.08 },
+    colorHex: 0xffffff,
+    perInstanceColor: true,
+    femaleOnly: true,
+  },
   {
     name: 'torso',
     size: { x: 0.4, y: 0.6, z: 0.22 },
@@ -112,6 +123,40 @@ const CARRY_COLORS = {
 const CARRY_FALLBACK = new THREE.Color(0xffffff);
 
 const _scratchColor = new THREE.Color();
+const _zeroScale = new THREE.Matrix4().makeScale(0, 0, 0);
+
+/**
+ * Draw a shared chibi face onto a small canvas, returned as a THREE.Texture.
+ * Applied to the +Z face of every colonist's head so the figure reads forward-
+ * facing at RTS zoom. One texture shared by all instances; face never varies
+ * per colonist (for now).
+ */
+function buildFaceTexture() {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+  ctx.fillStyle = '#dcb192';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(16, 26, 10, 10);
+  ctx.fillRect(38, 26, 10, 10);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(20, 28, 3, 3);
+  ctx.fillRect(42, 28, 3, 3);
+  ctx.fillStyle = '#7a3a3a';
+  ctx.fillRect(24, 48, 16, 3);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 /**
  * @param {THREE.Scene} scene
@@ -128,19 +173,37 @@ export function createCowInstancer(scene, capacity = 256) {
    * @property {{x:number, y:number, z:number}} localPos  meters, 170cm frame
    * @property {boolean} isTorso
    * @property {boolean} perInstanceColor
+   * @property {boolean} femaleOnly
    */
   /** @type {PartRecord[]} */
   const parts = [];
   /** @type {THREE.InstancedMesh | null} */
   let torsoMesh = null;
 
+  const faceTex = buildFaceTexture();
   for (const spec of PART_SPECS) {
     const geo = new THREE.BoxGeometry(
       spec.size.x * UNITS_PER_METER,
       spec.size.y * UNITS_PER_METER,
       spec.size.z * UNITS_PER_METER,
     );
-    const mat = new THREE.MeshStandardMaterial({ color: spec.colorHex, flatShading: true });
+    let mat;
+    if (spec.name === 'head') {
+      // BoxGeometry materialIndex order: +X, -X, +Y, -Y, +Z, -Z. Local +Z is
+      // forward, so index 4 receives the face texture; the rest stay skin-tone.
+      const skinMat = new THREE.MeshStandardMaterial({
+        color: spec.colorHex,
+        flatShading: true,
+      });
+      const faceMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: faceTex,
+        flatShading: true,
+      });
+      mat = [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat];
+    } else {
+      mat = new THREE.MeshStandardMaterial({ color: spec.colorHex, flatShading: true });
+    }
     const mesh = new THREE.InstancedMesh(geo, mat, capacity);
     mesh.count = 0;
     mesh.frustumCulled = false;
@@ -159,6 +222,7 @@ export function createCowInstancer(scene, capacity = 256) {
       localPos: spec.localPos,
       isTorso: spec.name === 'torso',
       perInstanceColor: spec.perInstanceColor === true,
+      femaleOnly: spec.femaleOnly === true,
     };
     parts.push(rec);
     if (rec.isTorso) torsoMesh = mesh;
@@ -266,6 +330,14 @@ export function createCowInstancer(scene, capacity = 256) {
       const torsoXScale = TORSO_X_SCALE[identity.gender] ?? 1;
 
       for (const part of parts) {
+        if (part.femaleOnly && identity.gender !== 'female') {
+          part.mesh.setMatrixAt(i, _zeroScale);
+          if (part.perInstanceColor) {
+            _scratchColor.set(identity.hairColor || '#4a2f20');
+            part.mesh.setColorAt(i, _scratchColor);
+          }
+          continue;
+        }
         if (part.isTorso && torsoXScale !== 1) {
           _finalMatrix.copy(part.localMatrix);
           _finalMatrix.elements[0] *= torsoXScale;
