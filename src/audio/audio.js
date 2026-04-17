@@ -20,6 +20,7 @@
 
 import * as THREE from 'three';
 import { playRainLoop } from './ambient.js';
+import { createMusic } from './music.js';
 import {
   playChop,
   playDoor,
@@ -124,6 +125,8 @@ export function createAudio({ camera }) {
   const activeLoops = {};
   /** @type {Set<string>} — queued before the AudioContext exists */
   const pendingLoops = new Set();
+  /** @type {ReturnType<typeof createMusic> | null} */
+  let music = null;
 
   const _camPos = new THREE.Vector3();
   const _camFwd = new THREE.Vector3();
@@ -155,6 +158,8 @@ export function createAudio({ camera }) {
         if (gen && !activeLoops[kind]) activeLoops[kind] = gen(c, master);
       }
       pendingLoops.clear();
+      if (!music) music = createMusic({ ctx: c, master });
+      music.start();
     }
   };
   addEventListener('pointerdown', resume, { once: true });
@@ -281,5 +286,13 @@ export function createAudio({ camera }) {
     }
   }
 
-  return { update, playAt, play, startLoop, stopLoop };
+  return {
+    update,
+    playAt,
+    play,
+    startLoop,
+    stopLoop,
+    getMusicTrack: () => music?.getCurrentTrack() ?? null,
+    stopMusic: () => music?.stop(),
+  };
 }
