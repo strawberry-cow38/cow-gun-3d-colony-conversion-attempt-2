@@ -226,14 +226,18 @@ export function createTorchInstancer(scene, capacity = 512) {
     for (let i = 0; i < assigned; i++) {
       const [lx, ly, lz] = scratch[i];
       const pl = pointLights[i];
+      // Shadow cubemaps are expensive (6 scene passes per caster). Only
+      // re-render when this slot's torch actually moved — torches are static
+      // so assignment churn (a new torch entering the nearest-N pool) is the
+      // only real dirty case.
+      const moved = pl.position.x !== lx || pl.position.y !== ly || pl.position.z !== lz;
       pl.position.set(lx, ly, lz);
       pl.intensity = lightIntensity;
-      if (pl.castShadow) pl.shadow.autoUpdate = true;
+      if (pl.castShadow && moved) pl.shadow.needsUpdate = true;
     }
     for (let i = assigned; i < pointLights.length; i++) {
       const pl = pointLights[i];
       pl.intensity = 0;
-      if (pl.castShadow) pl.shadow.autoUpdate = false;
     }
   }
 

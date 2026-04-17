@@ -103,7 +103,10 @@ export function createFurnaceEffects(scene) {
   const pointLights = /** @type {THREE.PointLight[]} */ ([]);
   for (let i = 0; i < POINT_LIGHT_POOL; i++) {
     const pl = new THREE.PointLight(0xff7028, 0, POINT_LIGHT_DISTANCE, 2);
-    pl.visible = false;
+    // Always-visible pool (intensity=0 when idle). Toggling `visible` on a
+    // shadow-caster changes NUM_POINT_LIGHT_SHADOWS and forces THREE.js to
+    // recompile every lit material — see the same note in torchInstancer.
+    pl.visible = true;
     if (i < POINT_LIGHT_SHADOW_CASTERS) {
       pl.castShadow = true;
       pl.shadow.mapSize.width = 512;
@@ -112,6 +115,9 @@ export function createFurnaceEffects(scene) {
       pl.shadow.camera.far = POINT_LIGHT_DISTANCE;
       pl.shadow.bias = -0.002;
       pl.shadow.radius = 2;
+      // Shadow cubemaps are expensive (6 scene passes per caster). Only
+      // re-render when the slot's assigned furnace actually moves.
+      pl.shadow.autoUpdate = false;
     }
     scene.add(pl);
     pointLights.push(pl);
@@ -217,12 +223,12 @@ export function createFurnaceEffects(scene) {
     for (let i = 0; i < assigned; i++) {
       const [lx, ly, lz] = scratch[i];
       const pl = pointLights[i];
+      const moved = pl.position.x !== lx || pl.position.y !== ly || pl.position.z !== lz;
       pl.position.set(lx, ly, lz);
       pl.intensity = lightIntensity;
-      pl.visible = true;
+      if (pl.castShadow && moved) pl.shadow.needsUpdate = true;
     }
     for (let i = assigned; i < pointLights.length; i++) {
-      pointLights[i].visible = false;
       pointLights[i].intensity = 0;
     }
   }
