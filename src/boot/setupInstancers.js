@@ -40,6 +40,7 @@ import { createRoofInstancer } from '../render/roofInstancer.js';
 import { createRoomOverlay } from '../render/roomOverlay.js';
 import { createSelectionViz } from '../render/selectionViz.js';
 import { createStationProgressBars } from '../render/stationProgressBars.js';
+import { createStairInstancer } from '../render/stairInstancer.js';
 import { createStationSelectionViz } from '../render/stationSelectionViz.js';
 import { createStockpileOverlay } from '../render/stockpileOverlay.js';
 import { createStoveInstancer } from '../render/stoveInstancer.js';
@@ -88,6 +89,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     easelInstancer: createEaselInstancer(scene, 64),
     stoveInstancer: createStoveInstancer(scene, 32),
     bedInstancer: createBedInstancer(scene, 64),
+    stairInstancer: createStairInstancer(scene, 128),
     bedNameTags: createBedNameTags(scene),
     paintingInstancer: createPaintingInstancer(scene, 128),
     wallArtInstancer: createWallArtInstancer(scene, 128),

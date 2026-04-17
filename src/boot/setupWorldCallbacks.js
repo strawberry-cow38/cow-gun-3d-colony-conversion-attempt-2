@@ -50,6 +50,7 @@ export function setupWorldCallbacks({
     easelInstancer,
     stoveInstancer,
     bedInstancer,
+    stairInstancer,
     paintingInstancer,
     wallArtInstancer,
     buildSiteInstancer,
@@ -138,6 +139,7 @@ export function setupWorldCallbacks({
       easelInstancer.markDirty();
       stoveInstancer.markDirty();
       bedInstancer.markDirty();
+      stairInstancer.markDirty();
       buildSiteInstancer.markDirty();
       deconstructOverlay.markDirty();
       // Walls/doors/furnaces/easels/stoves all change walkability (stations
