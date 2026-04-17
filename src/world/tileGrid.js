@@ -605,6 +605,32 @@ export class TileGrid {
     }
     carveDeepWater(this.skirtBiome, EW, EH);
 
+    // Orphan sand cleanup: sand with no water within Chebyshev distance 2
+    // loses its reason to exist — it was noise-painted desert, not shore.
+    // On no-lake maps that leaves every sand patch stranded; strip it back
+    // to grass so dry maps read as plains, not a patchy desert.
+    const sandScratch = this.skirtBiome.slice();
+    for (let j = 0; j < EH; j++) {
+      for (let i = 0; i < EW; i++) {
+        const k = j * EW + i;
+        if (sandScratch[k] !== BIOME.SAND) continue;
+        let nearWater = false;
+        for (let dj = -2; dj <= 2 && !nearWater; dj++) {
+          for (let di = -2; di <= 2; di++) {
+            const ni = i + di;
+            const nj = j + dj;
+            if (ni < 0 || nj < 0 || ni >= EW || nj >= EH) continue;
+            const nb = sandScratch[nj * EW + ni];
+            if (nb === BIOME.SHALLOW_WATER || nb === BIOME.DEEP_WATER) {
+              nearWater = true;
+              break;
+            }
+          }
+        }
+        if (!nearWater) this.skirtBiome[k] = BIOME.GRASS;
+      }
+    }
+
     // 3. BFS Chebyshev distance-to-water over the extended biome. Used to
     //    smooth heightmap cliffs that would otherwise plunge straight into
     //    shallow water from a tall interior plateau.
