@@ -31,6 +31,7 @@ import {
 } from '../jobs/tiers.js';
 import { TILL_TICKS } from '../jobs/till.js';
 import { WANDER_IDLE_TICKS, pickWanderGoal } from '../jobs/wander.js';
+import { bedFootprintTiles } from '../world/bed.js';
 import { BOULDER_LOOT } from '../world/boulders.js';
 import { TILE_SIZE, tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { cropIsReady, cropKindFor } from '../world/crops.js';
@@ -2859,9 +2860,23 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
       job.payload = {};
       return;
     }
+    // Try every tile in the bed's footprint. A sapling or cow standing on the
+    // anchor shouldn't strand the owner when the adjacent mattress tile is
+    // still reachable — fall through to the next candidate.
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    const route = paths.find(start, { i: anchor.i, j: anchor.j });
-    if (!route || route.length === 0) {
+    const footprint = bedFootprintTiles(anchor, bed.facing | 0);
+    let chosen = null;
+    let route = null;
+    for (const t of footprint) {
+      if (!grid.inBounds(t.i, t.j)) continue;
+      const r = paths.find(start, { i: t.i, j: t.j });
+      if (r && r.length > 0) {
+        route = r;
+        chosen = t;
+        break;
+      }
+    }
+    if (!route || !chosen) {
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2870,7 +2885,7 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
     path.steps = route;
     path.index = 0;
     job.state = 'walking-to-bed';
-    job.payload = { bedId, i: anchor.i, j: anchor.j };
+    job.payload = { bedId, i: chosen.i, j: chosen.j };
     return;
   }
 

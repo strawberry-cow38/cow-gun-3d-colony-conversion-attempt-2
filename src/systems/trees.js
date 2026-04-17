@@ -5,6 +5,7 @@
  */
 
 import { TIER_PERIODS } from '../ecs/schedule.js';
+import { bedFootprintTiles } from '../world/bed.js';
 import { tileToWorld, worldToTileClamp } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 import { TREE_GROWTH_TICKS, randomTreeKind } from '../world/trees.js';
@@ -137,12 +138,21 @@ export function makeSaplingSpawnSystem({ grid, onSpawn }) {
       }
       // Blueprints aren't on the grid bitmaps yet (the BuildSite is an entity
       // that lives until a cow finishes the build), so collect their tiles
-      // here and let the safe-radius check exclude them.
+      // here and let the safe-radius check exclude them. Beds stay walkable
+      // (cows lie on them), so they also aren't in the grid bitmaps — collect
+      // their footprints the same way or saplings will sprout through the
+      // mattress and strand the owner.
       /** @type {Set<number>} */
       const blueprintTiles = new Set();
       for (const { components } of world.query(['BuildSite', 'TileAnchor'])) {
         const a = components.TileAnchor;
         blueprintTiles.add(a.j * grid.W + a.i);
+      }
+      for (const { components } of world.query(['Bed', 'TileAnchor'])) {
+        const a = components.TileAnchor;
+        for (const t of bedFootprintTiles(a, components.Bed.facing | 0)) {
+          if (grid.inBounds(t.i, t.j)) blueprintTiles.add(t.j * grid.W + t.i);
+        }
       }
       let placed = 0;
       let attempts = 0;
