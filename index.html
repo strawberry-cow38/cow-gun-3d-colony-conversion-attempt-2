@@ -72,6 +72,43 @@
         white-space: nowrap;
         display: none;
       }
+      #layer-picker {
+        position: fixed;
+        bottom: 8px;
+        left: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 6px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid #88bbff66;
+        border-radius: 6px;
+        user-select: none;
+      }
+      #layer-picker button {
+        width: 44px;
+        height: 44px;
+        background: rgba(30, 40, 60, 0.8);
+        color: #cfe3ff;
+        border: 1px solid #88bbff88;
+        border-radius: 4px;
+        font-size: 18px;
+        font-family: monospace;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      #layer-picker button:active {
+        background: rgba(60, 90, 140, 0.9);
+      }
+      #layer-label {
+        color: #cfe3ff;
+        font-family: monospace;
+        font-size: 13px;
+        font-weight: 600;
+        min-width: 28px;
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -79,6 +116,11 @@
     <div id="hud" style="display: none"></div>
     <div id="clock">00:00</div>
     <div id="hover-tooltip"></div>
+    <div id="layer-picker">
+      <button id="layer-up" type="button" aria-label="Layer up">▲</button>
+      <span id="layer-label">Z0</span>
+      <button id="layer-down" type="button" aria-label="Layer down">▼</button>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

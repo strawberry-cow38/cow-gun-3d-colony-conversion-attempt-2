@@ -33,6 +33,10 @@ import { dispatch } from './hotkeys.js';
  * @typedef {Object} InputCtx
  * @property {import('../ecs/world.js').World} world
  * @property {import('../world/tileGrid.js').TileGrid} tileGrid
+ * @property {import('../world/tileWorld.js').TileWorld} [tileWorld]
+ * @property {((z: number) => void)} [setActiveZ]
+ *   Q/E fallback hotkey routes through this when no camera/follow consumer
+ *   claims the key. Bumps tileWorld.activeZ and lifts the orbit focus.
  * @property {import('../sim/pathfinding.js').PathCache} pathCache
  * @property {import('../jobs/board.js').JobBoard} jobBoard
  * @property {import('three').Scene} scene

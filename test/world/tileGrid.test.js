@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BIOME, TileGrid } from '../../src/world/tileGrid.js';
+import { BIOME, TERRAIN_STEP, TileGrid, isWaterBiome } from '../../src/world/tileGrid.js';
 
 describe('TileGrid', () => {
   it('constructs with TypedArray storage of correct size', () => {
@@ -40,16 +40,43 @@ describe('TileGrid', () => {
     expect(g.inBounds(0, -1)).toBe(false);
   });
 
-  it('generateTerrain paints biomes and leaves elevation flat', () => {
-    const g = new TileGrid(16, 16);
+  it('generateTerrain paints multiple biomes', () => {
+    const g = new TileGrid(32, 32);
     g.generateTerrain();
-    let nonZero = 0;
-    for (const v of g.elevation) if (v !== 0) nonZero++;
-    expect(nonZero).toBe(0);
     /** @type {Set<number>} */
     const seen = new Set();
     for (const v of g.biome) seen.add(v);
     expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it('generateTerrain produces stepped elevation on non-water tiles', () => {
+    const g = new TileGrid(32, 32);
+    g.generateTerrain();
+    let nonZero = 0;
+    let maxStep = 0;
+    for (let k = 0; k < g.elevation.length; k++) {
+      const e = g.elevation[k];
+      expect(e).toBeGreaterThanOrEqual(0);
+      // Elevation is always an integer multiple of TERRAIN_STEP. Compare the
+      // ratio to a rounded one with a small epsilon so fp noise doesn't trip.
+      const ratio = e / TERRAIN_STEP;
+      expect(Math.abs(ratio - Math.round(ratio))).toBeLessThan(1e-6);
+      if (e > 0) nonZero++;
+      if (e > maxStep) maxStep = e;
+    }
+    expect(nonZero).toBeGreaterThan(0);
+    expect(maxStep).toBeGreaterThan(0);
+  });
+
+  it('generateTerrain keeps water and sand pinned at Y=0', () => {
+    const g = new TileGrid(32, 32);
+    g.generateTerrain();
+    for (let k = 0; k < g.biome.length; k++) {
+      const b = g.biome[k];
+      if (isWaterBiome(b) || b === BIOME.SAND) {
+        expect(g.elevation[k]).toBe(0);
+      }
+    }
   });
 });
 

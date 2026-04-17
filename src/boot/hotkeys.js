@@ -264,6 +264,16 @@ export const HOTKEYS = [
     },
     fallthrough: true,
   },
+  // Q/E otherwise — bump the active Z layer. Last of the Q/E trio so FP and
+  // follow win first; this is what the mobile ▲/▼ buttons also route through.
+  {
+    match: (e, ctx) =>
+      (e.code === 'KeyQ' || e.code === 'KeyE') && !!ctx.setActiveZ && !!ctx.tileWorld,
+    run: (ctx, e) => {
+      const delta = e.code === 'KeyE' ? 1 : -1;
+      ctx.setActiveZ?.(/** @type {number} */ (ctx.tileWorld?.activeZ ?? 0) + delta);
+    },
+  },
   // R — toggle draft. In FP toggles the viewed cow; otherwise toggles the
   // whole selection (mixed selections all go to "drafted" via toggleDraft).
   {

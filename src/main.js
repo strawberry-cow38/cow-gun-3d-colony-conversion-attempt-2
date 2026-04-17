@@ -8,6 +8,7 @@
 import { createAudio } from './audio/audio.js';
 import { createHud } from './boot/hud.js';
 import { installKeyboard } from './boot/input.js';
+import { createLayerSwitcher } from './boot/layerSwitcher.js';
 import { readBootParams } from './boot/params.js';
 import { createRenderFrame } from './boot/renderFrame.js';
 import { setupDesignators } from './boot/setupDesignators.js';
@@ -81,6 +82,9 @@ const { stressCount, cowCount, treeCount, gridW, gridH } = readBootParams();
 
 const tileWorld = new TileWorld(new TileGrid(gridW, gridH));
 tileWorld.active.generateTerrain();
+// Stack 4 empty upper layers so Q/E has somewhere to go. Ramps + structures
+// will progressively populate them; the ground layer holds the heightmap.
+while (tileWorld.depth < 5) tileWorld.pushEmptyLayer();
 // Alias to the active (ground) layer. Every system still operates on a single
 // layer today, so the existing `tileGrid`-typed parameters stay valid; future
 // z-aware code can reach the full stack via `tileWorld.layers`.
@@ -1011,9 +1015,17 @@ hudApi = createHud({
   getFps,
 });
 
+const layerSwitcher = createLayerSwitcher({
+  tileWorld,
+  rts,
+  onChange: hudApi.updateHud,
+});
+
 installKeyboard({
   world,
   tileGrid,
+  tileWorld,
+  setActiveZ: layerSwitcher.setActiveZ,
   pathCache,
   jobBoard,
   scene,
