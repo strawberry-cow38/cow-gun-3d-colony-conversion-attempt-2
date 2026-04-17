@@ -487,7 +487,6 @@ export class TileGrid {
       c: Math.random() * TAU,
       d: Math.random() * TAU,
       e: Math.random() * TAU,
-      f: Math.random() * TAU,
     };
     const heightPhase = {
       a: Math.random() * TAU,
@@ -502,10 +501,9 @@ export class TileGrid {
 
     // 1. Paint biomes over the extended range. fx/fz are measured against
     //    the inner grid dims, so the noise field continues smoothly across
-    //    the inner ↔ skirt boundary. The two extra high-frequency octaves
-    //    perturb the sand threshold so lake shorelines land on irregular
-    //    contours instead of the smooth ovals the low-frequency terms
-    //    would produce on their own.
+    //    the inner ↔ skirt boundary. One medium-frequency octave nudges
+    //    shorelines off perfect ovals, plus a low-amplitude product term
+    //    for gentle shape variety without sharp threshold zigzags.
     for (let ej = 0; ej < EH; ej++) {
       for (let ei = 0; ei < EW; ei++) {
         const k = ej * EW + ei;
@@ -517,10 +515,9 @@ export class TileGrid {
           bands * Math.sin(fx * 6.28 + biomePhase.a) * Math.cos(fz * 6.28 + biomePhase.b) +
           bands * 0.4 * Math.sin(fx * 18 + fz * 11 + biomePhase.c) +
           bands *
-            0.28 *
-            Math.sin(fx * 33 + fz * 27 + biomePhase.d) *
-            Math.cos(fx * 19 + fz * 24 + biomePhase.e) +
-          bands * 0.18 * Math.sin(fx * 54 + fz * 48 + biomePhase.f);
+            0.14 *
+            Math.sin(fx * 24 + fz * 19 + biomePhase.d) *
+            Math.cos(fx * 15 + fz * 17 + biomePhase.e);
         if (n > bands * 0.6) this.skirtBiome[k] = BIOME.STONE;
         else if (n < -bands * 0.4) this.skirtBiome[k] = BIOME.SAND;
         else if (Math.random() < 0.05) this.skirtBiome[k] = BIOME.DIRT;
