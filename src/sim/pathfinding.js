@@ -36,20 +36,26 @@ const NEIGHBORS = [
 ];
 
 /**
- * Cliff-climb rules.
+ * Cliff-climb rules. TERRAIN_STEP is the vertical resolution (0.75m).
  *  - Flat or sub-one-step moves: free.
- *  - Cardinal neighbours one TERRAIN_STEP higher or lower: allowed, but with
- *    a small extra cost so a ramp (no hop cost) is strictly preferred when
- *    both routes exist.
- *  - Anything above one step: blocked — the pathfinder must find another
- *    route or give up, so a Z-layer climb really does need a ramp.
+ *  - Cardinal neighbours one step (0.75m) higher or lower: hop — allowed
+ *    with a small extra cost so a ramp is preferred when both routes exist.
+ *  - Cardinal neighbours two steps (1.5m) higher or lower: climb — allowed
+ *    but very slow (10% speed, reflected here as a 10× cost multiplier) so
+ *    the planner will route the long way around if anything remotely
+ *    comparable exists, and cows emerge from the climb treating it as
+ *    "much worse than a ramp".
+ *  - Anything above two steps: blocked. A proper Z-layer crossing needs a
+ *    ramp.
  *  - Diagonals with any elevation change: blocked. Visually a diagonal hop
- *    over a corner looks wrong, and the cardinal neighbours already cover
- *    the case.
+ *    over a corner looks wrong and the cardinal neighbours already cover
+ *    that traversal.
  */
 const HOP_EPS = TERRAIN_STEP * 0.5;
-const MAX_CLIMB = TERRAIN_STEP * 1.5;
+const HOP_MAX = TERRAIN_STEP * 1.5;
+const CLIMB_MAX = TERRAIN_STEP * 2.5;
 const HOP_EXTRA_COST = 0.3;
+const CLIMB_COST_MULT = 10;
 /**
  * Multiplier applied to the step cost when the neighbour tile is shallow
  * water. 5× means a dry detour up to ~5 tiles longer still beats wading one
@@ -249,16 +255,20 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
       if (di !== 0 && dj !== 0) {
         if (!passable(ci + di, cj, cz) || !passable(ci, cj + dj, cz)) continue;
       }
-      // Cliff-climb gate. Anything above one TERRAIN_STEP is a 3m+ jump and
-      // is rejected outright — cows must find another route or a ramp.
-      // Diagonals refuse even a single-step hop (reads weird visually and the
-      // cardinal neighbours already cover that traversal).
+      // Cliff-climb gate. One TERRAIN_STEP delta = hop (cheap), two steps =
+      // climb (much more expensive — cows move at 10% speed over it), more
+      // than two steps is rejected outright so a ramp really is required for
+      // a full Z-layer crossing. Diagonals refuse any elevation change so a
+      // cow can't hop across a corner.
       const nEl = curLayer.getElevation(ni, nj);
       const dEl = Math.abs(nEl - curEl);
-      if (dEl >= MAX_CLIMB) continue;
-      const hop = dEl > HOP_EPS;
-      if (hop && di !== 0 && dj !== 0) continue;
-      let stepCost = hop ? cost + HOP_EXTRA_COST : cost;
+      if (dEl >= CLIMB_MAX) continue;
+      const hop = dEl > HOP_EPS && dEl < HOP_MAX;
+      const climb = dEl >= HOP_MAX;
+      if ((hop || climb) && di !== 0 && dj !== 0) continue;
+      let stepCost = cost;
+      if (hop) stepCost += HOP_EXTRA_COST;
+      else if (climb) stepCost *= CLIMB_COST_MULT;
       // Shallow water is passable but slow (cows wade at 15% in cow.js), so
       // make the planner prefer dry ground. Multiplier is tuned so a lake
       // two tiles wide is cheaper to walk around than to ford, but a single

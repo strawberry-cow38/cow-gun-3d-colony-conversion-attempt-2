@@ -186,27 +186,52 @@ describe('findPath cliff-climb rules', () => {
     }
   });
 
-  it('rejects a 2-step cliff and routes around it', () => {
+  it('rejects a 3-step cliff and routes around it', () => {
     const g = new TileGrid(4, 3);
-    // Two-step wall along column 2, with a single step down at the top so the
-    // planner must go around via row 2.
-    g.setElevation(2, 0, TERRAIN_STEP * 2);
-    g.setElevation(2, 1, TERRAIN_STEP * 2);
+    // 3-step wall along column 2 — above the climb threshold, so the planner
+    // must detour along row 2.
+    g.setElevation(2, 0, TERRAIN_STEP * 3);
+    g.setElevation(2, 1, TERRAIN_STEP * 3);
     const p = findPath(g, { i: 0, j: 0 }, { i: 3, j: 0 });
     expect(p).not.toBeNull();
     if (p) {
-      // Must detour — so it cannot be the straight 4-tile row.
       const straight = p.length === 4 && p.every((s) => s.j === 0);
       expect(straight).toBe(false);
       expect(p[p.length - 1]).toEqual({ i: 3, j: 0 });
     }
   });
 
-  it('returns null when only route requires a 2-step cliff', () => {
+  it('returns null when only route requires a >2-step cliff', () => {
+    const g = new TileGrid(3, 1);
+    g.setElevation(1, 0, TERRAIN_STEP * 3);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 2, j: 0 });
+    expect(p).toBeNull();
+  });
+
+  it('allows a 2-step climb but prefers the detour when available', () => {
+    const g = new TileGrid(5, 3);
+    // 2-step wall along column 2 — climbable but very expensive (10× cost).
+    // A detour via row 2 is only a few extra tiles, so the planner should
+    // pick it over wading up the cliff.
+    g.setElevation(2, 0, TERRAIN_STEP * 2);
+    g.setElevation(2, 1, TERRAIN_STEP * 2);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 4, j: 0 });
+    expect(p).not.toBeNull();
+    if (p) {
+      const touchedCliff = p.some((s) => s.i === 2 && s.j < 2);
+      expect(touchedCliff).toBe(false);
+      expect(p[p.length - 1]).toEqual({ i: 4, j: 0 });
+    }
+  });
+
+  it('climbs a 2-step cliff when no detour exists', () => {
+    // Narrow 1-row corridor: the only path goes over the cliff. Climb must
+    // be allowed even though it's expensive.
     const g = new TileGrid(3, 1);
     g.setElevation(1, 0, TERRAIN_STEP * 2);
     const p = findPath(g, { i: 0, j: 0 }, { i: 2, j: 0 });
-    expect(p).toBeNull();
+    expect(p).not.toBeNull();
+    if (p) expect(p[1]).toEqual({ i: 1, j: 0 });
   });
 
   it('prefers dry ground over shallow water when the detour is small', () => {

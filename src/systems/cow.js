@@ -3305,23 +3305,27 @@ export function makeCowFollowPathSystem(deps) {
 
         let speed = crowded ? COW_SPEED_UNITS_PER_SEC * SLOW_FACTOR : COW_SPEED_UNITS_PER_SEC;
         // Snap y to the elevation of the tile we currently stand on so cows
-        // don't float when crossing terrain. When the next step is one
-        // TERRAIN_STEP higher or lower than the current tile (pathfinder only
-        // allows ≤1 step cliffs), play a short hop: lerp Y between the two
-        // elevations by horizontal progress and add a sine arc so the cow
-        // visibly jumps up instead of gliding, and slow the cow so ramps
-        // stay the efficient choice.
+        // don't float when crossing terrain. Adjacent tiles one TERRAIN_STEP
+        // (0.75m) higher/lower play a short hop — sine arc, 65% speed — so a
+        // ramp still wins on speed. Two-step (1.5m) neighbours are a climb:
+        // cows crawl at 10% speed and the arc stretches out so a ramp is
+        // obviously faster. Pathfinder rejects anything taller (see CLIMB_MAX
+        // in pathfinding.js), so we don't need to guard it here.
         const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
         if (grid.inBounds(cur.i, cur.j)) {
           const curElev = grid.getElevation(cur.i, cur.j);
           const dElev = targetY - curElev;
-          if (Math.abs(dElev) > TERRAIN_STEP * 0.5) {
+          const absD = Math.abs(dElev);
+          const climbing = absD >= TERRAIN_STEP * 1.5;
+          const hopping = !climbing && absD > TERRAIN_STEP * 0.5;
+          if (hopping || climbing) {
             const curCenter = tileToWorld(cur.i, cur.j, grid.W, grid.H);
             const totalLen = Math.hypot(target.x - curCenter.x, target.z - curCenter.z);
             const progress = totalLen > 0.0001 ? Math.max(0, Math.min(1, 1 - dist / totalLen)) : 1;
-            const bump = Math.sin(progress * Math.PI) * TERRAIN_STEP * 0.35;
+            const arcScale = climbing ? 0.55 : 0.35;
+            const bump = Math.sin(progress * Math.PI) * TERRAIN_STEP * arcScale;
             pos.y = curElev + dElev * progress + bump;
-            speed *= 0.65;
+            speed *= climbing ? 0.1 : 0.65;
           } else {
             pos.y = curElev;
           }
