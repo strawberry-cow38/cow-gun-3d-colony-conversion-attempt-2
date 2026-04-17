@@ -614,6 +614,34 @@ export class TileGrid {
         }
       }
     }
+
+    // 6. Extend water + sand rings off the map edge. For each skirt tile
+    //    outside the inner W×H, project to the nearest inner-edge tile
+    //    (Chebyshev clamp). Water at the inner edge always extends; sand
+    //    only extends over grass/dirt/stone so we don't overwrite a skirt
+    //    water tile that the noise + carve already produced (that carved
+    //    water is the natural lake continuation and beats a forced beach).
+    for (let ej = -S; ej < H + S; ej++) {
+      for (let ei = -S; ei < W + S; ei++) {
+        if (ei >= 0 && ei < W && ej >= 0 && ej < H) continue;
+        const ci = Math.max(0, Math.min(W - 1, ei));
+        const cj = Math.max(0, Math.min(H - 1, ej));
+        const innerK = this.idx(ci, cj);
+        const innerBiome = this.biome[innerK];
+        const skirtK = this.skirtIdx(ei, ej);
+        if (isWaterBiome(innerBiome)) {
+          this.skirtBiome[skirtK] = innerBiome;
+          this.skirtElevation[skirtK] = this.elevation[innerK];
+        } else if (innerBiome === BIOME.SAND) {
+          const current = this.skirtBiome[skirtK];
+          if (current === BIOME.GRASS || current === BIOME.DIRT || current === BIOME.STONE) {
+            this.skirtBiome[skirtK] = innerBiome;
+            this.skirtElevation[skirtK] = this.elevation[innerK];
+          }
+        }
+      }
+    }
+
     this.hasSkirt = true;
   }
 }

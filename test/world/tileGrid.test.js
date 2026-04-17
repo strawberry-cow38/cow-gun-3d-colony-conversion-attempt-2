@@ -82,11 +82,15 @@ describe('TileGrid', () => {
         } else if (b === BIOME.SHALLOW_WATER) {
           expect(g.elevation[k]).toBe(0);
         } else if (b === BIOME.SAND) {
+          // Adjacency uses the skirt buffer — sand at the inner map edge
+          // can be adjacent to shallow water that lives in the skirt
+          // (lakes extend past the map edge as of the decorative skirt
+          // change), and its elevation reflects that.
           const adjacentToShallow =
-            (i > 0 && g.biome[g.idx(i - 1, j)] === BIOME.SHALLOW_WATER) ||
-            (i < g.W - 1 && g.biome[g.idx(i + 1, j)] === BIOME.SHALLOW_WATER) ||
-            (j > 0 && g.biome[g.idx(i, j - 1)] === BIOME.SHALLOW_WATER) ||
-            (j < g.H - 1 && g.biome[g.idx(i, j + 1)] === BIOME.SHALLOW_WATER);
+            g.getSkirtBiome(i - 1, j) === BIOME.SHALLOW_WATER ||
+            g.getSkirtBiome(i + 1, j) === BIOME.SHALLOW_WATER ||
+            g.getSkirtBiome(i, j - 1) === BIOME.SHALLOW_WATER ||
+            g.getSkirtBiome(i, j + 1) === BIOME.SHALLOW_WATER;
           expect(g.elevation[k]).toBeCloseTo(adjacentToShallow ? 0 : TERRAIN_STEP, 3);
         }
       }
