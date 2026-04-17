@@ -1130,7 +1130,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
         return;
       }
       deps.onBuildComplete(pos, site.kind);
-      finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld);
+      finishBuild(world, grid, siteId, jobId, board, walkable, deps.tileWorld);
       awardXp(world, builderId, 'construction', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
