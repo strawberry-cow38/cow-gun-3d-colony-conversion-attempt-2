@@ -93,7 +93,7 @@ const tileGrid = tileWorld.active;
 const world = new World();
 registerComponents(world);
 
-const pathCache = new PathCache(tileGrid, defaultWalkable);
+const pathCache = new PathCache(tileWorld, defaultWalkable);
 const jobBoard = new JobBoard();
 const rooms = createRooms(tileGrid);
 

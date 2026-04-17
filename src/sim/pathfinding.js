@@ -160,6 +160,10 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
     if (world) {
       const below = world.layers[z - 1];
       if (below?.isRamp(i, j)) return true;
+      // Wall-top walkability: a finished wall on the layer below provides a
+      // solid surface to stand on at (i, j, z). Lets cows cross on top of
+      // walls as a battlement / second-floor structure.
+      if (below && below.wall[below.idx(i, j)] !== 0) return true;
       return false;
     }
     // Raw TileGrid with z>0: no stack to ask, floor is the only lift.

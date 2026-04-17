@@ -140,6 +140,23 @@ describe('findPath (multi-layer via TileWorld)', () => {
     if (p) expect(p[p.length - 1]).toEqual({ i: 1, j: 1, z: 1 });
   });
 
+  it('wall on layer below makes the tile above walkable (battlement)', () => {
+    const world = new TileWorld(new TileGrid(5, 5));
+    world.pushEmptyLayer();
+    // Wall line on z=0 between (1..3, 2). Path must reach the top via the
+    // ramp at (0,2) and then traverse wall tops to (3,2,1).
+    world.layers[0].setRamp(0, 2, 1);
+    for (let i = 1; i <= 3; i++) world.layers[0].wall[world.layers[0].idx(i, 2)] = 1;
+    const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 3, j: 2, z: 1 });
+    expect(p).not.toBeNull();
+    if (p) {
+      expect(p[p.length - 1]).toEqual({ i: 3, j: 2, z: 1 });
+      // Confirm at least one waypoint sits above a wall.
+      const steppedOnWallTop = p.some((n) => n.z === 1 && n.i >= 1 && n.i <= 3 && n.j === 2);
+      expect(steppedOnWallTop).toBe(true);
+    }
+  });
+
   it('bounds-checks z against the stack', () => {
     const world = new TileWorld(new TileGrid(3, 3));
     world.pushEmptyLayer();
