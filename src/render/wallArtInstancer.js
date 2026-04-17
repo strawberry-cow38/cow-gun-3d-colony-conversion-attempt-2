@@ -80,7 +80,6 @@ export function createWallArtInstancer(scene, capacity = 32) {
   });
   const canvasMesh = new THREE.InstancedMesh(canvasGeo, canvasMat, capacity);
   canvasMesh.count = 0;
-  canvasMesh.castShadow = true;
   canvasMesh.receiveShadow = true;
   scene.add(canvasMesh);
 

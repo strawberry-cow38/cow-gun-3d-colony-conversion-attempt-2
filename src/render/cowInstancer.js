@@ -236,7 +236,6 @@ export function createCowInstancer(scene, capacity = 256) {
   const carryMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const carryMesh = new THREE.InstancedMesh(carryGeo, carryMat, capacity);
   carryMesh.count = 0;
-  carryMesh.castShadow = true;
   scene.add(carryMesh);
 
   /** @type {number[]} instance row → entity id */

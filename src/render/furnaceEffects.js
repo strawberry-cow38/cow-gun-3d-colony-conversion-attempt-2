@@ -1,15 +1,15 @@
 /**
- * Smoke, embers, and a dynamic-light pool for active furnaces.
+ * Smoke + embers for active furnaces.
  *
  * Two shared Points clouds (smoke + embers) with ring-buffer pools: for every
  * active furnace each frame we stochastically push new particles seeded at the
  * chimney top (smoke) or the front glow face (embers). Smoke rises + drifts
  * slowly; embers spit forward with gravity pulling them back down.
  *
- * The PointLight pool mirrors the torch pattern: N slots (first one or two
- * shadow-casting), assigned to the N closest active furnaces per frame by
- * camera distance so the WebGL light cap isn't blown when a dozen furnaces
- * run at once.
+ * No dynamic PointLight: firelight shadows on a cubemap are a 6-pass render
+ * every time a furnace activates, which produced a multi-hundred-ms stutter
+ * on start. The emissive glow face (furnaceInstancer) + the tile-light grid
+ * (lighting.js) cover the gameplay and visual cues without touching shadows.
  *
  * All effects render only when the furnace has `activeBillId > 0` — the tile
  * light contribution from this furnace (see lighting.js) follows the same
@@ -19,16 +19,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
 import { FACING_OFFSETS } from '../world/facing.js';
-import {
-  CHIMNEY_TOP_Y,
-  FRONT_GLOW_Y,
-  FURNACE_FOOTPRINT,
-  FURNACE_HEIGHT,
-} from './furnaceInstancer.js';
-
-/** Sort light-pool candidates by squared distance, ascending. Hoisted so the
- *  per-frame `scratch.sort` call doesn't allocate a closure. */
-const byDistance2 = (/** @type {number[]} */ u, /** @type {number[]} */ v) => u[3] - v[3];
+import { CHIMNEY_TOP_Y, FRONT_GLOW_Y, FURNACE_FOOTPRINT } from './furnaceInstancer.js';
 
 // Shared park-position for expired particles; keeps them off-camera without
 // rebuilding the draw range. Same trick as roofCollapseParticles.
@@ -49,12 +40,6 @@ const EMBER_VEL_UP = 1.6 * UNITS_PER_METER;
 const EMBER_VEL_SIDE = 1.1 * UNITS_PER_METER;
 const EMBER_SPAWN_INTERVAL = 0.18;
 const EMBER_SIZE = 0.16 * UNITS_PER_METER;
-
-const POINT_LIGHT_POOL = 8;
-const POINT_LIGHT_SHADOW_CASTERS = 1;
-const POINT_LIGHT_DISTANCE = 3 * TILE_SIZE;
-const POINT_LIGHT_INTENSITY = 14000;
-const POINT_LIGHT_Y = FURNACE_HEIGHT * 0.45;
 
 /**
  * @param {THREE.Scene} scene
@@ -100,29 +85,6 @@ export function createFurnaceEffects(scene) {
   emberPoints.frustumCulled = false;
   scene.add(emberPoints);
 
-  const pointLights = /** @type {THREE.PointLight[]} */ ([]);
-  for (let i = 0; i < POINT_LIGHT_POOL; i++) {
-    const pl = new THREE.PointLight(0xff7028, 0, POINT_LIGHT_DISTANCE, 2);
-    // Always-visible pool (intensity=0 when idle). Toggling `visible` on a
-    // shadow-caster changes NUM_POINT_LIGHT_SHADOWS and forces THREE.js to
-    // recompile every lit material — see the same note in torchInstancer.
-    pl.visible = true;
-    if (i < POINT_LIGHT_SHADOW_CASTERS) {
-      pl.castShadow = true;
-      pl.shadow.mapSize.width = 512;
-      pl.shadow.mapSize.height = 512;
-      pl.shadow.camera.near = 1;
-      pl.shadow.camera.far = POINT_LIGHT_DISTANCE;
-      pl.shadow.bias = -0.002;
-      pl.shadow.radius = 2;
-      // Shadow cubemaps are expensive (6 scene passes per caster). Only
-      // re-render when the slot's assigned furnace actually moves.
-      pl.shadow.autoUpdate = false;
-    }
-    scene.add(pl);
-    pointLights.push(pl);
-  }
-
   let smokeCursor = 0;
   let smokeLive = 0;
   let emberCursor = 0;
@@ -132,9 +94,6 @@ export function createFurnaceEffects(scene) {
   /** @type {Map<number, { smoke: number, ember: number }>} */
   const emitters = new Map();
 
-  /** Scratch for nearest-N light pool assignment — [x, y, z, d2]. */
-  const scratch = /** @type {number[][]} */ ([]);
-
   /** Reused per-frame live-furnace set for emitter GC. */
   /** @type {Set<number>} */
   const alive = new Set();
@@ -143,18 +102,9 @@ export function createFurnaceEffects(scene) {
    * @param {import('../ecs/world.js').World} world
    * @param {import('../world/tileGrid.js').TileGrid} grid
    * @param {number} dt
-   * @param {number} tSec
-   * @param {THREE.Camera} camera
    */
-  function update(world, grid, dt, tSec, camera) {
-    const camX = camera.position.x;
-    const camY = camera.position.y;
-    const camZ = camera.position.z;
-    let scratchN = 0;
+  function update(world, grid, dt) {
     alive.clear();
-
-    const flicker = 0.85 + 0.3 * Math.sin(tSec * 5.3) + 0.1 * Math.sin(tSec * 11.7);
-    const lightIntensity = POINT_LIGHT_INTENSITY * flicker;
 
     const halfW = grid.W / 2;
     const halfH = grid.H / 2;
@@ -192,22 +142,6 @@ export function createFurnaceEffects(scene) {
         acc.ember -= EMBER_SPAWN_INTERVAL;
         spawnEmber(frontX, frontY, frontZ, off.di, off.dj);
       }
-
-      const lightY = y + POINT_LIGHT_Y;
-      const dx = wx - camX;
-      const dy = lightY - camY;
-      const dz = wz - camZ;
-      const d2 = dx * dx + dy * dy + dz * dz;
-      let slot = scratch[scratchN];
-      if (!slot) {
-        slot = [0, 0, 0, 0];
-        scratch[scratchN] = slot;
-      }
-      slot[0] = wx;
-      slot[1] = lightY;
-      slot[2] = wz;
-      slot[3] = d2;
-      scratchN++;
     }
 
     for (const id of emitters.keys()) {
@@ -216,21 +150,6 @@ export function createFurnaceEffects(scene) {
 
     stepSmoke(dt);
     stepEmbers(dt);
-
-    scratch.length = scratchN;
-    scratch.sort(byDistance2);
-    const assigned = Math.min(scratchN, pointLights.length);
-    for (let i = 0; i < assigned; i++) {
-      const [lx, ly, lz] = scratch[i];
-      const pl = pointLights[i];
-      const moved = pl.position.x !== lx || pl.position.y !== ly || pl.position.z !== lz;
-      pl.position.set(lx, ly, lz);
-      pl.intensity = lightIntensity;
-      if (pl.castShadow && moved) pl.shadow.needsUpdate = true;
-    }
-    for (let i = assigned; i < pointLights.length; i++) {
-      pointLights[i].intensity = 0;
-    }
   }
 
   /** @param {number} x @param {number} y @param {number} z */

@@ -6,6 +6,16 @@
  */
 
 import * as THREE from 'three';
+import { TILE_SIZE } from '../world/coords.js';
+
+// Sun-shadow footprint. Orthographic half-extent around the light's target —
+// renderFrame pins the target to the RTS focus point, so this is effectively
+// "how many tiles around the camera get real sun shadows". 40 tiles ≈ a
+// comfortable RTS viewport with slack for pans before the next shadow refresh.
+const SUN_SHADOW_HALF = 40 * TILE_SIZE;
+// Sun sits `SUN_DISTANCE` units from its target in timeOfDay's unit vector *
+// 4000 path. Keep near/far bracketing that range.
+const SUN_DISTANCE = 4000;
 
 /**
  * @param {HTMLCanvasElement} canvas
@@ -14,10 +24,11 @@ export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
-  // Shadow mapping on for torch PointLights. PCFSoft gives the soft-edged
-  // penumbra that reads as ambient occlusion near walls / in corners.
+  // Single directional-sun shadow map covers the scene. PCF (not Soft) because
+  // at RTS distance on a 2048 map the soft-filter penumbra is invisible and
+  // we'd rather spend the samples elsewhere.
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x3a2350);
@@ -40,7 +51,24 @@ export function createScene(canvas) {
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffb46b, 1.0);
   sun.position.set(4000, 1600, -2500);
+  // Directional shadow: one ortho camera covers ~40 tiles around sun.target.
+  // renderFrame moves the target to rts.focus and flips needsUpdate only when
+  // focus / sun direction has shifted enough that the cached shadow would
+  // misalign — otherwise the map is reused frame-to-frame for free.
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -SUN_SHADOW_HALF;
+  sun.shadow.camera.right = SUN_SHADOW_HALF;
+  sun.shadow.camera.top = SUN_SHADOW_HALF;
+  sun.shadow.camera.bottom = -SUN_SHADOW_HALF;
+  sun.shadow.camera.near = 0.25 * SUN_DISTANCE;
+  sun.shadow.camera.far = 2 * SUN_DISTANCE;
+  sun.shadow.bias = -0.0005;
+  sun.shadow.autoUpdate = false;
   scene.add(sun);
+  // Explicit target so renderFrame can reposition the shadow frustum around
+  // the camera focus; must be in the scene graph for matrixWorld to update.
+  scene.add(sun.target);
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;

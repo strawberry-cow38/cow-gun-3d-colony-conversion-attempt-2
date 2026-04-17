@@ -10,9 +10,11 @@
  *
  * A small pool of PointLights is assigned to the N closest torches to the
  * camera each frame — WebGL caps total dynamic lights per draw call, so we
- * can't naively light one-per-torch once a colony grows. The lights are
- * purely visual; the gameplay lighting grid (src/systems/lighting.js) is
- * unaffected.
+ * can't naively light one-per-torch once a colony grows. Shadows come from
+ * the sun DirectionalLight; torch PointLights purely add warm fill and do
+ * not cast (cubemap shadows cost 6 full-scene passes per caster, not worth
+ * it at RTS camera distance). The gameplay lighting grid
+ * (src/systems/lighting.js) is unaffected.
  */
 
 import * as THREE from 'three';
@@ -25,11 +27,10 @@ const FLAME_HEIGHT = 0.5 * UNITS_PER_METER;
 const FLAME_RADIUS = 0.18 * UNITS_PER_METER;
 // Flame tip sits roughly at stick top + half flame height.
 const FLAME_CENTER_Y = STICK_HEIGHT + FLAME_HEIGHT * 0.85;
-const POINT_LIGHT_POOL = 12;
-// Only the N closest torch lights cast real shadows — each shadow-casting
-// PointLight renders a 6-face cubemap per frame, so the cap keeps cost bounded
-// while still giving proper occlusion around the player's current position.
-const POINT_LIGHT_SHADOW_CASTERS = 2;
+// Pool size caps `NUM_POINT_LIGHTS` in compiled shaders — every extra slot
+// costs a lighting-loop iteration in every lit fragment. 6 is enough to cover
+// the nearest torches in an RTS viewport.
+const POINT_LIGHT_POOL = 6;
 // Match the tile-lighting reach: TORCH_RADIUS_TILES counts the center tile,
 // so the euclidean reach from the torch is (TORCH_RADIUS_TILES - 1) tiles.
 const POINT_LIGHT_DISTANCE = (TORCH_RADIUS_TILES - 1) * TILE_SIZE;
@@ -99,29 +100,10 @@ export function createTorchInstancer(scene, capacity = 512) {
   for (let i = 0; i < POINT_LIGHT_POOL; i++) {
     const pl = new THREE.PointLight(0xff8040, 0, POINT_LIGHT_DISTANCE, 2);
     // Lights stay `visible = true` for the life of the scene, toggled off
-    // by intensity=0 alone. Flipping `visible` on a point light (especially
-    // a shadow-caster) changes NUM_POINT_LIGHTS / NUM_POINT_LIGHT_SHADOWS
-    // and forces THREE.js to recompile every lit material's shader — a
-    // noticeable ~1s hitch when the first torch is placed.
+    // by intensity=0 alone. Flipping `visible` on a point light changes
+    // NUM_POINT_LIGHTS and forces THREE.js to recompile every lit material's
+    // shader — a noticeable ~1s hitch when the first torch is placed.
     pl.visible = true;
-    // First N slots in the pool are pre-configured with shadow cubemaps so
-    // we only allocate that VRAM up front, not one per torch. The nearest
-    // N torches end up in these slots each frame (sorted-by-distance
-    // assignment below).
-    if (i < POINT_LIGHT_SHADOW_CASTERS) {
-      pl.castShadow = true;
-      pl.shadow.mapSize.width = 512;
-      pl.shadow.mapSize.height = 512;
-      pl.shadow.camera.near = 1;
-      pl.shadow.camera.far = POINT_LIGHT_DISTANCE;
-      // Small negative bias kills shadow acne on flat walls/floors without
-      // introducing visible peter-panning at torch ranges.
-      pl.shadow.bias = -0.002;
-      pl.shadow.radius = 2;
-      // Skip per-frame cubemap rendering while the slot carries no real
-      // torch; intensity=0 means the (stale) shadow term is multiplied out.
-      pl.shadow.autoUpdate = false;
-    }
     scene.add(pl);
     pointLights.push(pl);
   }
@@ -226,14 +208,8 @@ export function createTorchInstancer(scene, capacity = 512) {
     for (let i = 0; i < assigned; i++) {
       const [lx, ly, lz] = scratch[i];
       const pl = pointLights[i];
-      // Shadow cubemaps are expensive (6 scene passes per caster). Only
-      // re-render when this slot's torch actually moved — torches are static
-      // so assignment churn (a new torch entering the nearest-N pool) is the
-      // only real dirty case.
-      const moved = pl.position.x !== lx || pl.position.y !== ly || pl.position.z !== lz;
       pl.position.set(lx, ly, lz);
       pl.intensity = lightIntensity;
-      if (pl.castShadow && moved) pl.shadow.needsUpdate = true;
     }
     for (let i = assigned; i < pointLights.length; i++) {
       const pl = pointLights[i];

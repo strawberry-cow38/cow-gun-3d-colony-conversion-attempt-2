@@ -1010,6 +1010,7 @@ const { render, getFps } = createRenderFrame({
   renderer,
   scene,
   camera,
+  sun,
   sky,
   rts,
   fpCamera,
