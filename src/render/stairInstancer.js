@@ -59,7 +59,8 @@ export function createStairInstancer(scene, capacity = 128) {
       if (k + SLABS_PER_STAIR > mesh.instanceMatrix.count) break;
       const a = components.TileAnchor;
       const facing = components.Stair.facing | 0;
-      const baseY = grid.getElevation(a.i, a.j);
+      const bottomZ = components.Stair.bottomZ | 0;
+      const baseY = grid.getElevation(a.i, a.j) + bottomZ * LAYER_HEIGHT;
       const color = getStuff(components.Stair.stuff).floorColor;
       _color.setHex(color);
       const footprint = stairFootprintTiles(a, facing);

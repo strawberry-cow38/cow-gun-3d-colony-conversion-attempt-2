@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import { tileToWorld } from '../world/coords.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import {
   STATION_COMPONENTS,
   TRACKED_COMPONENTS,
@@ -61,7 +62,8 @@ export function createObjectHitboxes(scene, capacity) {
         if (!box) continue;
         const anchor = components.TileAnchor;
         const center = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-        const yBase = grid.getElevation(anchor.i, anchor.j) + box.yBase;
+        const zLift = (anchor.z | 0) * LAYER_HEIGHT;
+        const yBase = grid.getElevation(anchor.i, anchor.j) + zLift + box.yBase;
         _p.set(center.x, yBase + box.h * 0.5, center.z);
         _s.set(box.w, box.h, box.d);
         _m.compose(_p, _q, _s);
@@ -79,7 +81,8 @@ export function createObjectHitboxes(scene, capacity) {
         if (!box) continue;
         const anchor = components.TileAnchor;
         const center = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-        const yBase = grid.getElevation(anchor.i, anchor.j) + box.yBase;
+        const zLift = (anchor.z | 0) * LAYER_HEIGHT;
+        const yBase = grid.getElevation(anchor.i, anchor.j) + zLift + box.yBase;
         _p.set(center.x + (box.offsetX ?? 0), yBase + box.h * 0.5, center.z + (box.offsetZ ?? 0));
         _s.set(box.w, box.h, box.d);
         if (box.yaw) _q.setFromAxisAngle(_yAxis, box.yaw);

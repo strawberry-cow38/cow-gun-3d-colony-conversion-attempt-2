@@ -214,7 +214,8 @@ export function createStationSelectionViz(scene) {
       const forward = ((STAIR_LENGTH - 1) / 2) * TILE_SIZE;
       const cx = anchor.x + off.di * forward;
       const cz = anchor.z + off.dj * forward;
-      const yBase = grid.getElevation(a.i, a.j);
+      const bottomZ = s.bottomZ | 0;
+      const yBase = grid.getElevation(a.i, a.j) + bottomZ * LAYER_HEIGHT;
       _p.set(cx, yBase + LAYER_HEIGHT * 0.5, cz);
       _q.setFromAxisAngle(_yAxis, FACING_YAWS[s.facing | 0] ?? 0);
       _s.set(TILE_SIZE, LAYER_HEIGHT, TILE_SIZE * STAIR_LENGTH);

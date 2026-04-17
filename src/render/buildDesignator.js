@@ -489,15 +489,37 @@ export class BuildDesignator {
       return true;
     }
     if (kind === 'stair') {
+      const bottomZ = this.tileWorld?.activeZ ?? 0;
+      const depth = this.tileWorld?.layers.length ?? 1;
+      // Stair writes a ramp on bottomZ and a floor on bottomZ+1; bail if the
+      // upper layer isn't in the stack so we never spawn a dangling blueprint.
+      if (bottomZ + 1 >= depth) return false;
+      const bottomLayer = this.tileWorld?.layers[bottomZ] ?? this.tileGrid;
+      const topLayer = this.tileWorld?.layers[bottomZ + 1] ?? null;
       const footprint = stairFootprintTiles({ i, j }, this.currentFacing);
       for (const t of footprint) {
-        if (!this.tileGrid.inBounds(t.i, t.j)) return false;
-        if (this.tileGrid.isBlocked(t.i, t.j)) return false;
-        if (this.tileGrid.isDoor(t.i, t.j)) return false;
-        if (this.tileGrid.isTorch(t.i, t.j)) return false;
-        if (this.tileGrid.isStockpile(t.i, t.j)) return false;
-        if (this.tileGrid.isRamp(t.i, t.j)) return false;
-        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof') !== null) return false;
+        if (!bottomLayer.inBounds(t.i, t.j)) return false;
+        if (bottomLayer.isBlocked(t.i, t.j)) return false;
+        if (bottomLayer.isDoor(t.i, t.j)) return false;
+        if (bottomLayer.isTorch(t.i, t.j)) return false;
+        if (bottomLayer.isStockpile(t.i, t.j)) return false;
+        if (bottomLayer.isRamp(t.i, t.j)) return false;
+        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof', bottomZ) !== null) return false;
+      }
+      // Upper-level stairs need a floor / wall-top on every footprint tile to
+      // actually stand on — otherwise the ramp would hang in the air above the
+      // ground layer. Support mirrors the pathfinder's z>0 passable rule.
+      if (bottomZ > 0) {
+        for (const t of footprint) {
+          if (!this.#hasUpperSupport(t.i, t.j, bottomZ)) return false;
+        }
+      }
+      // Top landing lives on bottomZ+1; reject if that tile is already claimed
+      // on the upper layer (walls, blueprints, existing floor etc.).
+      const landing = stairFootprintTiles({ i, j }, this.currentFacing).at(-1);
+      if (landing && topLayer) {
+        if (topLayer.isBlocked(landing.i, landing.j)) return false;
+        if (this.#findSiteAt(landing.i, landing.j, () => true, bottomZ + 1) !== null) return false;
       }
       const stuff = this.config.stuffed ? this.currentStuff : null;
       const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
@@ -514,8 +536,8 @@ export class BuildDesignator {
           facing: this.currentFacing,
         },
         BuildSiteViz: {},
-        TileAnchor: { i, j },
-        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+        TileAnchor: { i, j, z: bottomZ },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j) + bottomZ * LAYER_HEIGHT, z: w.z },
       });
       return true;
     }
@@ -559,6 +581,11 @@ export class BuildDesignator {
     // can force an upper floor even when the tile below is empty.
     const placeZ = kind === 'wall' ? this.#resolveWallPlaceZ(i, j) : 0;
     const layer = placeZ === 0 ? this.tileGrid : (this.tileWorld?.layers[placeZ] ?? this.tileGrid);
+    // Walls above the ground layer need something to rest on — a stacked wall,
+    // stair ramp below, or a floor on the same layer. Without this guard the
+    // auto-stacker cheerfully drops floating wall blueprints wherever the
+    // player clicked at a raised activeZ.
+    if (kind === 'wall' && placeZ > 0 && !this.#hasUpperSupport(i, j, placeZ)) return false;
     if (isRoof) {
       if (layer.isRoof(i, j)) return false;
       if (!hasRoofSupport(layer, this.world, i, j)) return false;
@@ -651,6 +678,31 @@ export class BuildDesignator {
       Position: { x: w.x, y, z: w.z },
     });
     return true;
+  }
+
+  /**
+   * Support check for "standing on (i, j) at layer z". Mirrors the pathfinder's
+   * z>0 passable rule (wall or ramp below, or a floor on the same layer), plus
+   * pending wall/floor blueprints so the player can plan multi-story buildings
+   * top-down. z===0 is always supported (ground is solid).
+   *
+   * Reused by the stair footprint check and the wall-floating prevention
+   * check — any blueprint that needs "something to stand on" routes here.
+   *
+   * @param {number} i @param {number} j @param {number} z
+   */
+  #hasUpperSupport(i, j, z) {
+    if (z === 0) return true;
+    const below = this.tileWorld?.layers[z - 1];
+    if (below) {
+      if (below.isWall(i, j)) return true;
+      if (below.isRamp(i, j)) return true;
+    }
+    const here = this.tileWorld?.layers[z] ?? this.tileGrid;
+    if (here.isFloor(i, j)) return true;
+    if (this.#findSiteAt(i, j, (k) => k === 'wall', z - 1) !== null) return true;
+    if (this.#findSiteAt(i, j, (k) => k === 'floor', z) !== null) return true;
+    return false;
   }
 
   /**
@@ -839,10 +891,16 @@ export class BuildDesignator {
     const z0 = nw.z - TILE_SIZE * 0.5;
     const z1 = se.z + TILE_SIZE * 0.5;
     // Walls follow the layer switcher PLUS auto-stack — preview at whatever
-    // z the actual placement will pick, so stacked blueprints visually sit on
-    // top of the layer below.
-    const previewZ =
-      this.config.kind === 'wall' && !this.removing ? this.#resolveWallPlaceZ(i0, j0) : 0;
+    // z the actual placement will pick. Stairs honor the switcher directly.
+    // Other kinds stay pinned to z=0 for now.
+    const activeZ = this.tileWorld?.activeZ ?? 0;
+    const previewZ = this.removing
+      ? 0
+      : this.config.kind === 'wall'
+        ? this.#resolveWallPlaceZ(i0, j0)
+        : this.config.kind === 'stair'
+          ? activeZ
+          : 0;
     const y = grid.getElevation(i0, j0) + previewZ * LAYER_HEIGHT + PREVIEW_CLEARANCE;
     const p = this.preview.positions;
     p[0] = x0;
@@ -898,7 +956,8 @@ export class BuildDesignator {
     if (this.stairGhost) {
       const anchor = this.curTile;
       const aw = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-      this.stairGhost.group.position.set(aw.x, grid.getElevation(anchor.i, anchor.j), aw.z);
+      const stairY = grid.getElevation(anchor.i, anchor.j) + activeZ * LAYER_HEIGHT;
+      this.stairGhost.group.position.set(aw.x, stairY, aw.z);
       this.stairGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.stairGhost.group.visible = !this.removing;
     }
