@@ -10,12 +10,13 @@ import { tileToWorld } from '../world/coords.js';
 import { pickCowName } from '../world/cowNames.js';
 import { fullName, rollCowIdentity } from '../world/identity.js';
 import { rollStartingSkills } from '../world/skills.js';
+import { isWaterBiome } from '../world/tileGrid.js';
 import { deriveDefaultsFromSkills } from '../world/workPriorities.js';
 
 /**
- * BFS outward from (i,j) to the nearest non-blocked in-bounds tile. Used so
- * cow spawn never lands on a tree/rock. Returns null only if the whole grid
- * is blocked, which shouldn't happen.
+ * BFS outward from (i,j) to the nearest non-blocked, non-water in-bounds
+ * tile. Used so cow spawn never lands on a tree/rock/lake. Returns null
+ * only if the whole grid is blocked, which shouldn't happen.
  *
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} i @param {number} j
@@ -27,7 +28,13 @@ export function nearestFreeTile(grid, i, j) {
   let head = 0;
   while (head < queue.length) {
     const t = queue[head++];
-    if (grid.inBounds(t.i, t.j) && !grid.isBlocked(t.i, t.j)) return t;
+    if (
+      grid.inBounds(t.i, t.j) &&
+      !grid.isBlocked(t.i, t.j) &&
+      !isWaterBiome(grid.getBiome(t.i, t.j))
+    ) {
+      return t;
+    }
     for (const [di, dj] of [
       [1, 0],
       [-1, 0],
