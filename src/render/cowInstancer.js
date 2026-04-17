@@ -109,6 +109,10 @@ const SWIM_BOB_AMPLITUDE = 0.05 * UNITS_PER_METER;
 const SWIM_BOB_FREQ_HZ = 1.6;
 const SWIM_ROLL_AMP = 0.18;
 const SWIM_ROLL_FREQ_HZ = 1.2;
+// Distance from ground to the spine-center of a colonist lying on their back.
+// Set from the torso half-thickness so the body rests on the floor rather
+// than clipping into it.
+const LIE_DOWN_HEIGHT_M = 0.2;
 
 const CARRY_SIZE = 0.35 * UNITS_PER_METER;
 const CARRY_OFFSET_Y = 0.25 * UNITS_PER_METER;
@@ -279,18 +283,21 @@ export function createCowInstancer(scene, capacity = 256) {
       const z = pp.z + (p.z - pp.z) * alpha;
 
       const chopping = job.kind === 'chop' && job.state === 'chopping';
+      const sleeping = job.kind === 'sleep' && job.state === 'sleeping';
       const speedSq = v.x * v.x + v.z * v.z;
       const moving = speedSq > 0.01;
 
       let swimming = false;
-      if (grid) {
+      if (grid && !sleeping) {
         const t = worldToTileClamp(x, z, grid.W, grid.H);
         swimming = grid.biome[grid.idx(t.i, t.j)] === BIOME.SHALLOW_WATER;
       }
 
       let bob;
       let roll = 0;
-      if (swimming) {
+      if (sleeping) {
+        bob = 0;
+      } else if (swimming) {
         bob = SWIM_BOB_AMPLITUDE * Math.sin(timeSec * SWIM_BOB_FREQ_HZ * Math.PI * 2);
         roll = SWIM_ROLL_AMP * Math.sin(timeSec * SWIM_ROLL_FREQ_HZ * Math.PI * 2);
       } else if (moving && !chopping) {
@@ -300,7 +307,7 @@ export function createCowInstancer(scene, capacity = 256) {
       }
 
       let yaw;
-      if (chopping && grid && typeof job.payload.i === 'number') {
+      if (chopping && !sleeping && grid && typeof job.payload.i === 'number') {
         const tw = tileToWorld(job.payload.i, job.payload.j, grid.W, grid.H);
         yaw = Math.atan2(tw.x - x, tw.z - z);
       } else {
@@ -309,17 +316,21 @@ export function createCowInstancer(scene, capacity = 256) {
       lastYaw.set(id, yaw);
       seen.add(id);
 
-      const pitch =
-        chopping && !swimming
+      const pitch = sleeping
+        ? Math.PI / 2
+        : chopping && !swimming
           ? CHOP_PITCH_AMP * Math.abs(Math.sin(timeSec * CHOP_PITCH_FREQ_HZ * Math.PI))
           : 0;
 
       const heightFactor = (identity.heightCm || REF_HEIGHT_CM) / REF_HEIGHT_CM;
       const figureHeight = REF_HEIGHT_M * heightFactor * UNITS_PER_METER;
       const swimSink = SWIM_SINK_M * heightFactor * UNITS_PER_METER;
-      const centerY = swimming
-        ? y + figureHeight * 0.5 - swimSink + bob
-        : y + figureHeight * 0.5 + bob;
+      const lieHeight = LIE_DOWN_HEIGHT_M * heightFactor * UNITS_PER_METER;
+      const centerY = sleeping
+        ? y + lieHeight
+        : swimming
+          ? y + figureHeight * 0.5 - swimSink + bob
+          : y + figureHeight * 0.5 + bob;
 
       _basePos.set(x, centerY, z);
       _baseEuler.set(pitch, yaw, roll);

@@ -50,6 +50,13 @@ const NEIGHBORS = [
 const HOP_EPS = TERRAIN_STEP * 0.5;
 const MAX_CLIMB = TERRAIN_STEP * 1.5;
 const HOP_EXTRA_COST = 0.3;
+/**
+ * Multiplier applied to the step cost when the neighbour tile is shallow
+ * water. 5× means a dry detour up to ~5 tiles longer still beats wading one
+ * tile straight through, which matches how much slower cows move in water
+ * (15% speed in cow.js).
+ */
+const SHALLOW_WATER_COST = 5;
 
 /**
  * @param {number} ax @param {number} ay @param {number} bx @param {number} by
@@ -251,7 +258,12 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
       if (dEl >= MAX_CLIMB) continue;
       const hop = dEl > HOP_EPS;
       if (hop && di !== 0 && dj !== 0) continue;
-      const stepCost = hop ? cost + HOP_EXTRA_COST : cost;
+      let stepCost = hop ? cost + HOP_EXTRA_COST : cost;
+      // Shallow water is passable but slow (cows wade at 15% in cow.js), so
+      // make the planner prefer dry ground. Multiplier is tuned so a lake
+      // two tiles wide is cheaper to walk around than to ford, but a single
+      // wet tile still gets crossed rather than making a huge detour.
+      if (curLayer.biome[nj * W + ni] === BIOME.SHALLOW_WATER) stepCost *= SHALLOW_WATER_COST;
       relax(flatZ(cz) * layerSize + nj * W + ni, ni, nj, cz, current, stepCost);
     }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PathCache, defaultWalkable, findPath } from '../../src/sim/pathfinding.js';
-import { TERRAIN_STEP, TileGrid } from '../../src/world/tileGrid.js';
+import { BIOME, TERRAIN_STEP, TileGrid } from '../../src/world/tileGrid.js';
 import { TileWorld } from '../../src/world/tileWorld.js';
 
 describe('findPath', () => {
@@ -207,6 +207,31 @@ describe('findPath cliff-climb rules', () => {
     g.setElevation(1, 0, TERRAIN_STEP * 2);
     const p = findPath(g, { i: 0, j: 0 }, { i: 2, j: 0 });
     expect(p).toBeNull();
+  });
+
+  it('prefers dry ground over shallow water when the detour is small', () => {
+    // A lake spans the whole middle row between start and goal. A one-tile
+    // detour north avoids it — the path must take the detour rather than
+    // wading straight through.
+    const g = new TileGrid(5, 3);
+    for (let i = 1; i < 4; i++) g.setBiome(i, 1, BIOME.SHALLOW_WATER);
+    const p = findPath(g, { i: 0, j: 1 }, { i: 4, j: 1 });
+    expect(p).not.toBeNull();
+    if (p) {
+      // Straight wade would keep j=1 for the whole run. Detour steps off row 1.
+      const waded = p.every((s) => s.j === 1);
+      expect(waded).toBe(false);
+    }
+  });
+
+  it('still crosses a single shallow-water tile when detour is too long', () => {
+    // Single wet tile blocking a narrow corridor. Walking around is much
+    // longer than the 5× wet penalty, so the planner wades.
+    const g = new TileGrid(3, 1);
+    g.setBiome(1, 0, BIOME.SHALLOW_WATER);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 2, j: 0 });
+    expect(p).not.toBeNull();
+    if (p) expect(p[1]).toEqual({ i: 1, j: 0 });
   });
 
   it('rejects a diagonal hop even at 1 TERRAIN_STEP', () => {

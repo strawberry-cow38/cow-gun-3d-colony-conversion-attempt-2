@@ -50,6 +50,16 @@ const LEAF_INTERVAL = 1.8;
 const LEAF_GRAVITY = 1.1 * UNITS_PER_METER;
 const LEAF_WOBBLE = 1.1 * UNITS_PER_METER;
 
+// --- Zzz (sleeping colonists) ---------------------------------------------
+const MAX_ZZZ = 64;
+const ZZZ_LIFE = 2.6;
+const ZZZ_SIZE = 0.55 * UNITS_PER_METER;
+const ZZZ_FADE = 0.5;
+// Seconds between Zzz spawns per sleeping colonist.
+const ZZZ_SPAWN_INTERVAL = 1.2;
+const ZZZ_RISE_SPEED = 0.55 * UNITS_PER_METER;
+const ZZZ_DRIFT = 0.25 * UNITS_PER_METER;
+
 /** @typedef {{ x: number, y: number, z: number, r: number, g: number, b: number }} FlowerEmitter */
 
 /**
@@ -60,6 +70,7 @@ export function createAmbientParticles(scene, tileGrid) {
   const butterfly = makeButterflyPool(scene);
   const firefly = makeFireflyPool(scene);
   const leaf = makeLeafPool(scene);
+  const zzz = makeZzzPool(scene);
 
   /** @type {FlowerEmitter[]} */
   let flowers = [];
@@ -67,6 +78,12 @@ export function createAmbientParticles(scene, tileGrid) {
   let leafAcc = 0;
   let butterflyAcc = 0;
   let fireflyAcc = 0;
+  /** Per-sleeper spawn accumulators, keyed by entity id. Entries are cleaned
+   *  after each tick so dead / woken cows don't leak. */
+  /** @type {Map<number, number>} */
+  const zzzAccByCow = new Map();
+  /** @type {Set<number>} */
+  const zzzSeen = new Set();
 
   function rebuildFlowerCache() {
     flowers = [];
@@ -143,9 +160,31 @@ export function createAmbientParticles(scene, tileGrid) {
       if (tree) spawnLeaf(leaf, tree);
     }
 
+    // Zzz: one drifting Z per sleeping colonist every ~1.2s. Query every
+    // tick so a cow that just fell asleep starts emitting immediately rather
+    // than waiting on an accumulator keyed on nobody. Woken cows drop out
+    // naturally — their id isn't touched this tick so it gets pruned.
+    zzzSeen.clear();
+    for (const { id, components } of world.query(['Cow', 'Position', 'Job'])) {
+      const job = components.Job;
+      if (job.kind !== 'sleep' || job.state !== 'sleeping') continue;
+      zzzSeen.add(id);
+      const prev = zzzAccByCow.get(id) ?? ZZZ_SPAWN_INTERVAL;
+      let acc = prev + rdt;
+      while (acc >= ZZZ_SPAWN_INTERVAL) {
+        acc -= ZZZ_SPAWN_INTERVAL;
+        spawnZzz(zzz, components.Position);
+      }
+      zzzAccByCow.set(id, acc);
+    }
+    for (const k of zzzAccByCow.keys()) {
+      if (!zzzSeen.has(k)) zzzAccByCow.delete(k);
+    }
+
     updateButterflies(butterfly, rdt);
     updateFireflies(firefly, rdt);
     updateLeaves(leaf, rdt);
+    updateZzz(zzz, rdt);
   }
 
   function markFlowersDirty() {
@@ -469,6 +508,100 @@ function updateLeaves(pool, rdt) {
 }
 
 // ---------------------------------------------------------------------------
+// Zzz pool
+
+/** @param {THREE.Scene} scene */
+function makeZzzPool(scene) {
+  const positions = new Float32Array(MAX_ZZZ * 3);
+  const colors = new Float32Array(MAX_ZZZ * 3);
+  const ages = new Float32Array(MAX_ZZZ);
+  const driftX = new Float32Array(MAX_ZZZ);
+  const driftZ = new Float32Array(MAX_ZZZ);
+  const wobblePhase = new Float32Array(MAX_ZZZ);
+  for (let i = 0; i < MAX_ZZZ; i++) {
+    positions[i * 3 + 1] = OFFSCREEN_Y;
+    ages[i] = -1;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({
+    size: ZZZ_SIZE,
+    map: buildZzzTexture(),
+    vertexColors: true,
+    transparent: true,
+    alphaTest: 0.05,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  const points = new THREE.Points(geo, mat);
+  points.frustumCulled = false;
+  scene.add(points);
+
+  let cursor = 0;
+  return {
+    geo,
+    positions,
+    colors,
+    ages,
+    driftX,
+    driftZ,
+    wobblePhase,
+    getCursor: () => cursor,
+    advance: () => {
+      cursor = (cursor + 1) % MAX_ZZZ;
+    },
+  };
+}
+
+/** @param {ReturnType<typeof makeZzzPool>} pool @param {{x:number,y:number,z:number}} pos */
+function spawnZzz(pool, pos) {
+  const i = pool.getCursor();
+  pool.advance();
+  pool.positions[i * 3] = pos.x + (Math.random() - 0.5) * 0.25 * UNITS_PER_METER;
+  // Lying colonists sit low — spawn roughly a head-height above them so the
+  // Z reads as floating above the sleeper.
+  pool.positions[i * 3 + 1] = pos.y + (0.9 + Math.random() * 0.25) * UNITS_PER_METER;
+  pool.positions[i * 3 + 2] = pos.z + (Math.random() - 0.5) * 0.25 * UNITS_PER_METER;
+  pool.driftX[i] = (Math.random() - 0.3) * ZZZ_DRIFT;
+  pool.driftZ[i] = (Math.random() - 0.3) * ZZZ_DRIFT;
+  pool.wobblePhase[i] = Math.random() * Math.PI * 2;
+  pool.ages[i] = 0;
+}
+
+/** @param {ReturnType<typeof makeZzzPool>} pool @param {number} rdt */
+function updateZzz(pool, rdt) {
+  let dirty = false;
+  for (let i = 0; i < MAX_ZZZ; i++) {
+    if (pool.ages[i] < 0) continue;
+    pool.ages[i] += rdt;
+    dirty = true;
+    if (pool.ages[i] >= ZZZ_LIFE) {
+      pool.ages[i] = -1;
+      pool.positions[i * 3 + 1] = OFFSCREEN_Y;
+      pool.colors[i * 3] = 0;
+      pool.colors[i * 3 + 1] = 0;
+      pool.colors[i * 3 + 2] = 0;
+      continue;
+    }
+    pool.wobblePhase[i] += rdt * 2;
+    pool.positions[i * 3] +=
+      (pool.driftX[i] + Math.sin(pool.wobblePhase[i]) * 0.1 * UNITS_PER_METER) * rdt;
+    pool.positions[i * 3 + 1] += ZZZ_RISE_SPEED * rdt;
+    pool.positions[i * 3 + 2] += pool.driftZ[i] * rdt;
+    const fade = lifeFade(pool.ages[i], ZZZ_LIFE, ZZZ_FADE);
+    pool.colors[i * 3] = 0.9 * fade;
+    pool.colors[i * 3 + 1] = 0.95 * fade;
+    pool.colors[i * 3 + 2] = 1.0 * fade;
+  }
+  if (dirty) {
+    pool.geo.attributes.position.needsUpdate = true;
+    pool.geo.attributes.color.needsUpdate = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 
 /** Triangular ramp: 0 at spawn, 1 at mid-life, 0 at death. */
@@ -589,6 +722,31 @@ function buildGlowTexture() {
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
+  return tex;
+}
+
+function buildZzzTexture() {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.font = `bold ${size * 0.85}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = size * 0.08;
+  // Stroke + fill so the glyph reads at a distance.
+  ctx.strokeText('Z', size / 2, size / 2);
+  ctx.fillText('Z', size / 2, size / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = 2;
   return tex;
 }
 

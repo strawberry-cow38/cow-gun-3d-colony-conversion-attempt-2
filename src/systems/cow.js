@@ -381,12 +381,19 @@ export function makeCowBrainSystem(deps) {
                 path.steps = [];
                 path.index = 0;
               } else {
-                // No bed but we're collapsing — drop where we stand.
-                job.kind = 'sleep';
-                job.state = 'sleeping';
-                job.payload = { onFloor: true };
-                path.steps = [];
-                path.index = 0;
+                // No bed but we're collapsing — drop where we stand, but
+                // refuse to lie down in water. Stay awake on a water tile so
+                // the cow keeps wandering toward dry ground instead of
+                // drowning itself.
+                const biomeHere = grid.biome[grid.idx(near.i, near.j)];
+                const onWater = biomeHere === BIOME.SHALLOW_WATER || biomeHere === BIOME.DEEP_WATER;
+                if (!onWater) {
+                  job.kind = 'sleep';
+                  job.state = 'sleeping';
+                  job.payload = { onFloor: true };
+                  path.steps = [];
+                  path.index = 0;
+                }
               }
             }
 
