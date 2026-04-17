@@ -23,6 +23,7 @@ import {
   prioritizeJob,
   stockpileSlotAvailable,
 } from '../jobs/prioritize.js';
+import { passableAt } from '../sim/pathfinding.js';
 import {
   TILE_SIZE,
   UNITS_PER_METER,
@@ -55,7 +56,7 @@ export class CowMoveCommand {
    * @param {THREE.Scene} scene
    * @param {{ show: (x: number, y: number, items: { label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
    * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ isDesignatorActive?: () => boolean, getHitboxMesh?: () => THREE.Mesh | null }} [opts]
+   * @param {{ isDesignatorActive?: () => boolean, getHitboxMesh?: () => THREE.Mesh | null, tileWorld?: import('../world/tileWorld.js').TileWorld }} [opts]
    */
   constructor(
     dom,
@@ -77,6 +78,7 @@ export class CowMoveCommand {
     this.getTileMesh = getTileMesh;
     this.getHitboxMesh = opts.getHitboxMesh ?? (() => null);
     this.tileGrid = tileGrid;
+    this.tileWorld = opts.tileWorld ?? null;
     this.pathCache = pathCache;
     this.walkable = walkable;
     this.world = world;
@@ -158,12 +160,15 @@ export class CowMoveCommand {
 
     const endTile = dragged ? (this.#pickTile(e) ?? start) : start;
 
+    const goalZ = endTile.z | 0;
+    const world = this.tileWorld;
+    const passable = (grid, i, j) =>
+      world ? passableAt(world, i, j, goalZ, this.walkable) : this.walkable(grid, i, j);
     const targets =
       dragged && ids.length > 1
-        ? lineTargets(this.tileGrid, this.walkable, start, endTile, ids.length)
-        : spreadTargets(this.tileGrid, this.walkable, endTile, ids.length);
+        ? lineTargets(this.tileGrid, passable, start, endTile, ids.length)
+        : spreadTargets(this.tileGrid, passable, endTile, ids.length);
 
-    const goalZ = endTile.z | 0;
     for (const t of targets) t.z = goalZ;
 
     const assignment = matchCowsToTargets(this.world, ids, targets, this.tileGrid);
@@ -227,8 +232,12 @@ export class CowMoveCommand {
       {
         label: 'Move here',
         onPick: () => {
-          const endTile = spreadTargets(this.tileGrid, this.walkable, tile, 1)[0] ?? tile;
-          endTile.z = tile.z | 0;
+          const goalZ = tile.z | 0;
+          const world = this.tileWorld;
+          const passable = (grid, i, j) =>
+            world ? passableAt(world, i, j, goalZ, this.walkable) : this.walkable(grid, i, j);
+          const endTile = spreadTargets(this.tileGrid, passable, tile, 1)[0] ?? tile;
+          endTile.z = goalZ;
           if (this.#issue(cowId, endTile, shift)) this.audio?.play('command');
           else this.audio?.play('deny');
         },
@@ -313,7 +322,11 @@ export class CowMoveCommand {
       this.#hidePreview();
       return;
     }
-    const targets = lineTargets(this.tileGrid, this.walkable, this.startTile, endTile, ids.length);
+    const goalZ = endTile.z | 0;
+    const world = this.tileWorld;
+    const passable = (grid, i, j) =>
+      world ? passableAt(world, i, j, goalZ, this.walkable) : this.walkable(grid, i, j);
+    const targets = lineTargets(this.tileGrid, passable, this.startTile, endTile, ids.length);
     this.#renderPreview(this.startTile, endTile, targets);
   }
 

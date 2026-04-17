@@ -664,13 +664,21 @@ export function makeCowBrainSystem(deps) {
         } else if (job.kind === 'wander') {
           if (job.state === 'planning') {
             const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+            const cowZ = brain.layerZ | 0;
             const goal = pickWanderGoal(grid, walkable);
             if (!goal) {
               job.state = 'idle';
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
             } else {
               // Wander goals are randomized — caching them just churns the LRU.
-              const route = paths.find({ i: si, j: sj }, goal, { cache: false });
+              // Ground-level goal with cow's current layerZ as the path start
+              // so a z=1 cow routes down a stair to pick up wandering on z=0
+              // instead of hanging on the upper floor with no reachable target.
+              const route = paths.find(
+                { i: si, j: sj, z: cowZ },
+                { ...goal, z: 0 },
+                { cache: false },
+              );
               if (!route || route.length === 0) {
                 job.state = 'idle';
                 job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };

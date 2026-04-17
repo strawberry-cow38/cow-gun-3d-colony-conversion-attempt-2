@@ -822,6 +822,7 @@ new CowMoveCommand(
   {
     isDesignatorActive: isDesignatorArmed,
     getHitboxMesh: () => objectHitboxes.mesh,
+    tileWorld,
   },
 );
 
