@@ -8,9 +8,15 @@
  * around. `getFps` is exposed for the HUD.
  */
 
+import * as THREE from 'three';
 import { dayFractionOfTick, formatSimDate, formatSimTime, tickToSimDate } from '../sim/calendar.js';
 import { TILE_SIZE, worldToTileClamp } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
+
+// Scratch frustum + matrix for the "terrain chunks visible" HUD readout.
+// Reused each frame so the counter doesn't allocate.
+const _chunkFrustum = new THREE.Frustum();
+const _chunkProjView = new THREE.Matrix4();
 
 // Sun-shadow refresh thresholds. autoUpdate is off so we only re-render the
 // ortho depth map when the frustum would have drifted — camera pan of at
@@ -311,7 +317,22 @@ export function createRenderFrame({
     objectSelectionViz.update(world, tileGrid, state.selectedObjects);
     objectHitboxes.update(world, tileGrid);
     const simDate = tickToSimDate(simTick);
-    clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}\n${measuredFps.toFixed(0)} fps  ${getTps().toFixed(0)} tps`;
+    // Terrain chunk visibility: frustum-test each chunk mesh's bounding sphere
+    // and surface "visible / total" on the clock readout. A healthy chunked
+    // terrain shows <<total while the camera is looking at any single part of
+    // the map; if this stays pinned at total/total, chunking isn't helping.
+    let terrainVisible = 0;
+    let terrainTotal = 0;
+    const terrainGroup = state.tileMesh;
+    if (terrainGroup) {
+      _chunkProjView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      _chunkFrustum.setFromProjectionMatrix(_chunkProjView);
+      for (const child of terrainGroup.children) {
+        terrainTotal++;
+        if (_chunkFrustum.intersectsObject(child)) terrainVisible++;
+      }
+    }
+    clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}\n${measuredFps.toFixed(0)} fps  ${getTps().toFixed(0)} tps\nchunks: ${terrainVisible}/${terrainTotal}`;
     // Anchor the sky sphere to the camera so no amount of zoom-out or pan
     // can put the camera outside the sky — the purple scene.background stays
     // hidden regardless of camera distance from the world origin.
