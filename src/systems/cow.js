@@ -3461,9 +3461,14 @@ export function makeCowWallCollisionSystem(grid) {
     name: 'cowWallCollision',
     tier: 'every',
     run(world) {
-      for (const { components } of world.query(['Cow', 'Position', 'PrevPosition'])) {
+      for (const { id, components } of world.query(['Cow', 'Position', 'PrevPosition'])) {
         const p = components.Position;
         const pp = components.PrevPosition;
+        // Cows on z>0 legitimately stand on wall-tops; base-grid isWall is a
+        // floor surface for them, not an obstacle. Skip collision so they can
+        // walk across upper layers.
+        const layerZ = world.get(id, 'Brain')?.layerZ | 0;
+        if (layerZ > 0) continue;
         const cur = worldToTileClamp(p.x, p.z, grid.W, grid.H);
         if (!grid.isWall(cur.i, cur.j)) continue;
         // We've crossed into a wall tile. Try preserving each axis on its own
