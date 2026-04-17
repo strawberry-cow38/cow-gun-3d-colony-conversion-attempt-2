@@ -74,9 +74,10 @@ const HUNGER_DRAIN_PER_TICK = 1 / 43200; // empties over one in-game day
 const TIREDNESS_DRAIN_PER_TICK = 1 / 28800;
 const TIREDNESS_RESTORE_PER_TICK = 1 / 14400;
 const TIREDNESS_FLOOR_RESTORE_MULT = 0.5;
-// Stop sleeping a little shy of 1 so cows don't ping-pong in/out of beds as
-// the tiny drain immediately flips them back to "tired".
-const SLEEP_SATIATED_THRESHOLD = 0.95;
+// Bed sleep restores fully. Floor sleep tops out at half so cows still
+// recover when bedless but a built bed gives a clear, visible upgrade.
+const SLEEP_SATIATED_THRESHOLD = 1;
+const FLOOR_SATIATED_THRESHOLD = 0.5;
 // While food-poisoned, hunger drains this fast — roughly 3x normal, so the
 // cow ends up hungry again sooner than if the bad meal had been tasty.
 const HUNGER_DRAIN_POISONED_MULT = 3;
@@ -318,9 +319,11 @@ export function makeCowBrainSystem(deps) {
 
         if (needsDecide) {
           if (job.kind === 'wander' || job.kind === 'none') {
-            // Hungry + idle? Self-assign an eat job so the cow walks to the
-            // nearest food stack instead of wandering while starving.
-            if (hunger.value < HUNGER_EAT_THRESHOLD) {
+            // Critical-only self-care runs BEFORE the board check so a
+            // starving or collapsing cow doesn't grab another designation.
+            // Soft hunger/tiredness falls through to the board first so
+            // player-directed work outranks a peckish eat or a drowsy nap.
+            if (hunger.value < HUNGER_CRITICAL_THRESHOLD) {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
               const food = findBestFood(world, near);
               if (food) {
@@ -332,13 +335,9 @@ export function makeCowBrainSystem(deps) {
               }
             }
 
-            // Tired + idle? Prefer a bed (owned first, then unowned-unoccupied),
-            // otherwise fall through to a floor-sleep in place. Hunger wins —
-            // we only enter this branch if the eat block above didn't claim
-            // the cow.
             if (
               (job.kind === 'wander' || job.kind === 'none') &&
-              tiredness.value < TIREDNESS_SLEEP_THRESHOLD
+              tiredness.value < TIREDNESS_CRITICAL_THRESHOLD
             ) {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
               const bed = findBestBed(world, id, near);
@@ -348,8 +347,8 @@ export function makeCowBrainSystem(deps) {
                 job.payload = { bedId: bed.id, i: bed.i, j: bed.j };
                 path.steps = [];
                 path.index = 0;
-              } else if (tiredness.value < TIREDNESS_CRITICAL_THRESHOLD) {
-                // No bed available but we're collapsing — sleep on the floor.
+              } else {
+                // No bed but we're collapsing — drop where we stand.
                 job.kind = 'sleep';
                 job.state = 'sleeping';
                 job.payload = { onFloor: true };
@@ -526,6 +525,32 @@ export function makeCowBrainSystem(deps) {
                 job.kind = 'uninstall';
                 job.state = 'pathing';
                 job.payload = { ...candidate.payload, jobId: candidate.id };
+                path.steps = [];
+                path.index = 0;
+              }
+            }
+
+            // Soft self-care fallback: only after the board offered nothing.
+            // Player-directed work outranks a peckish eat or a drowsy nap; if
+            // there's no work, fall through here and tend to needs.
+            if (job.kind === 'none' && hunger.value < HUNGER_EAT_THRESHOLD) {
+              const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+              const food = findBestFood(world, near);
+              if (food) {
+                job.kind = 'eat';
+                job.state = 'pathing-to-food';
+                job.payload = { itemId: food.id, i: food.i, j: food.j };
+                path.steps = [];
+                path.index = 0;
+              }
+            }
+            if (job.kind === 'none' && tiredness.value < TIREDNESS_SLEEP_THRESHOLD) {
+              const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
+              const bed = findBestBed(world, id, near);
+              if (bed) {
+                job.kind = 'sleep';
+                job.state = 'pathing-to-bed';
+                job.payload = { bedId: bed.id, i: bed.i, j: bed.j };
                 path.steps = [];
                 path.index = 0;
               }
@@ -2924,8 +2949,9 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
       }
     }
     const mult = onFloor ? TIREDNESS_FLOOR_RESTORE_MULT : 1;
-    tiredness.value = Math.min(1, tiredness.value + TIREDNESS_RESTORE_PER_TICK * mult);
-    if (tiredness.value >= SLEEP_SATIATED_THRESHOLD) {
+    const cap = onFloor ? FLOOR_SATIATED_THRESHOLD : SLEEP_SATIATED_THRESHOLD;
+    tiredness.value = Math.min(cap, tiredness.value + TIREDNESS_RESTORE_PER_TICK * mult);
+    if (tiredness.value >= cap) {
       if (!onFloor) releaseBedOccupant(world, job, cowId);
       job.kind = 'none';
       job.state = 'idle';
