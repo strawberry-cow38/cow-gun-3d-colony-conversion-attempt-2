@@ -52,7 +52,7 @@ export class CowMoveCommand {
    * @param {import('../jobs/board.js').JobBoard} jobBoard
    * @param {() => Iterable<number>} getSelectedCows
    * @param {THREE.Scene} scene
-   * @param {{ show: (x: number, y: number, items: { label: string, onPick?: () => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
+   * @param {{ show: (x: number, y: number, items: { label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
    * @param {{ play: (kind: string) => void }} [audio]
    * @param {{ isDesignatorActive?: () => boolean }} [opts]
    */
@@ -175,7 +175,7 @@ export class CowMoveCommand {
    */
   #openContextMenu(e, tile, cowId) {
     const shift = this.shiftAtDown;
-    /** @type {{ label: string, onPick?: () => void, disabled?: boolean }[]} */
+    /** @type {{ label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]} */
     const items = [
       {
         label: 'Move here',
@@ -195,8 +195,10 @@ export class CowMoveCommand {
       for (const job of jobs) {
         items.push({
           label: `Prioritize ${jobVerbForPrioritize(job.kind)}`,
-          onPick: () => {
-            if (prioritizeJob(this.world, this.board, job.id, cowId)) this.audio?.play('command');
+          onPick: (ev) => {
+            const queue = ev.shiftKey;
+            if (prioritizeJob(this.world, this.board, job.id, cowId, { queue }))
+              this.audio?.play('command');
             else this.audio?.play('deny');
           },
         });
@@ -224,7 +226,7 @@ export class CowMoveCommand {
           ) {
             items.push({
               label: 'Prioritize haul',
-              onPick: () => {
+              onPick: (ev) => {
                 const posted = postAndPrioritizeHaul(
                   this.world,
                   this.tileGrid,
@@ -232,6 +234,7 @@ export class CowMoveCommand {
                   cowId,
                   tile.i,
                   tile.j,
+                  { queue: ev.shiftKey },
                 );
                 if (posted) this.audio?.play('command');
                 else this.audio?.play('deny');

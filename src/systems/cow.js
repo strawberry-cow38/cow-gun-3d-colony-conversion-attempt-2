@@ -21,6 +21,7 @@ import { HARVEST_TICKS } from '../jobs/harvest.js';
 import { DROP_TICKS, PICKUP_TICKS } from '../jobs/haul.js';
 import { MINE_TICKS } from '../jobs/mine.js';
 import { PLANT_TICKS } from '../jobs/plant.js';
+import { startStateFor } from '../jobs/prioritize.js';
 import {
   HUNGER_CRITICAL_THRESHOLD,
   HUNGER_PREEMPT_TIER,
@@ -265,7 +266,11 @@ export function makeCowBrainSystem(deps) {
         // run to completion. Skip the preempt entirely when the colony has no
         // food — otherwise the cow oscillates between "drop work" and "no food
         // to plan for, re-claim work" every tick and never makes progress.
+        //
+        // Player-prioritized jobs are exempt: the player explicitly told this
+        // cow to finish this work first, so hunger waits.
         if (
+          !job.prioritized &&
           hunger.value < HUNGER_CRITICAL_THRESHOLD &&
           tierFor(job.kind) >= HUNGER_PREEMPT_TIER &&
           anyFood
@@ -288,8 +293,10 @@ export function makeCowBrainSystem(deps) {
         // non-urgent work so the next decide block re-plans as a sleep job.
         // Unlike hunger we don't gate on "any beds exist" — floor-sleep is a
         // valid fallback, so the cow should collapse wherever it stands if
-        // there's no bed.
+        // there's no bed. Player-prioritized jobs skip the preempt so
+        // manually-directed work finishes regardless of exhaustion.
         if (
+          !job.prioritized &&
           tiredness.value < TIREDNESS_CRITICAL_THRESHOLD &&
           tierFor(job.kind) >= TIREDNESS_PREEMPT_TIER
         ) {
@@ -319,11 +326,35 @@ export function makeCowBrainSystem(deps) {
 
         if (needsDecide) {
           if (job.kind === 'wander' || job.kind === 'none') {
+            // Prior job ended → clear the prioritized flag so the upcoming
+            // board/self-care branches start from a clean slate.
+            job.prioritized = false;
+
+            // Shift-clicked priority queue: pull the next reserved jobId and
+            // start walking. Skip dead queue entries (job completed or its
+            // claim got stolen by a non-queued prioritize) until one sticks
+            // or the queue empties.
+            while (job.kind === 'none' && job.priorityQueue.length > 0) {
+              const nextId = job.priorityQueue.shift();
+              if (nextId == null) break;
+              const next = board.get(nextId);
+              if (!next || next.completed || next.claimedBy !== id) continue;
+              job.kind = next.kind;
+              job.state = startStateFor(next.kind);
+              job.payload = { ...next.payload, jobId: next.id };
+              job.prioritized = true;
+              path.steps = [];
+              path.index = 0;
+            }
+
             // Critical-only self-care runs BEFORE the board check so a
             // starving or collapsing cow doesn't grab another designation.
             // Soft hunger/tiredness falls through to the board first so
             // player-directed work outranks a peckish eat or a drowsy nap.
-            if (hunger.value < HUNGER_CRITICAL_THRESHOLD) {
+            if (
+              (job.kind === 'wander' || job.kind === 'none') &&
+              hunger.value < HUNGER_CRITICAL_THRESHOLD
+            ) {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
               const food = findBestFood(world, near);
               if (food) {
@@ -342,6 +373,7 @@ export function makeCowBrainSystem(deps) {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
               const bed = findBestBed(world, id, near);
               if (bed) {
+                reserveBed(world, bed.id, id);
                 job.kind = 'sleep';
                 job.state = 'pathing-to-bed';
                 job.payload = { bedId: bed.id, i: bed.i, j: bed.j };
@@ -548,6 +580,7 @@ export function makeCowBrainSystem(deps) {
               const near = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
               const bed = findBestBed(world, id, near);
               if (bed) {
+                reserveBed(world, bed.id, id);
                 job.kind = 'sleep';
                 job.state = 'pathing-to-bed';
                 job.payload = { bedId: bed.id, i: bed.i, j: bed.j };
@@ -2880,6 +2913,7 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
       (bed.ownerId !== 0 && bed.ownerId !== cowId) ||
       (bed.occupantId !== 0 && bed.occupantId !== cowId)
     ) {
+      releaseBedOccupant(world, job, cowId);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2902,6 +2936,7 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
       }
     }
     if (!route || !chosen) {
+      releaseBedOccupant(world, job, cowId);
       job.kind = 'none';
       job.state = 'idle';
       job.payload = {};
@@ -2917,10 +2952,11 @@ function runSleepJob(world, job, path, pos, tiredness, grid, paths, cowId) {
   if (job.state === 'walking-to-bed') {
     if (path.index >= path.steps.length) {
       // Claim the bed now that we're on it. First cow to reach an unowned
-      // bed owns it forever; occupantId is the "busy" flag for the duration
-      // of this sleep so other cows skip it in findBestBed.
+      // bed owns it forever; occupantId was reserved at brain-assign time so
+      // peers already avoid this mattress for the duration of the sleep.
       const bed = bedId != null ? world.get(bedId, 'Bed') : null;
       if (!bed || bed.deconstructJobId > 0) {
+        releaseBedOccupant(world, job, cowId);
         job.kind = 'none';
         job.state = 'idle';
         job.payload = {};
@@ -3037,6 +3073,20 @@ function releaseBedOccupant(world, job, cowId) {
   if (!bedId) return;
   const bed = world.get(bedId, 'Bed');
   if (bed && bed.occupantId === cowId) bed.occupantId = 0;
+}
+
+/**
+ * Reserve a bed at brain-assign time so peers that re-decide on the same tick
+ * don't pick the same mattress. findBestBed skips beds with a non-zero
+ * occupantId — set it before the cow has even started walking.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} bedId
+ * @param {number} cowId
+ */
+function reserveBed(world, bedId, cowId) {
+  const bed = world.get(bedId, 'Bed');
+  if (bed) bed.occupantId = cowId;
 }
 
 /** @param {import('../ecs/world.js').World} world */

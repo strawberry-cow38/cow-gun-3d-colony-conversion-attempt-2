@@ -232,6 +232,15 @@ export function registerComponents(world) {
     state: 'idle',
     /** @type {Record<string, any>} */
     payload: {},
+    // Player right-clicked this cow onto a specific job. Blocks hunger/
+    // tiredness preempt so player-directed work always finishes before
+    // self-care kicks in.
+    prioritized: false,
+    // Shift-clicked priority orders stack here as board jobIds. When the
+    // current job ends and this queue has entries, the brain pops the next
+    // id, claims it, and starts walking. Empty = no queue.
+    /** @type {number[]} */
+    priorityQueue: [],
   }));
   world.defineComponent('Path', () => ({
     /** @type {{ i: number, j: number }[]} */

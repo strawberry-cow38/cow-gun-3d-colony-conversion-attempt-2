@@ -74,8 +74,9 @@ export function findHaulableItemAtTile(world, grid, i, j) {
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {number} cowId
  * @param {number} i @param {number} j
+ * @param {{ queue?: boolean }} [opts]
  */
-export function postAndPrioritizeHaul(world, grid, board, cowId, i, j) {
+export function postAndPrioritizeHaul(world, grid, board, cowId, i, j, opts = {}) {
   const item = findHaulableItemAtTile(world, grid, i, j);
   if (!item) return null;
   const claimed = buildHaulTargetedCounts(world, board).get(item.id) ?? 0;
@@ -93,7 +94,7 @@ export function postAndPrioritizeHaul(world, grid, board, cowId, i, j) {
     toI: target.i,
     toJ: target.j,
   });
-  if (!prioritizeJob(world, board, job.id, cowId)) {
+  if (!prioritizeJob(world, board, job.id, cowId, opts)) {
     board.complete(job.id);
     return null;
   }
@@ -121,9 +122,13 @@ export function stockpileSlotAvailable(world, grid, board, kind, i, j) {
  * @param {import('./board.js').JobBoard} board
  * @param {number} jobId
  * @param {number} cowId
+ * @param {{ queue?: boolean }} [opts]  queue=true appends to the cow's
+ *   priorityQueue instead of replacing their current work. The queued job's
+ *   board claim still flips to this cow so nobody else grabs it in the
+ *   meantime; the cow's brain dequeues it after the current job ends.
  * @returns {boolean} true on success, false if the job or cow is unusable
  */
-export function prioritizeJob(world, board, jobId, cowId) {
+export function prioritizeJob(world, board, jobId, cowId, opts = {}) {
   const job = board.get(jobId);
   if (!job || job.completed) return false;
   const cowJob = world.get(cowId, 'Job');
@@ -131,12 +136,8 @@ export function prioritizeJob(world, board, jobId, cowId) {
   const cowBrain = world.get(cowId, 'Brain');
   if (!cowJob || !cowPath || !cowBrain) return false;
 
-  // Release whatever the selected cow is currently claiming (if anything).
-  if (cowJob.payload?.jobId && cowJob.payload.jobId !== jobId) {
-    board.release(cowJob.payload.jobId);
-  }
-
-  // Kick the job's current claimer, if any, back to idle.
+  // Kick the job's current claimer, if any, back to idle — even when
+  // queueing, so the job is reserved for this cow.
   if (job.claimedBy !== null && job.claimedBy !== cowId) {
     const oldJob = world.get(job.claimedBy, 'Job');
     const oldPath = world.get(job.claimedBy, 'Path');
@@ -145,6 +146,7 @@ export function prioritizeJob(world, board, jobId, cowId) {
       oldJob.kind = 'none';
       oldJob.state = 'idle';
       oldJob.payload = {};
+      oldJob.prioritized = false;
     }
     if (oldPath) {
       oldPath.steps = [];
@@ -153,13 +155,32 @@ export function prioritizeJob(world, board, jobId, cowId) {
     if (oldBrain) oldBrain.jobDirty = true;
   }
 
-  // Reassign atomically — can't use board.claim because claimedBy may not be null.
   job.claimedBy = cowId;
   board.version++;
+
+  // Queueing: leave the cow's current work alone, just append the id. The
+  // brain's dequeue check pops it when the current job ends.
+  if (opts.queue && cowJob.kind !== 'none' && cowJob.kind !== 'wander') {
+    cowJob.priorityQueue.push(jobId);
+    return true;
+  }
+
+  // Immediate assignment: release whatever the cow is currently claiming
+  // (non-queued priority blows away existing work).
+  if (cowJob.payload?.jobId && cowJob.payload.jobId !== jobId) {
+    board.release(cowJob.payload.jobId);
+  }
+  // If we're interrupting a sleep, clear the old bed reservation so the
+  // mattress returns to the pool.
+  if (cowJob.kind === 'sleep' && cowJob.payload?.bedId) {
+    const oldBed = world.get(cowJob.payload.bedId, 'Bed');
+    if (oldBed && oldBed.occupantId === cowId) oldBed.occupantId = 0;
+  }
 
   cowJob.kind = job.kind;
   cowJob.state = startStateFor(job.kind);
   cowJob.payload = { ...job.payload, jobId: job.id };
+  cowJob.prioritized = true;
   cowPath.steps = [];
   cowPath.index = 0;
   cowBrain.jobDirty = false;
@@ -169,7 +190,7 @@ export function prioritizeJob(world, board, jobId, cowId) {
 }
 
 /** @param {string} kind */
-function startStateFor(kind) {
+export function startStateFor(kind) {
   if (kind === 'haul' || kind === 'deliver' || kind === 'supply') return 'pathing-to-item';
   return 'pathing';
 }

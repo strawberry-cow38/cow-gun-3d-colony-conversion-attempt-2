@@ -13,7 +13,9 @@
 /**
  * @typedef MenuItem
  * @property {string} label
- * @property {() => void} [onPick]
+ * @property {(ev: MouseEvent) => void} [onPick]  receives the click/contextmenu
+ *   event so the handler can read ev.shiftKey — used by "Prioritize X" to
+ *   queue instead of replace when the user shift-clicks.
  * @property {boolean} [disabled]  informational, unclickable entry
  */
 
@@ -76,11 +78,11 @@ export function createPrioritizeMenu() {
         row.addEventListener('mouseleave', () => {
           row.style.background = '';
         });
-        const activate = (/** @type {Event} */ ev) => {
+        const activate = (/** @type {MouseEvent} */ ev) => {
           ev.preventDefault();
           ev.stopPropagation();
           hide();
-          item.onPick?.();
+          item.onPick?.(ev);
         };
         row.addEventListener('click', activate);
         // Right-click also picks — matches the Rimworld habit of keeping the

@@ -58,6 +58,10 @@ export function makeSocialSystem(opts = {}) {
         const chat = components.Chat;
         const hasChat = chat.expiresAtTick > ctx.tick;
         const job = components.Job;
+        // Sleeping cows don't chat at all — not while pathing to bed, not
+        // while mattress-bound. Excluding them here keeps them out of the
+        // proximity grid so a walking neighbor can't strike up a conversation.
+        if (job.kind === 'sleep') continue;
         const idle = job.kind === 'none' || job.kind === 'wander';
         const pos = components.Position;
         const entry = {
