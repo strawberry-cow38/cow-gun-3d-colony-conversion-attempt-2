@@ -41,7 +41,7 @@ import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
 import { createStressInstancer } from './render/stressInstancer.js';
-import { buildTileMesh } from './render/tileMesh.js';
+import { buildTileMesh, buildWaterSurface } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
 import { createWorkTab } from './render/workTab.js';
 import { dayFractionOfTick } from './sim/calendar.js';
@@ -325,9 +325,11 @@ const state = {
   primaryObject: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
+  waterMesh: /** @type {import('three').Mesh | null} */ (buildWaterSurface(tileGrid)),
   tickOffset: 0,
 };
 scene.add(state.tileMesh);
+if (state.waterMesh) scene.add(state.waterMesh);
 
 // hudApi is populated below once all the refs (designators, fpCamera) exist,
 // but selection callbacks, designator callbacks, and the render loop all

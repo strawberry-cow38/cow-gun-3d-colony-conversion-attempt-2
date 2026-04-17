@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BIOME, TERRAIN_STEP, TileGrid, isWaterBiome } from '../../src/world/tileGrid.js';
+import { BIOME, TERRAIN_STEP, TileGrid } from '../../src/world/tileGrid.js';
 
 describe('TileGrid', () => {
   it('constructs with TypedArray storage of correct size', () => {
@@ -55,6 +55,8 @@ describe('TileGrid', () => {
     let nonZero = 0;
     let maxStep = 0;
     for (let k = 0; k < g.elevation.length; k++) {
+      const b = g.biome[k];
+      if (b === BIOME.DEEP_WATER) continue;
       const e = g.elevation[k];
       expect(e).toBeGreaterThanOrEqual(0);
       // Elevation is always an integer multiple of TERRAIN_STEP. Compare the
@@ -68,13 +70,25 @@ describe('TileGrid', () => {
     expect(maxStep).toBeGreaterThan(0);
   });
 
-  it('generateTerrain keeps water and sand pinned at Y=0', () => {
-    const g = new TileGrid(32, 32);
+  it('generateTerrain sinks deep water, keeps shallow water at Y=0, and steps sand by beach proximity', () => {
+    const g = new TileGrid(48, 48);
     g.generateTerrain();
-    for (let k = 0; k < g.biome.length; k++) {
-      const b = g.biome[k];
-      if (isWaterBiome(b) || b === BIOME.SAND) {
-        expect(g.elevation[k]).toBe(0);
+    for (let j = 0; j < g.H; j++) {
+      for (let i = 0; i < g.W; i++) {
+        const k = g.idx(i, j);
+        const b = g.biome[k];
+        if (b === BIOME.DEEP_WATER) {
+          expect(g.elevation[k]).toBeCloseTo(-TERRAIN_STEP, 3);
+        } else if (b === BIOME.SHALLOW_WATER) {
+          expect(g.elevation[k]).toBe(0);
+        } else if (b === BIOME.SAND) {
+          const adjacentToShallow =
+            (i > 0 && g.biome[g.idx(i - 1, j)] === BIOME.SHALLOW_WATER) ||
+            (i < g.W - 1 && g.biome[g.idx(i + 1, j)] === BIOME.SHALLOW_WATER) ||
+            (j > 0 && g.biome[g.idx(i, j - 1)] === BIOME.SHALLOW_WATER) ||
+            (j < g.H - 1 && g.biome[g.idx(i, j + 1)] === BIOME.SHALLOW_WATER);
+          expect(g.elevation[k]).toBeCloseTo(adjacentToShallow ? 0 : TERRAIN_STEP, 3);
+        }
       }
     }
   });

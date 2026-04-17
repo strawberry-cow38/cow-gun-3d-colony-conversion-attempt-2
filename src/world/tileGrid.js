@@ -465,18 +465,38 @@ export class TileGrid {
   }
 
   /**
-   * Quantized stepped elevation from a second sin/cos field. Water and sand
-   * biomes pin to 0 — that lines up the beach with the Y=0 water plane so
-   * the shoreline doesn't turn into a cliff. Everything else snaps to an
-   * integer multiple of `TERRAIN_STEP` in [0, MAX_TERRAIN_STEPS].
+   * Quantized stepped elevation:
+   *  - Shallow water: Y = 0 (the water plane — renders as opaque blue top).
+   *  - Deep water: Y = -TERRAIN_STEP (a lakebed one step down). The renderer
+   *    lays a translucent water surface at Y=0 over these tiles so the
+   *    player sees depth through the surface.
+   *  - Sand adjacent (4-neighbour) to shallow water: Y = 0. Acts as the
+   *    waterline beach tile so the coast touches the water surface flush.
+   *  - Other sand: Y = TERRAIN_STEP. Gives the beach a stepped rise so it
+   *    reads as a proper shoreline, not a perfectly flat plane.
+   *  - Everything else: an integer multiple of `TERRAIN_STEP` in
+   *    [0, MAX_TERRAIN_STEPS] from a low-frequency sin/cos field.
    */
   #generateHeightmap() {
     for (let j = 0; j < this.H; j++) {
       for (let i = 0; i < this.W; i++) {
         const k = this.idx(i, j);
         const b = this.biome[k];
-        if (b === BIOME.SAND || isWaterBiome(b)) {
+        if (b === BIOME.DEEP_WATER) {
+          this.elevation[k] = -TERRAIN_STEP;
+          continue;
+        }
+        if (b === BIOME.SHALLOW_WATER) {
           this.elevation[k] = 0;
+          continue;
+        }
+        if (b === BIOME.SAND) {
+          const adjacentToShallow =
+            (i > 0 && this.biome[this.idx(i - 1, j)] === BIOME.SHALLOW_WATER) ||
+            (i < this.W - 1 && this.biome[this.idx(i + 1, j)] === BIOME.SHALLOW_WATER) ||
+            (j > 0 && this.biome[this.idx(i, j - 1)] === BIOME.SHALLOW_WATER) ||
+            (j < this.H - 1 && this.biome[this.idx(i, j + 1)] === BIOME.SHALLOW_WATER);
+          this.elevation[k] = adjacentToShallow ? 0 : TERRAIN_STEP;
           continue;
         }
         const fx = i / this.W;

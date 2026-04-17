@@ -166,3 +166,78 @@ export function buildTileMesh(tileGrid) {
   mesh.receiveShadow = true;
   return mesh;
 }
+
+/**
+ * Translucent water surface plane that covers every DEEP_WATER tile at Y=0.
+ * Deep water tiles have their ground pushed to Y = -TERRAIN_STEP so the
+ * player sees a lakebed through this surface — shallow water already renders
+ * as an opaque top face in the main tile mesh and doesn't need a plane.
+ *
+ * Returns null when the world contains no deep water so we don't add an
+ * empty mesh to the scene.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} tileGrid
+ * @returns {THREE.Mesh | null}
+ */
+export function buildWaterSurface(tileGrid) {
+  const { W, H } = tileGrid;
+  const halfW = (W * TILE_SIZE) / 2;
+  const halfH = (H * TILE_SIZE) / 2;
+
+  let deepCount = 0;
+  for (let k = 0; k < tileGrid.biome.length; k++) {
+    if (tileGrid.biome[k] === BIOME.DEEP_WATER) deepCount++;
+  }
+  if (deepCount === 0) return null;
+
+  const positions = new Float32Array(deepCount * 4 * 3);
+  const indices = new Uint32Array(deepCount * 6);
+  let v = 0;
+  let ix = 0;
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      if (tileGrid.getBiome(i, j) !== BIOME.DEEP_WATER) continue;
+      const x0 = i * TILE_SIZE - halfW;
+      const x1 = x0 + TILE_SIZE;
+      const z0 = j * TILE_SIZE - halfH;
+      const z1 = z0 + TILE_SIZE;
+      const baseV = v / 3;
+      positions[v++] = x0;
+      positions[v++] = 0;
+      positions[v++] = z0;
+      positions[v++] = x1;
+      positions[v++] = 0;
+      positions[v++] = z0;
+      positions[v++] = x1;
+      positions[v++] = 0;
+      positions[v++] = z1;
+      positions[v++] = x0;
+      positions[v++] = 0;
+      positions[v++] = z1;
+      // CCW from above so the upward normal is +Y (sun-lit).
+      indices[ix++] = baseV;
+      indices[ix++] = baseV + 2;
+      indices[ix++] = baseV + 1;
+      indices[ix++] = baseV;
+      indices[ix++] = baseV + 3;
+      indices[ix++] = baseV + 2;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x3a6a9a,
+    transparent: true,
+    opacity: 0.55,
+    metalness: 0.1,
+    roughness: 0.4,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  return mesh;
+}

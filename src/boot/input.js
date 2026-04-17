@@ -26,6 +26,9 @@ import { dispatch } from './hotkeys.js';
  * @property {number|null} primaryObject
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Mesh} tileMesh
+ * @property {import('three').Mesh | null} [waterMesh]
+ *   translucent surface plane over DEEP_WATER tiles at Y=0. Rebuilt on load
+ *   alongside tileMesh so lakes stay see-through after restoring a save.
  * @property {number} [pausedSpeed]  last non-zero speed, restored when space unpauses
  * @property {boolean} [roofsVisible] defaults true; V toggles
  * @property {number} [tickOffset]   debug-scrubbed ticks added to sim clock (T/Shift+T)
