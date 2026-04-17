@@ -334,6 +334,7 @@ export function makeCowBrainSystem(deps) {
             // start walking. Skip dead queue entries (job completed or its
             // claim got stolen by a non-queued prioritize) until one sticks
             // or the queue empties.
+            if (!Array.isArray(job.priorityQueue)) job.priorityQueue = [];
             while (job.kind === 'none' && job.priorityQueue.length > 0) {
               const nextId = job.priorityQueue.shift();
               if (nextId == null) break;

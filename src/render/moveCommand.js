@@ -146,6 +146,10 @@ export class CowMoveCommand {
     // immediately. Multi-cow and drag fall through to the existing batch
     // move so rallying a squad keeps the fast flow.
     if (!dragged && ids.length === 1) {
+      // Shift-RMB shortcut: skip the menu and auto-prioritize-queue the
+      // first job at the tile. If nothing's prioritizable there, fall back
+      // to the menu so the user still gets options (or Move).
+      if (this.shiftAtDown && this.#tryShortcutPrioritize(start, ids[0])) return;
       this.#openContextMenu(e, start, ids[0]);
       return;
     }
@@ -173,6 +177,49 @@ export class CowMoveCommand {
    * @param {{ i: number, j: number }} tile
    * @param {number} cowId
    */
+  /**
+   * Shift-RMB direct-prioritize shortcut. Picks the first prioritizable job
+   * at `tile` (or an ad-hoc haul if the tile has a loose item) and queues it
+   * onto `cowId`. Returns true if something was assigned — caller skips the
+   * menu in that case.
+   *
+   * @param {{ i: number, j: number }} tile
+   * @param {number} cowId
+   */
+  #tryShortcutPrioritize(tile, cowId) {
+    const cow = this.world.get(cowId, 'Cow');
+    if (cow?.drafted) return false;
+    const jobs = findPrioritizableJobsAtTile(this.board, tile.i, tile.j);
+    if (jobs.length > 0) {
+      if (prioritizeJob(this.world, this.board, jobs[0].id, cowId, { queue: true })) {
+        this.audio?.play('command');
+        return true;
+      }
+    }
+    // No posted board job at this tile — offer an ad-hoc queued haul if
+    // there's a loose stack and a stockpile slot.
+    const haulable = findHaulableItemAtTile(this.world, this.tileGrid, tile.i, tile.j);
+    if (
+      haulable &&
+      stockpileSlotAvailable(this.world, this.tileGrid, this.board, haulable.kind, tile.i, tile.j)
+    ) {
+      const posted = postAndPrioritizeHaul(
+        this.world,
+        this.tileGrid,
+        this.board,
+        cowId,
+        tile.i,
+        tile.j,
+        { queue: true },
+      );
+      if (posted) {
+        this.audio?.play('command');
+        return true;
+      }
+    }
+    return false;
+  }
+
   #openContextMenu(e, tile, cowId) {
     const shift = this.shiftAtDown;
     /** @type {{ label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]} */

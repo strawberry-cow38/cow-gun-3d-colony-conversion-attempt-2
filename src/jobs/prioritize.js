@@ -158,6 +158,10 @@ export function prioritizeJob(world, board, jobId, cowId, opts = {}) {
   job.claimedBy = cowId;
   board.version++;
 
+  // Defensive: older saves / hand-constructed Jobs may not carry the queue
+  // array. Initialize lazily so queue pushes don't silently drop.
+  if (!Array.isArray(cowJob.priorityQueue)) cowJob.priorityQueue = [];
+
   // Queueing: leave the cow's current work alone, just append the id. The
   // brain's dequeue check pops it when the current job ends.
   if (opts.queue && cowJob.kind !== 'none' && cowJob.kind !== 'wander') {
@@ -166,10 +170,16 @@ export function prioritizeJob(world, board, jobId, cowId, opts = {}) {
   }
 
   // Immediate assignment: release whatever the cow is currently claiming
-  // (non-queued priority blows away existing work).
+  // (non-queued priority blows away existing work). Also drop any pending
+  // queued orders — non-shift prioritize is "do this one NOW, forget the
+  // plan", not "append to queue".
   if (cowJob.payload?.jobId && cowJob.payload.jobId !== jobId) {
     board.release(cowJob.payload.jobId);
   }
+  for (const qId of cowJob.priorityQueue) {
+    if (qId !== jobId) board.release(qId);
+  }
+  cowJob.priorityQueue.length = 0;
   // If we're interrupting a sleep, clear the old bed reservation so the
   // mattress returns to the pool.
   if (cowJob.kind === 'sleep' && cowJob.payload?.bedId) {

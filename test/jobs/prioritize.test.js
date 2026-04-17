@@ -276,4 +276,72 @@ describe('prioritizeJob', () => {
     expect(prioritizeJob(w, b, job.id, cow)).toBe(true);
     expect(w.get(cow, 'Job').state).toBe('pathing-to-item');
   });
+
+  it('flags the cow job as prioritized on immediate assignment', () => {
+    const w = makeWorld();
+    const b = new JobBoard();
+    const cow = spawnCow(w);
+    const job = b.post('chop', { treeId: 1, i: 4, j: 4 });
+
+    prioritizeJob(w, b, job.id, cow);
+    expect(w.get(cow, 'Job').prioritized).toBe(true);
+  });
+
+  it('queue mode: busy cow appends to priorityQueue instead of replacing', () => {
+    const w = makeWorld();
+    const b = new JobBoard();
+    const cow = spawnCow(w);
+    // Cow is already chopping A.
+    const current = b.post('chop', { treeId: 1, i: 1, j: 1 });
+    b.claim(current.id, cow);
+    const cowJob = w.get(cow, 'Job');
+    cowJob.kind = 'chop';
+    cowJob.state = 'walking';
+    cowJob.payload = { jobId: current.id, treeId: 1, i: 1, j: 1 };
+
+    const queued = b.post('chop', { treeId: 2, i: 5, j: 5 });
+    expect(prioritizeJob(w, b, queued.id, cow, { queue: true })).toBe(true);
+
+    // Current job untouched, queued job's board claim flipped to this cow.
+    expect(cowJob.kind).toBe('chop');
+    expect(cowJob.payload.treeId).toBe(1);
+    expect(queued.claimedBy).toBe(cow);
+    expect(cowJob.priorityQueue).toEqual([queued.id]);
+  });
+
+  it('queue mode on idle cow falls through to immediate assignment', () => {
+    const w = makeWorld();
+    const b = new JobBoard();
+    const cow = spawnCow(w);
+    const job = b.post('chop', { treeId: 1, i: 4, j: 4 });
+
+    expect(prioritizeJob(w, b, job.id, cow, { queue: true })).toBe(true);
+    expect(w.get(cow, 'Job').kind).toBe('chop');
+    expect(w.get(cow, 'Job').priorityQueue).toEqual([]);
+  });
+
+  it('non-queue prioritize clears any pending queue entries and releases them', () => {
+    const w = makeWorld();
+    const b = new JobBoard();
+    const cow = spawnCow(w);
+    // Cow chopping A, with B queued.
+    const current = b.post('chop', { treeId: 1, i: 1, j: 1 });
+    const queued = b.post('chop', { treeId: 2, i: 5, j: 5 });
+    b.claim(current.id, cow);
+    b.claim(queued.id, cow);
+    const cowJob = w.get(cow, 'Job');
+    cowJob.kind = 'chop';
+    cowJob.state = 'walking';
+    cowJob.payload = { jobId: current.id, treeId: 1, i: 1, j: 1 };
+    cowJob.priorityQueue.push(queued.id);
+
+    // Non-queue prioritize on C: should drop current AND queued B.
+    const target = b.post('chop', { treeId: 3, i: 7, j: 7 });
+    expect(prioritizeJob(w, b, target.id, cow)).toBe(true);
+    expect(cowJob.kind).toBe('chop');
+    expect(cowJob.payload.treeId).toBe(3);
+    expect(cowJob.priorityQueue).toEqual([]);
+    expect(queued.claimedBy).toBeNull();
+    expect(current.claimedBy).toBeNull();
+  });
 });
