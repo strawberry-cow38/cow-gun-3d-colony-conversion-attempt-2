@@ -138,9 +138,9 @@ export function carveWaterLakes(biome, W, H) {
  * Stamp a sinuous river across the extended biome buffer. Entry direction is
  * one of 8 compass headings (N/NE/E/SE/S/SW/W/NW); exit is the opposite side
  * so the river crosses the map. Two superimposed sines give a gentle meander.
- * Water disc radius 2 (5-tile-wide river) + a 2-tile sand ring on each side
- * — `carveDeepWater` won't promote this to deep since it's narrower than the
- * 13-tile shallow neighborhood it demands.
+ * Water radius `waterR` (river width = 2*waterR+1 tiles) + a 2-tile sand
+ * ring on each bank. A waterR ≥ 6 river can trigger `carveDeepWater` at its
+ * center — that's fine, huge rivers should have a deep channel.
  *
  * Paints directly over whatever the noise pass produced. Called instead of
  * `carveWaterLakes` on river-type maps so lakes don't co-occur with a river.
@@ -148,8 +148,9 @@ export function carveWaterLakes(biome, W, H) {
  * @param {Uint8Array | number[]} biome extended buffer, length EW*EH
  * @param {number} EW
  * @param {number} EH
+ * @param {number} [waterR=2] water disc radius in tiles
  */
-export function carveRiver(biome, EW, EH) {
+export function carveRiver(biome, EW, EH, waterR = 2) {
   const dir = Math.floor(Math.random() * 8);
   const angle = (dir * Math.PI) / 4;
   const ux = Math.cos(angle);
@@ -167,7 +168,6 @@ export function carveRiver(biome, EW, EH) {
   const phA = Math.random() * Math.PI * 2;
   const phB = Math.random() * Math.PI * 2;
   const amp = 5 + Math.random() * 4;
-  const waterR = 2;
   const sandR = waterR + 2;
   const waterR2 = waterR * waterR;
   const sandR2 = sandR * sandR;
@@ -599,7 +599,11 @@ export class TileGrid {
     //    the two don't co-occur (and don't fight over shoreline space).
     const mapType = Math.random() < 0.5 ? 'river' : 'lakes';
     if (mapType === 'river') {
-      carveRiver(this.skirtBiome, EW, EH);
+      // Width tier: small/medium/large/huge = radius 2/3/4/6. Tiers scale
+      // roughly 1x / 1.5x / 2x / 3x off the baseline 5-tile river.
+      const widthRoll = Math.random();
+      const waterR = widthRoll < 0.25 ? 2 : widthRoll < 0.5 ? 3 : widthRoll < 0.75 ? 4 : 6;
+      carveRiver(this.skirtBiome, EW, EH, waterR);
     } else {
       carveWaterLakes(this.skirtBiome, EW, EH);
     }
