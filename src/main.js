@@ -73,13 +73,18 @@ import {
 } from './systems/trees.js';
 import { TILE_SIZE } from './world/coords.js';
 import { TileGrid } from './world/tileGrid.js';
+import { TileWorld } from './world/tileWorld.js';
 import { createTimeOfDay } from './world/timeOfDay.js';
 import { createWeather } from './world/weather.js';
 
 const { stressCount, cowCount, treeCount, gridW, gridH } = readBootParams();
 
-const tileGrid = new TileGrid(gridW, gridH);
-tileGrid.generateTerrain();
+const tileWorld = new TileWorld(new TileGrid(gridW, gridH));
+tileWorld.active.generateTerrain();
+// Alias to the active (ground) layer. Every system still operates on a single
+// layer today, so the existing `tileGrid`-typed parameters stay valid; future
+// z-aware code can reach the full stack via `tileWorld.layers`.
+const tileGrid = tileWorld.active;
 
 const world = new World();
 registerComponents(world);
