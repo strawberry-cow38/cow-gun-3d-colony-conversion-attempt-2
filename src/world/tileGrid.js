@@ -440,14 +440,28 @@ export class TileGrid {
    */
   generateTerrain() {
     const bands = 8;
+    // Per-call random phase offsets so every world refresh yields a visibly
+    // different biome layout + heightmap while keeping the sin/cos field
+    // shape (and therefore the stepped/coherent look).
+    const TAU = Math.PI * 2;
+    const biomePhase = {
+      a: Math.random() * TAU,
+      b: Math.random() * TAU,
+      c: Math.random() * TAU,
+    };
+    const heightPhase = {
+      a: Math.random() * TAU,
+      b: Math.random() * TAU,
+      c: Math.random() * TAU,
+    };
     for (let j = 0; j < this.H; j++) {
       for (let i = 0; i < this.W; i++) {
         const k = this.idx(i, j);
         const fx = i / this.W;
         const fz = j / this.H;
         const n =
-          bands * Math.sin(fx * 6.28) * Math.cos(fz * 6.28) +
-          bands * 0.4 * Math.sin(fx * 18 + fz * 11);
+          bands * Math.sin(fx * 6.28 + biomePhase.a) * Math.cos(fz * 6.28 + biomePhase.b) +
+          bands * 0.4 * Math.sin(fx * 18 + fz * 11 + biomePhase.c);
         if (n > bands * 0.6) this.biome[k] = BIOME.STONE;
         else if (n < -bands * 0.4) this.biome[k] = BIOME.SAND;
         else if (Math.random() < 0.05) this.biome[k] = BIOME.DIRT;
@@ -462,7 +476,7 @@ export class TileGrid {
     }
     carveWaterLakes(this.biome, this.W, this.H);
     carveDeepWater(this.biome, this.W, this.H);
-    this.#generateHeightmap();
+    this.#generateHeightmap(heightPhase);
   }
 
   /**
@@ -478,7 +492,7 @@ export class TileGrid {
    *  - Everything else: an integer multiple of `TERRAIN_STEP` in
    *    [0, MAX_TERRAIN_STEPS] from a low-frequency sin/cos field.
    */
-  #generateHeightmap() {
+  #generateHeightmap(phase = { a: 0, b: 0, c: 0 }) {
     for (let j = 0; j < this.H; j++) {
       for (let i = 0; i < this.W; i++) {
         const k = this.idx(i, j);
@@ -504,7 +518,9 @@ export class TileGrid {
         const fz = j / this.H;
         // Different frequency than the biome field so ridges don't track
         // biome patches 1:1 — a grass plateau can border a stone valley.
-        const h = Math.sin(fx * 7.5) * Math.cos(fz * 6.8) + 0.5 * Math.sin(fx * 17 + fz * 13);
+        const h =
+          Math.sin(fx * 7.5 + phase.a) * Math.cos(fz * 6.8 + phase.b) +
+          0.5 * Math.sin(fx * 17 + fz * 13 + phase.c);
         // h ∈ approx [-1.5, 1.5]. Map to [0, MAX_TERRAIN_STEPS], floor to
         // snap onto discrete steps.
         const norm = (h + 1.5) / 3;
