@@ -53,6 +53,7 @@ function speedIcon(speed) {
  *   clockEl: HTMLElement,
  *   getSpeed: () => number,
  *   getTick: () => number,
+ *   getTps: () => number,
  *   updateHud: () => void,
  *   pruneStaleSelections: () => void,
  * }} opts
@@ -88,6 +89,7 @@ export function createRenderFrame({
   clockEl,
   getSpeed,
   getTick,
+  getTps,
   updateHud,
   pruneStaleSelections,
 }) {
@@ -264,7 +266,7 @@ export function createRenderFrame({
     objectSelectionViz.update(world, tileGrid, state.selectedObjects);
     objectHitboxes.update(world, tileGrid);
     const simDate = tickToSimDate(simTick);
-    clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}`;
+    clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}\n${measuredFps.toFixed(0)} fps  ${getTps().toFixed(0)} tps`;
     // Anchor the sky sphere to the camera so no amount of zoom-out or pan
     // can put the camera outside the sky — the purple scene.background stays
     // hidden regardless of camera distance from the world origin.

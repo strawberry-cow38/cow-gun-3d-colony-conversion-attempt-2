@@ -1033,6 +1033,7 @@ const { render, getFps } = createRenderFrame({
   clockEl,
   getSpeed: () => loop.speed,
   getTick: () => loop.tick,
+  getTps: () => loop.measuredHz,
   updateHud,
   pruneStaleSelections,
 });
