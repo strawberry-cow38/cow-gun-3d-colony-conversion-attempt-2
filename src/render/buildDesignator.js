@@ -549,12 +549,13 @@ export class BuildDesignator {
       });
       return true;
     }
-    // Walls are the only kind that honors the layer switcher — a wall placed
-    // while the player is viewing Z1 gets stamped at z=1 and spawns on the
-    // upper-layer TileGrid (blank until things land there). Doors / torches /
-    // roofs / floors still spawn on the ground plane; z-aware variants are a
-    // follow-up.
-    const placeZ = kind === 'wall' ? (this.tileWorld?.activeZ ?? 0) : 0;
+    // Walls are the only kind that honors the layer switcher. Wall placement
+    // auto-stacks: if the clicked tile already has a wall / wall blueprint at
+    // z=0, the new wall lands at z=1; at z=1, it lands at z=2; etc. The Q/E
+    // switcher still works as an explicit floor — we take the HIGHER of the
+    // two so the player can't accidentally place under existing stacks but
+    // can force an upper floor even when the tile below is empty.
+    const placeZ = kind === 'wall' ? this.#resolveWallPlaceZ(i, j) : 0;
     const layer = placeZ === 0 ? this.tileGrid : (this.tileWorld?.layers[placeZ] ?? this.tileGrid);
     if (isRoof) {
       if (layer.isRoof(i, j)) return false;
@@ -650,6 +651,28 @@ export class BuildDesignator {
     return true;
   }
 
+  /**
+   * Pick a wall-blueprint z for tile (i,j). Returns max(activeZ, first-empty-z)
+   * where "empty" means the layer has no finished wall AND no pending wall
+   * blueprint at (i,j). Keeps the Q/E layer switcher as an explicit floor
+   * while auto-stacking when the chosen layer is already occupied.
+   * @param {number} i @param {number} j
+   */
+  #resolveWallPlaceZ(i, j) {
+    const activeZ = this.tileWorld?.activeZ ?? 0;
+    const depth = this.tileWorld?.layers.length ?? 1;
+    for (let z = activeZ; z < depth; z++) {
+      const layer = z === 0 ? this.tileGrid : this.tileWorld?.layers[z];
+      if (!layer) return activeZ;
+      if (layer.isWall(i, j)) continue;
+      if (this.#findSiteAt(i, j, (k) => k === 'wall', z) !== null) continue;
+      return z;
+    }
+    // Every in-range layer already has a wall/blueprint at (i,j); fall back to
+    // activeZ (the spawn will then bail on the existing-site check below).
+    return activeZ;
+  }
+
   /** @param {number} i @param {number} j */
   #queueWallDeconstructAt(i, j) {
     for (const { id, components } of this.world.query(['Wall', 'TileAnchor'])) {
@@ -673,24 +696,44 @@ export class BuildDesignator {
   /** @param {number} i @param {number} j */
   #cancelTile(i, j) {
     // Only cancel blueprints of our own kind so wall/door modes don't step on
-    // each other's pending work on shared tiles. For walls, match the player's
-    // current layer so cancelling on Z1 doesn't nuke a Z0 wall blueprint.
+    // each other's pending work on shared tiles. Walls auto-pick the highest
+    // blueprint z at (i,j) — mirrors the auto-stack placement so cancel eats
+    // the topmost layer first (and the player can click twice to peel two
+    // stacked blueprints).
     const kind = this.config.kind;
-    const cancelZ = kind === 'wall' ? (this.tileWorld?.activeZ ?? 0) : 0;
-    const id =
-      kind === 'stove'
-        ? this.#findStoveSiteCovering(i, j)
-        : kind === 'bed'
-          ? this.#findBedSiteCovering(i, j)
-          : kind === 'stair'
-            ? this.#findStairSiteCovering(i, j)
-            : this.#findSiteAt(i, j, (k) => k === kind, cancelZ);
+    let id;
+    if (kind === 'stove') id = this.#findStoveSiteCovering(i, j);
+    else if (kind === 'bed') id = this.#findBedSiteCovering(i, j);
+    else if (kind === 'stair') id = this.#findStairSiteCovering(i, j);
+    else if (kind === 'wall') id = this.#findTopmostSiteAt(i, j, 'wall');
+    else id = this.#findSiteAt(i, j, (k) => k === kind, 0);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
     releaseBuildSite(this.world, this.board, this.tileGrid, site, i, j);
     this.world.despawn(id);
     return true;
+  }
+
+  /**
+   * Highest-z blueprint of `kind` at (i,j). Used by wall cancel so the player
+   * peels stacked blueprints from the top down.
+   * @param {number} i @param {number} j @param {string} kind
+   */
+  #findTopmostSiteAt(i, j, kind) {
+    let bestId = null;
+    let bestZ = -1;
+    for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if (a.i !== i || a.j !== j) continue;
+      if (components.BuildSite.kind !== kind) continue;
+      const z = a.z | 0;
+      if (z > bestZ) {
+        bestZ = z;
+        bestId = id;
+      }
+    }
+    return bestId;
   }
 
   /**
@@ -793,10 +836,11 @@ export class BuildDesignator {
     const x1 = se.x + TILE_SIZE * 0.5;
     const z0 = nw.z - TILE_SIZE * 0.5;
     const z1 = se.z + TILE_SIZE * 0.5;
-    // Walls follow the layer switcher — raise the hover outline by z*LAYER_HEIGHT
-    // so the player sees the preview hovering at the target floor, not on the
-    // ground under a Z1 placement.
-    const previewZ = this.config.kind === 'wall' ? (this.tileWorld?.activeZ ?? 0) : 0;
+    // Walls follow the layer switcher PLUS auto-stack — preview at whatever
+    // z the actual placement will pick, so stacked blueprints visually sit on
+    // top of the layer below.
+    const previewZ =
+      this.config.kind === 'wall' && !this.removing ? this.#resolveWallPlaceZ(i0, j0) : 0;
     const y = grid.getElevation(i0, j0) + previewZ * LAYER_HEIGHT + PREVIEW_CLEARANCE;
     const p = this.preview.positions;
     p[0] = x0;

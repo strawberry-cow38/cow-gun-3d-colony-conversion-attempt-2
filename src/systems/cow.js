@@ -61,7 +61,7 @@ import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
 import { XP_PER_WORK, awardXp } from '../world/skills.js';
 import { stairRampTiles, stairTopLandingTile } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
-import { BIOME, TERRAIN_STEP } from '../world/tileGrid.js';
+import { BIOME, LAYER_HEIGHT, TERRAIN_STEP } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
 import { canCowDoJobKind, priorityForJobKind } from '../world/workPriorities.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -127,6 +127,10 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  * @property {((pos: {x:number,y:number,z:number}) => void)=} onCowStep
  *   Optional hook: fired when a cow crosses into the next path tile. Used for
  *   positional footfall audio. Called with the cow's world position.
+ * @property {import('../world/tileWorld.js').TileWorld=} tileWorld
+ *   Optional multi-layer world; when present, follow-path can resolve per-
+ *   layer walkability + elevation so cows traversing z>0 tiles sit at the
+ *   right y.
  *
  * @typedef {PathDeps & {
  *   board: import('../jobs/board.js').JobBoard,
@@ -637,7 +641,7 @@ export function makeCowBrainSystem(deps) {
         } else if (job.kind === 'uninstall') {
           runUninstallJob(world, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'haul' || job.kind === 'deliver' || job.kind === 'supply') {
-          runHaulJob(world, job, path, pos, inv, grid, paths, board, deps);
+          runHaulJob(world, id, job, path, pos, inv, grid, paths, board, deps);
         } else if (job.kind === 'eat') {
           runEatJob(world, job, path, pos, hunger, grid, paths, deps, id);
         } else if (job.kind === 'sleep') {
@@ -1063,7 +1067,18 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
   if (job.state === 'pathing') {
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
     const blueprintTiles = collectBlueprintTiles(world, grid, siteId);
-    const adj = findBuildStandTile(grid, walkable, job.payload.i, job.payload.j, blueprintTiles);
+    const siteAnchor = world.get(siteId, 'TileAnchor');
+    const siteZ = siteAnchor ? siteAnchor.z | 0 : 0;
+    const cowZ = world.get(builderId, 'Brain')?.layerZ | 0;
+    const adj = findBuildStandTile(
+      grid,
+      walkable,
+      job.payload.i,
+      job.payload.j,
+      blueprintTiles,
+      deps.tileWorld,
+      siteZ,
+    );
     if (!adj) {
       board.release(jobId);
       job.kind = 'none';
@@ -1071,7 +1086,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
       job.payload = {};
       return;
     }
-    const route = paths.find(start, adj);
+    const route = paths.find({ ...start, z: cowZ }, adj);
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
@@ -1825,7 +1840,7 @@ function tileHasCrop(world, i, j) {
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
  */
-function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
+function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, deps) {
   const {
     jobId,
     itemId,
@@ -2039,7 +2054,13 @@ function runHaulJob(world, job, path, pos, inv, grid, paths, board, deps) {
 
   if (job.state === 'pathing-to-drop') {
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    const route = paths.find(start, { i: toI, j: toJ });
+    // BuildSites on an upper layer carry the layer z on their TileAnchor —
+    // goal z must match or haulers will path to the ground tile below the
+    // blueprint and sit there forever.
+    const dropZ =
+      toBuildSite && typeof siteId === 'number' ? world.get(siteId, 'TileAnchor')?.z | 0 : 0;
+    const cowZ = world.get(haulerId, 'Brain')?.layerZ | 0;
+    const route = paths.find({ ...start, z: cowZ }, { i: toI, j: toJ, z: dropZ });
     if (!route || route.length === 0) {
       // Can't get there; drop where we stand, let the poster re-route later.
       dropCarriedItem(world, grid, inv, pos);
@@ -3193,7 +3214,7 @@ function finishChop(world, grid, treeId, jobId, board) {
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
 export function makeCowFollowPathSystem(deps) {
-  const { grid } = deps;
+  const { grid, tileWorld } = deps;
   return {
     name: 'cowFollowPath',
     tier: 'every',
@@ -3245,8 +3266,10 @@ export function makeCowFollowPathSystem(deps) {
         // the "cow butts into new wall" visual.
         const curStep = path.steps[path.index];
         const nextStep = path.steps[path.index + 1];
-        const curBlocked = !deps.walkable(grid, curStep.i, curStep.j);
-        const nextBlocked = nextStep && !deps.walkable(grid, nextStep.i, nextStep.j);
+        const curLayer = tileWorld?.layers[curStep.z | 0] ?? grid;
+        const nextLayer = nextStep ? (tileWorld?.layers[nextStep.z | 0] ?? grid) : null;
+        const curBlocked = !deps.walkable(curLayer, curStep.i, curStep.j);
+        const nextBlocked = nextStep && !deps.walkable(nextLayer, nextStep.i, nextStep.j);
         if (curBlocked || nextBlocked) {
           const job = world.get(id, 'Job');
           const brain = world.get(id, 'Brain');
@@ -3264,8 +3287,9 @@ export function makeCowFollowPathSystem(deps) {
         }
 
         const step = path.steps[path.index];
+        const stepZ = step.z | 0;
         const target = tileToWorld(step.i, step.j, grid.W, grid.H);
-        const targetY = grid.getElevation(step.i, step.j);
+        const targetY = grid.getElevation(step.i, step.j) + stepZ * LAYER_HEIGHT;
         const dx = target.x - pos.x;
         const dz = target.z - pos.z;
         const distSq = dx * dx + dz * dz;
@@ -3273,6 +3297,8 @@ export function makeCowFollowPathSystem(deps) {
         if (distSq < ARRIVE_DIST_SQ) {
           path.index++;
           pos.y = targetY;
+          const brain = world.get(id, 'Brain');
+          if (brain) brain.layerZ = stepZ;
           deps.onCowStep?.(pos);
           // If that was the final step, zero velocity this tick instead of
           // carrying the previous tick's vel one more step past the goal.
@@ -3339,7 +3365,8 @@ export function makeCowFollowPathSystem(deps) {
         // in pathfinding.js), so we don't need to guard it here.
         const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
         if (grid.inBounds(cur.i, cur.j)) {
-          const curElev = grid.getElevation(cur.i, cur.j);
+          const cowZ = world.get(id, 'Brain')?.layerZ | 0;
+          const curElev = grid.getElevation(cur.i, cur.j) + cowZ * LAYER_HEIGHT;
           const dElev = targetY - curElev;
           const absD = Math.abs(dElev);
           const climbing = absD >= TERRAIN_STEP * 1.5;

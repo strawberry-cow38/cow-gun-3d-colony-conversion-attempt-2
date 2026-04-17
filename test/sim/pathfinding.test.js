@@ -418,12 +418,14 @@ describe('PathCache', () => {
     expect(cache.cache.size).toBe(2);
   });
 
-  it('invalidateTile is a no-op on non-zero z layers', () => {
+  it('invalidateTile evicts any z-layer paths crossing (i,j) — tile index is z-agnostic', () => {
     const g = new TileGrid(4, 4);
     const cache = new PathCache(g, defaultWalkable);
     cache.find({ i: 0, j: 0 }, { i: 3, j: 3 });
-    const sizeBefore = cache.cache.size;
+    expect(cache.cache.size).toBe(1);
+    // z=1 invalidation still clears the z=0 path that stepped on (2,2). Under-
+    // eviction (leaving stale solid-wall paths) is far worse than over-eviction.
     cache.invalidateTile(2, 2, 1);
-    expect(cache.cache.size).toBe(sizeBefore);
+    expect(cache.cache.size).toBe(0);
   });
 });

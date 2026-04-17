@@ -148,6 +148,7 @@ scheduler.add(
 scheduler.add(
   makeCowFollowPathSystem({
     grid: tileGrid,
+    tileWorld,
     paths: pathCache,
     walkable: defaultWalkable,
     drivingCowId: () => getDrivingCowId(),

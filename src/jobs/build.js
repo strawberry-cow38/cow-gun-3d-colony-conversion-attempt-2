@@ -22,6 +22,8 @@ export function buildTicksForKind(kind) {
   return kind === 'roof' ? ROOF_BUILD_TICKS : BUILD_TICKS;
 }
 
+import { passableAt } from '../sim/pathfinding.js';
+
 const NBRS = [
   [1, 0],
   [-1, 0],
@@ -34,7 +36,7 @@ const NBRS = [
 ];
 
 /**
- * First walkable adjacent tile to (i, j), preferring cardinals. Mirrors
+ * First walkable adjacent tile to (i, j, z), preferring cardinals. Mirrors
  * findAdjacentWalkable in chop.js — kept separate so the two call sites can
  * diverge later (e.g. builders care about reach orientation, choppers don't).
  *
@@ -43,23 +45,32 @@ const NBRS = [
  * builders from planting themselves on a neighbor wall's tile unless no
  * clean stand-spot exists.
  *
- * @param {import('../world/tileGrid.js').TileGrid} grid
+ * When `world` + `z` are supplied, walkability is checked against the
+ * passable-on-layer rule (floor / ramp-below / wall-below support), so a z>0
+ * blueprint returns an adjacent stand tile that's actually reachable on that
+ * layer rather than one drawn from the ground plane.
+ *
+ * @param {import('../world/tileGrid.js').TileGrid} grid  ground-plane grid (for bounds + blueprint keying)
  * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
  * @param {number} i @param {number} j
  * @param {Set<number>} [blueprintTiles]
+ * @param {import('../world/tileWorld.js').TileWorld} [tileWorld]
+ * @param {number} [z]  layer to resolve adjacency on (default 0)
  */
-export function findBuildStandTile(grid, walkable, i, j, blueprintTiles) {
-  /** @type {{ i: number, j: number } | null} */
+export function findBuildStandTile(grid, walkable, i, j, blueprintTiles, tileWorld, z = 0) {
+  const gridOrWorld = tileWorld ?? grid;
+  /** @type {{ i: number, j: number, z: number } | null} */
   let fallback = null;
   for (const [di, dj] of NBRS) {
     const ni = i + di;
     const nj = j + dj;
-    if (!grid.inBounds(ni, nj) || !walkable(grid, ni, nj)) continue;
+    if (!grid.inBounds(ni, nj)) continue;
+    if (!passableAt(gridOrWorld, ni, nj, z, walkable)) continue;
     if (blueprintTiles?.has(nj * grid.W + ni)) {
-      if (!fallback) fallback = { i: ni, j: nj };
+      if (!fallback) fallback = { i: ni, j: nj, z };
       continue;
     }
-    return { i: ni, j: nj };
+    return { i: ni, j: nj, z };
   }
   return fallback;
 }

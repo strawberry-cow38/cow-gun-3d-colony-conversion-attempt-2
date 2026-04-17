@@ -213,6 +213,10 @@ export function registerComponents(world) {
     jobDirty: true,
     vitalsDirty: true,
     lastBoardVersion: -1,
+    /** Current z-layer the cow stands on. Updated by the follow-path loop
+     * whenever the cow arrives on a path step; consumed by job pathing so
+     * start.z matches the layer the cow is actually on. */
+    layerZ: 0,
   }));
   world.defineComponent('Identity', () => ({
     name: 'cow',

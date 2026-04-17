@@ -85,7 +85,7 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     Hunger: { value: 1 },
     Tiredness: { value: 1 },
     FoodPoisoning: { ticksRemaining: 0 },
-    Brain: { name },
+    Brain: { name, layerZ: 0 },
     Identity: { name, ...id },
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },

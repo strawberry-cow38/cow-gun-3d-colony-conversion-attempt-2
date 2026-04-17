@@ -88,6 +88,33 @@ export function defaultWalkable(grid, i, j) {
   return grid.occupancy[k] === 0 && grid.wall[k] === 0;
 }
 
+/**
+ * Multi-layer passability: tile (i,j,z) is walkable if its own layer passes
+ * the base walkable check AND the tile has support from below (floor on same
+ * layer, or a ramp/wall on the layer below). Mirrors the inline rule inside
+ * findPath so job-posting code can pick stand-tiles that the pathfinder will
+ * actually accept.
+ *
+ * @param {TileGrid | TileWorld} gridOrWorld
+ * @param {number} i @param {number} j @param {number} z
+ * @param {(grid: TileGrid, i: number, j: number) => boolean} [walkable]
+ */
+export function passableAt(gridOrWorld, i, j, z, walkable = defaultWalkable) {
+  const world = Array.isArray(/** @type {any} */ (gridOrWorld).layers)
+    ? /** @type {TileWorld} */ (gridOrWorld)
+    : null;
+  const g = /** @type {TileGrid} */ (world ? world.layers[z] : gridOrWorld);
+  if (!g) return false;
+  if (!walkable(g, i, j)) return false;
+  if (z === 0) return true;
+  if (g.isFloor(i, j)) return true;
+  if (!world) return false;
+  const below = world.layers[z - 1];
+  if (!below) return false;
+  if (below.isRamp(i, j)) return true;
+  return below.wall[below.idx(i, j)] !== 0;
+}
+
 // Module-scoped scratch buffers sized to the largest grid we've seen so far.
 // findPath reuses them between calls so we don't allocate ~480KB per pathfind
 // on a 200x200 grid (4 typed arrays × 40k cells × 4-8 bytes).
@@ -377,12 +404,12 @@ export class PathCache {
    * could invalidate the diagonal, even if the path never stepped on the
    * changed tile itself).
    *
-   * @param {number} i @param {number} j @param {number} [z]  defaults to 0
+   * @param {number} i @param {number} j @param {number} [_z]  accepted for
+   *   symmetry with multi-layer callers; the tile index is z-agnostic so we
+   *   evict any cached path crossing (i,j) on any layer. Over-eviction is
+   *   cheap; under-eviction (stale paths through now-solid tiles) is not.
    */
-  invalidateTile(i, j, z = 0) {
-    // Only the z=0 layer holds paths today; non-zero is a no-op until
-    // stacked-floor pathing lands.
-    if (z !== 0) return;
+  invalidateTile(i, j, _z = 0) {
     const W = this.layer0.W;
     const H = this.layer0.H;
     const minI = Math.max(0, i - 1);
