@@ -43,6 +43,13 @@
  *              tiles, rendered as an instanced billboard. Skipped at render
  *              time if the tile has gained a wall/floor/tilled/farmZone since
  *              gen. Serialized.
+ * - ramp:      uint8; nonzero = a ramp sits on this tile, slope going up to
+ *              the layer above. Gives cross-layer pathing a single walkable
+ *              tile to transition through — walking onto a ramp from below
+ *              rises to z+1, from above descends to z-1. On the upper layer
+ *              the ramp's footprint counts as an implicit floor at (i,j),
+ *              so pathfinder sees the top of the ramp as walkable too.
+ *              Serialized.
  */
 
 export const BIOME = Object.freeze({
@@ -147,6 +154,7 @@ export class TileGrid {
     this.farmZone = new Uint8Array(W * H);
     this.tilled = new Uint8Array(W * H);
     this.flower = new Uint8Array(W * H);
+    this.ramp = new Uint8Array(W * H);
     // Derived counters + torch index — maintained in the setters so lighting
     // can skip its full-grid sweep. Call `recomputeCounts()` after any bulk
     // write that bypasses the setters (e.g. save load).
@@ -178,6 +186,7 @@ export class TileGrid {
       const hasRoof = this.roof[k] !== 0;
       const hasTorch = this.torch[k] !== 0;
       const hasFloor = this.floor[k] !== 0;
+      const hasRamp = this.ramp[k] !== 0;
       if (hasWall) w++;
       if (hasDoor) d++;
       if (hasRoof) r++;
@@ -185,7 +194,7 @@ export class TileGrid {
         t++;
         this.torchTiles.add(k);
       }
-      if (hasWall || hasDoor || hasRoof || hasTorch || hasFloor) {
+      if (hasWall || hasDoor || hasRoof || hasTorch || hasFloor || hasRamp) {
         this.structureTiles.add(k);
       }
     }
@@ -202,7 +211,8 @@ export class TileGrid {
       this.door[k] !== 0 ||
       this.roof[k] !== 0 ||
       this.floor[k] !== 0 ||
-      this.torch[k] !== 0
+      this.torch[k] !== 0 ||
+      this.ramp[k] !== 0
     );
   }
 
@@ -328,6 +338,18 @@ export class TileGrid {
   setFloor(i, j, v) {
     const k = this.idx(i, j);
     this.floor[k] = v ? 1 : 0;
+    this.#refreshStructureTile(k);
+  }
+
+  /** @param {number} i @param {number} j */
+  isRamp(i, j) {
+    return this.ramp[this.idx(i, j)] !== 0;
+  }
+
+  /** @param {number} i @param {number} j @param {number} v */
+  setRamp(i, j, v) {
+    const k = this.idx(i, j);
+    this.ramp[k] = v ? 1 : 0;
     this.#refreshStructureTile(k);
   }
 

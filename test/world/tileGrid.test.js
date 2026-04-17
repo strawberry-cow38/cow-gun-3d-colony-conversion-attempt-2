@@ -94,3 +94,30 @@ describe('TileGrid structureTiles index', () => {
     expect(grid.structureTiles.has(grid.idx(3, 3))).toBe(true);
   });
 });
+
+describe('TileGrid ramp bitmap', () => {
+  it('ramp get/set roundtrip', () => {
+    const g = new TileGrid(4, 4);
+    expect(g.isRamp(2, 1)).toBe(false);
+    g.setRamp(2, 1, 1);
+    expect(g.isRamp(2, 1)).toBe(true);
+    g.setRamp(2, 1, 0);
+    expect(g.isRamp(2, 1)).toBe(false);
+  });
+
+  it('setRamp updates the structureTiles index', () => {
+    const g = new TileGrid(6, 6);
+    const k = g.idx(3, 2);
+    g.setRamp(3, 2, 1);
+    expect(g.structureTiles.has(k)).toBe(true);
+    g.setRamp(3, 2, 0);
+    expect(g.structureTiles.has(k)).toBe(false);
+  });
+
+  it('recomputeCounts picks up raw-written ramp bits', () => {
+    const g = new TileGrid(5, 5);
+    g.ramp[g.idx(1, 2)] = 1;
+    g.recomputeCounts();
+    expect(g.structureTiles.has(g.idx(1, 2))).toBe(true);
+  });
+});

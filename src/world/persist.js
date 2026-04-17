@@ -4,7 +4,7 @@
  * Format (v25):
  * {
  *   version: 25,
- *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[], flower: number[] },
+ *   tileGrid: { W, H, elevation: number[], biome: number[], stockpile: number[], wall: number[], door: number[], torch: number[], roof: number[], ignoreRoof: number[], floor: number[], farmZone: number[], tilled: number[], flower: number[], ramp: number[] },
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
@@ -699,6 +699,7 @@ export function serializeState(tileGrid, world) {
       farmZone: Array.from(tileGrid.farmZone),
       tilled: Array.from(tileGrid.tilled),
       flower: Array.from(tileGrid.flower),
+      ramp: Array.from(tileGrid.ramp),
     },
     cows,
     trees,
@@ -721,7 +722,7 @@ export function serializeState(tileGrid, world) {
 }
 
 /**
- * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[], roof?: number[], ignoreRoof?: number[], floor?: number[], farmZone?: number[], tilled?: number[], flower?: number[] } }} state
+ * @param {{ version: number, tileGrid: { W: number, H: number, elevation: number[], biome: number[], stockpile?: number[], wall?: number[], door?: number[], torch?: number[], roof?: number[], ignoreRoof?: number[], floor?: number[], farmZone?: number[], tilled?: number[], flower?: number[], ramp?: number[] } }} state
  */
 export function hydrateTileGrid(state) {
   const tg = new TileGrid(state.tileGrid.W, state.tileGrid.H);
@@ -737,6 +738,7 @@ export function hydrateTileGrid(state) {
   if (state.tileGrid.farmZone) tg.farmZone.set(state.tileGrid.farmZone);
   if (state.tileGrid.tilled) tg.tilled.set(state.tileGrid.tilled);
   if (state.tileGrid.flower) tg.flower.set(state.tileGrid.flower);
+  if (state.tileGrid.ramp) tg.ramp.set(state.tileGrid.ramp);
   return tg;
 }
 
