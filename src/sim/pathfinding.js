@@ -76,13 +76,18 @@ function ensureScratch(size) {
  * A* on a TileGrid. Returns array of {i,j} from start (inclusive) to goal
  * (inclusive), or null if no path.
  *
+ * `start.z` and `goal.z` are reserved for stacked-layer pathing; today the
+ * grid is a single layer so both must be 0 (or undefined). Cross-layer paths
+ * will land here once ramps exist.
+ *
  * @param {TileGrid} grid
- * @param {{ i: number, j: number }} start
- * @param {{ i: number, j: number }} goal
+ * @param {{ i: number, j: number, z?: number }} start
+ * @param {{ i: number, j: number, z?: number }} goal
  * @param {(grid: TileGrid, i: number, j: number) => boolean} [walkable]
  * @returns {{ i: number, j: number }[] | null}
  */
 export function findPath(grid, start, goal, walkable = defaultWalkable) {
+  if ((start.z ?? 0) !== 0 || (goal.z ?? 0) !== 0) return null;
   if (!grid.inBounds(start.i, start.j) || !grid.inBounds(goal.i, goal.j)) return null;
   // Start-tile walkability is intentionally not gated: the cow is already
   // standing there, so refusing to find a path would leave it stranded if

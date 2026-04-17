@@ -78,7 +78,10 @@
  *                                   from sapling → mature via the treeGrowth
  *                                   system and caps at 1. Wood yield at chop
  *                                   scales with both (see trees.js).
- * TileAnchor   { i, j }              tile this world entity occupies
+ * TileAnchor   { i, j, z }           tile this world entity occupies. `z` is
+ *                                   the vertical layer (0 = ground); reserved
+ *                                   for future stacked-level support, defaults
+ *                                   to 0 everywhere today.
  * Item         { kind: string, count, capacity, forbidden } — a stack of N
  *                                   items on a tile; when count reaches 0 the
  *                                   entity is despawned. `forbidden` flags
@@ -297,7 +300,7 @@ export function registerComponents(world) {
     kind: 'stone',
   }));
   world.defineComponent('BoulderViz', () => ({}));
-  world.defineComponent('TileAnchor', () => ({ i: 0, j: 0 }));
+  world.defineComponent('TileAnchor', () => ({ i: 0, j: 0, z: 0 }));
   world.defineComponent('Item', () => ({
     kind: 'wood',
     count: 1,
