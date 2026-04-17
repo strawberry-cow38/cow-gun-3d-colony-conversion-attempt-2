@@ -24,7 +24,11 @@
  * intact, so only she can resume (preserves attribution).
  */
 
-import { buildHaulTargetedCounts, findNearestAvailableItem } from '../jobs/haul.js';
+import {
+  buildHaulTargetedCounts,
+  findNearestAvailableItem,
+  totalAvailableByKind,
+} from '../jobs/haul.js';
 import { stackCount, stackRemove } from '../world/items.js';
 import { RECIPES, STATION_RECIPES } from '../world/recipes.js';
 import { computeStockByKind } from '../world/stock.js';
@@ -57,6 +61,7 @@ export function makeEaselSystem(board, grid) {
 
       const stockByKind = computeStockByKind(world, { includeActiveCrafts: true });
       const claimed = buildHaulTargetedCounts(world, board);
+      const availableByKind = totalAvailableByKind(world, claimed);
       const allowed = new Set(STATION_RECIPES.easel ?? []);
 
       for (const { id: easelId, components } of world.query(['Easel', 'Bills', 'TileAnchor'])) {
@@ -118,17 +123,34 @@ export function makeEaselSystem(board, grid) {
             break;
           }
 
+          // Feasibility gate — see furnace.js. Only post supplies when every
+          // ingredient's deficit can be fully sourced right now.
+          /** @type {{ kind: string, need: number }[]} */
+          const deficits = [];
+          let feasible = true;
           for (const ing of recipe.ingredients) {
             const have = stackCount(easel.stored ?? [], ing.kind);
             const key = `${easelId}:${ing.kind}`;
             const inFlight = supplyInFlight.get(key) ?? 0;
-            let need = ing.count - have - inFlight;
+            const need = ing.count - have - inFlight;
+            if (need <= 0) continue;
+            if ((availableByKind.get(ing.kind) ?? 0) < need) {
+              feasible = false;
+              break;
+            }
+            deficits.push({ kind: ing.kind, need });
+          }
+          if (!feasible) break;
+
+          for (const { kind, need: initialNeed } of deficits) {
+            let need = initialNeed;
+            const key = `${easelId}:${kind}`;
             while (need > 0) {
               const src = findNearestAvailableItem(
                 world,
                 grid,
                 claimed,
-                ing.kind,
+                kind,
                 easel.workI,
                 easel.workJ,
               );
@@ -136,7 +158,7 @@ export function makeEaselSystem(board, grid) {
               const bundle = Math.min(need, src.avail);
               board.post('supply', {
                 itemId: src.id,
-                kind: ing.kind,
+                kind,
                 count: bundle,
                 fromI: src.i,
                 fromJ: src.j,
@@ -147,6 +169,7 @@ export function makeEaselSystem(board, grid) {
               });
               claimed.set(src.id, (claimed.get(src.id) ?? 0) + bundle);
               supplyInFlight.set(key, (supplyInFlight.get(key) ?? 0) + bundle);
+              availableByKind.set(kind, (availableByKind.get(kind) ?? 0) - bundle);
               need -= bundle;
             }
           }
