@@ -26,7 +26,7 @@ function spawnFurnace(world, i, j, workI, workJ, billOverrides = []) {
     Bills: {
       list: billOverrides.map((b, idx) => ({
         id: idx + 1,
-        recipeId: 'smelt_iron',
+        recipeId: 'smelt_copper',
         suspended: false,
         countMode: 'forever',
         target: 10,
@@ -59,17 +59,17 @@ describe('furnace system: supply posting', () => {
     const world = makeWorld();
     spawnFurnace(world, 2, 2, 2, 3, [{}]);
     const coal = spawnItem(world, 5, 5, 'coal', 5);
-    const ore = spawnItem(world, 6, 6, 'metal_ore', 20);
+    const ore = spawnItem(world, 6, 6, 'copper_ore', 20);
     const board = new JobBoard();
 
     tick(world, board, grid);
 
     const supply = board.jobs.filter((j) => j.kind === 'supply');
-    // Recipe needs 1 coal + 5 metal_ore, each sourced from a single stack,
+    // Recipe needs 1 coal + 5 copper_ore, each sourced from a single stack,
     // so one bundled job per ingredient carries the whole deficit.
     expect(supply).toHaveLength(2);
     const coalJob = supply.find((j) => j.payload.kind === 'coal');
-    const oreJob = supply.find((j) => j.payload.kind === 'metal_ore');
+    const oreJob = supply.find((j) => j.payload.kind === 'copper_ore');
     expect(coalJob?.payload.itemId).toBe(coal);
     expect(coalJob?.payload.count).toBe(1);
     expect(oreJob?.payload.itemId).toBe(ore);
@@ -87,13 +87,15 @@ describe('furnace system: supply posting', () => {
     spawnFurnace(world, 2, 2, 2, 3, [{}]);
     spawnItem(world, 5, 5, 'coal', 1);
     // Two ore piles of 2 and 3 — needs 5 total, so poster must split.
-    const ore1 = spawnItem(world, 6, 6, 'metal_ore', 2);
-    const ore2 = spawnItem(world, 7, 7, 'metal_ore', 3);
+    const ore1 = spawnItem(world, 6, 6, 'copper_ore', 2);
+    const ore2 = spawnItem(world, 7, 7, 'copper_ore', 3);
     const board = new JobBoard();
 
     tick(world, board, grid);
 
-    const oreJobs = board.jobs.filter((j) => j.kind === 'supply' && j.payload.kind === 'metal_ore');
+    const oreJobs = board.jobs.filter(
+      (j) => j.kind === 'supply' && j.payload.kind === 'copper_ore',
+    );
     expect(oreJobs).toHaveLength(2);
     const totalReserved = oreJobs.reduce((s, j) => s + j.payload.count, 0);
     expect(totalReserved).toBe(5);
@@ -107,7 +109,7 @@ describe('furnace system: supply posting', () => {
     const world = makeWorld();
     spawnFurnace(world, 2, 2, 2, 3, [{}]);
     spawnItem(world, 5, 5, 'coal', 5);
-    spawnItem(world, 6, 6, 'metal_ore', 20);
+    spawnItem(world, 6, 6, 'copper_ore', 20);
     const board = new JobBoard();
 
     tick(world, board, grid);
@@ -122,7 +124,7 @@ describe('furnace system: supply posting', () => {
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{}]);
     const furnace = world.get(fid, 'Furnace');
     furnace.stored.push({ kind: 'coal', count: 1 });
-    furnace.stored.push({ kind: 'metal_ore', count: 5 });
+    furnace.stored.push({ kind: 'copper_ore', count: 5 });
     spawnItem(world, 5, 5, 'coal', 10);
     const board = new JobBoard();
 
@@ -141,7 +143,7 @@ describe('furnace system: craft lifecycle', () => {
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{}]);
     const furnace0 = world.get(fid, 'Furnace');
     furnace0.stored.push({ kind: 'coal', count: 1 });
-    furnace0.stored.push({ kind: 'metal_ore', count: 5 });
+    furnace0.stored.push({ kind: 'copper_ore', count: 5 });
     const board = new JobBoard();
 
     tick(world, board, grid);
@@ -154,7 +156,7 @@ describe('furnace system: craft lifecycle', () => {
     furnace = world.get(fid, 'Furnace');
     expect(furnace.activeBillId).toBe(0);
     expect(furnace.workTicksRemaining).toBe(0);
-    expect(furnace.outputs).toEqual([{ kind: 'iron', count: 5 }]);
+    expect(furnace.outputs).toEqual([{ kind: 'copper', count: 5 }]);
 
     const bills = world.get(fid, 'Bills');
     expect(bills.list[0].done).toBe(1);
@@ -166,7 +168,7 @@ describe('furnace system: craft lifecycle', () => {
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{}]);
     const furnace0 = world.get(fid, 'Furnace');
     furnace0.stored.push({ kind: 'coal', count: 1 });
-    furnace0.stored.push({ kind: 'metal_ore', count: 5 });
+    furnace0.stored.push({ kind: 'copper_ore', count: 5 });
     const board = new JobBoard();
 
     tick(world, board, grid);
@@ -185,7 +187,7 @@ describe('furnace system: craft lifecycle', () => {
     const fid = spawnFurnace(world, 2, 2, 2, 3, [{ suspended: true }, { suspended: false }]);
     const furnace0 = world.get(fid, 'Furnace');
     furnace0.stored.push({ kind: 'coal', count: 1 });
-    furnace0.stored.push({ kind: 'metal_ore', count: 5 });
+    furnace0.stored.push({ kind: 'copper_ore', count: 5 });
     const board = new JobBoard();
 
     tick(world, board, grid);
@@ -197,7 +199,7 @@ describe('furnace system: craft lifecycle', () => {
     const world = makeWorld();
     spawnFurnace(world, 2, 2, 2, 3, [{ countMode: 'count', target: 3, done: 3 }]);
     spawnItem(world, 5, 5, 'coal', 5);
-    spawnItem(world, 6, 6, 'metal_ore', 20);
+    spawnItem(world, 6, 6, 'copper_ore', 20);
     const board = new JobBoard();
 
     tick(world, board, grid);
@@ -209,8 +211,8 @@ describe('furnace system: craft lifecycle', () => {
     const world = makeWorld();
     spawnFurnace(world, 2, 2, 2, 3, [{ countMode: 'untilHave', target: 10 }]);
     spawnItem(world, 5, 5, 'coal', 5);
-    spawnItem(world, 6, 6, 'metal_ore', 20);
-    spawnItem(world, 7, 7, 'iron', 12);
+    spawnItem(world, 6, 6, 'copper_ore', 20);
+    spawnItem(world, 7, 7, 'copper', 12);
     const board = new JobBoard();
 
     tick(world, board, grid);

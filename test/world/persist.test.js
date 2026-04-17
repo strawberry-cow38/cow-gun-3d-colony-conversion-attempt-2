@@ -313,7 +313,7 @@ describe('furnace save/load roundtrip', () => {
         list: [
           {
             id: 1,
-            recipeId: 'smelt_iron',
+            recipeId: 'smelt_copper',
             suspended: false,
             countMode: 'count',
             target: 12,
@@ -321,7 +321,7 @@ describe('furnace save/load roundtrip', () => {
           },
           {
             id: 2,
-            recipeId: 'smelt_iron',
+            recipeId: 'smelt_copper',
             suspended: true,
             countMode: 'untilHave',
             target: 50,
@@ -349,7 +349,7 @@ describe('furnace save/load roundtrip', () => {
     expect(billsOut?.nextBillId).toBe(3);
     expect(billsOut?.list).toHaveLength(2);
     expect(billsOut?.list[0]).toMatchObject({
-      recipeId: 'smelt_iron',
+      recipeId: 'smelt_copper',
       countMode: 'count',
       target: 12,
       done: 3,

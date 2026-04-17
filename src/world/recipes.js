@@ -14,7 +14,7 @@
  * @property {number} count   units consumed per craft
  *
  * @typedef {Object} Recipe
- * @property {string} id        stable key — "smelt_iron"
+ * @property {string} id        stable key — "smelt_copper"
  * @property {string} label     UI display string
  * @property {Ingredient[]} ingredients
  * @property {string} outputKind
@@ -35,14 +35,14 @@
 
 /** @type {Record<string, Recipe>} */
 export const RECIPES = {
-  smelt_iron: {
-    id: 'smelt_iron',
-    label: 'Smelt iron',
+  smelt_copper: {
+    id: 'smelt_copper',
+    label: 'Smelt copper',
     ingredients: [
       { kind: 'coal', count: 1 },
-      { kind: 'metal_ore', count: 5 },
+      { kind: 'copper_ore', count: 5 },
     ],
-    outputKind: 'iron',
+    outputKind: 'copper',
     outputCount: 5,
     workTicks: 600,
   },
@@ -98,7 +98,7 @@ export const RECIPES = {
  * @type {Record<string, string[]>}
  */
 export const STATION_RECIPES = {
-  furnace: ['smelt_iron'],
+  furnace: ['smelt_copper'],
   easel: ['paint_small', 'paint_medium', 'paint_large', 'paint_huge'],
   stove: ['cook_simple_meal'],
 };

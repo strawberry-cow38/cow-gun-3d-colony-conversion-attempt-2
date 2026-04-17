@@ -12,9 +12,9 @@ export const ITEM_KINDS = /** @type {const} */ ([
   'corn',
   'carrot',
   'potato',
-  'metal_ore',
+  'copper_ore',
   'coal',
-  'iron',
+  'copper',
   'painting',
   'meal',
 ]);
@@ -26,9 +26,9 @@ export const MAX_STACK = {
   corn: 20,
   carrot: 20,
   potato: 20,
-  metal_ore: 30,
+  copper_ore: 30,
   coal: 30,
-  iron: 30,
+  copper: 30,
   painting: 1,
   meal: 10,
 };
@@ -55,17 +55,17 @@ export const ITEM_INFO = {
     label: 'Potato',
     description: 'Raw food. Cows eat one unit to restore hunger; cooks into meals.',
   },
-  metal_ore: {
-    label: 'Metal Ore',
-    description: 'Mined from metal nodes. No use yet.',
+  copper_ore: {
+    label: 'Copper Ore',
+    description: 'Mined from copper nodes. No use yet.',
   },
   coal: {
     label: 'Coal',
     description: 'Mined from coal seams. Fuel for the furnace.',
   },
-  iron: {
-    label: 'Iron',
-    description: 'Smelted from metal ore in a furnace.',
+  copper: {
+    label: 'Copper',
+    description: 'Smelted from copper ore in a furnace.',
   },
   painting: {
     label: 'Painting',
@@ -93,9 +93,9 @@ export const ITEM_TAGS = {
   corn: ['rawFood'],
   carrot: ['rawFood'],
   potato: ['rawFood'],
-  metal_ore: [],
+  copper_ore: [],
   coal: [],
-  iron: [],
+  copper: [],
   painting: [],
   meal: [],
 };
@@ -140,9 +140,9 @@ export const WEIGHT_PER_UNIT = {
   corn: 0.5,
   carrot: 0.5,
   potato: 0.5,
-  metal_ore: 8,
+  copper_ore: 8,
   coal: 3,
-  iron: 4,
+  copper: 4,
   painting: 4,
   meal: 0.4,
 };
@@ -262,9 +262,9 @@ export const KIND_COLOR = {
   corn: 0xd9c24a,
   carrot: 0xe07b2a,
   potato: 0x8a5a2a,
-  metal_ore: 0xb0a48a,
+  copper_ore: 0x8a4a26,
   coal: 0x2a2a2e,
-  iron: 0xc8cbd0,
+  copper: 0xb87333,
   painting: 0xd8b26a,
   meal: 0xd8a860,
 };

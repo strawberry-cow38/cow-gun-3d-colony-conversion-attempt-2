@@ -13,12 +13,12 @@ import { BIOME } from '../world/tileGrid.js';
  * multiply by 6 (see trees.js TREE_DENSITY_MULT), so:
  *   stone = 2× tree pop = 12× boot param
  *   coal  = 2/3× tree pop = 4× boot param
- *   metal = 1/2× tree pop = 3× boot param
+ *   copper = 1/2× tree pop = 3× boot param
  */
 const BOULDER_DENSITY_MULT = {
   stone: 12,
   coal: 4,
-  metal: 3,
+  copper: 3,
 };
 
 const STONE_ATTEMPT_BUDGET = 12;

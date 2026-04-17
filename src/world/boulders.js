@@ -5,12 +5,12 @@
  * grass/dirt is allowed too.
  */
 
-export const BOULDER_KINDS = /** @type {const} */ (['stone', 'metal', 'coal']);
+export const BOULDER_KINDS = /** @type {const} */ (['stone', 'copper', 'coal']);
 
 /** @type {Record<string, { item: string, yield: number }>} */
 export const BOULDER_LOOT = {
   stone: { item: 'stone', yield: 20 },
-  metal: { item: 'metal_ore', yield: 20 },
+  copper: { item: 'copper_ore', yield: 20 },
   coal: { item: 'coal', yield: 20 },
 };
 
@@ -22,6 +22,6 @@ export const BOULDER_LOOT = {
  */
 export const BOULDER_VISUALS = {
   stone: { color: 0x9aa0a6, scale: [1.0, 1.0, 1.0] },
-  metal: { color: 0xc7b98a, scale: [0.95, 0.9, 0.95] },
+  copper: { color: 0xb87333, scale: [0.95, 0.9, 0.95] },
   coal: { color: 0x2f2f35, scale: [1.05, 0.85, 1.05] },
 };

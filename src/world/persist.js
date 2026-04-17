@@ -132,7 +132,7 @@ function sanitizeSkillLevels(levels) {
  * @property {number} j
  * @property {boolean} marked
  * @property {number} progress  0..1 mine progress at save time
- * @property {string} kind      stone/metal/coal
+ * @property {string} kind      stone/copper/coal
  */
 
 /**
