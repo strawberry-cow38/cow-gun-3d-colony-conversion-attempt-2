@@ -1,19 +1,21 @@
 /**
  * Bottom-right "what's under the cursor" readout. Listens for mousemove on
- * the canvas and runs three raycasts against the cow instancer, the object
- * hitbox mesh, and the tile mesh; whichever reports the closest hit decides
- * the label. Fallbacks handle items, nearby-cow proximity, and bare terrain.
+ * the canvas and picks the closest hit from the cow instancer, the object
+ * hitbox mesh, and the tile mesh. Fallbacks handle items, nearby-cow
+ * proximity, and bare terrain.
  *
- * Throttled to one resolve per rAF so a 120 Hz mouse still only does one
- * pass per frame.
+ * Throttled to ~10Hz. The tile mesh raycast walks ~40k triangles (one giant
+ * BufferGeometry, no BVH) — doing that at rAF cadence on fast mice halved
+ * the framerate just from mouse movement. It's also deferred until after
+ * the cheap instanced-mesh picks so we skip it entirely when a cow or
+ * object wins.
  */
 
 import * as THREE from 'three';
 import { objectTypeFor } from '../ui/objectTypes.js';
-import { TILE_SIZE } from '../world/coords.js';
+import { TILE_SIZE, worldToTile } from '../world/coords.js';
 import { ITEM_INFO } from '../world/items.js';
 import { BIOME } from '../world/tileGrid.js';
-import { pickTileFromEvent } from './tilePickUtils.js';
 
 const _ndc = new THREE.Vector2();
 const _raycaster = new THREE.Raycaster();
@@ -28,6 +30,10 @@ const BIOME_LABELS = /** @type {Record<number, string>} */ ({
 });
 
 const PICK_RADIUS = TILE_SIZE * 1.5;
+// Tile mesh is one giant BufferGeometry (~40k tris, no BVH). Each raycast
+// against it walks every tri, so cap label refresh to ~10Hz — human eye
+// can't read a tooltip faster and mousemove fires at 120Hz on fast mice.
+const RESOLVE_INTERVAL_MS = 100;
 
 export class HoverTooltip {
   /**
@@ -55,6 +61,7 @@ export class HoverTooltip {
     this.objectHitboxes = objectHitboxes;
     this.pending = /** @type {MouseEvent | null} */ (null);
     this.scheduled = false;
+    this.lastResolveMs = 0;
     this.lastText = '';
     dom.addEventListener('mousemove', (e) => this.#onMove(e));
     dom.addEventListener('mouseleave', () => this.#hide());
@@ -64,13 +71,17 @@ export class HoverTooltip {
   #onMove(e) {
     this.pending = e;
     if (this.scheduled) return;
+    const now = performance.now();
+    const since = now - this.lastResolveMs;
+    const delay = since >= RESOLVE_INTERVAL_MS ? 0 : RESOLVE_INTERVAL_MS - since;
     this.scheduled = true;
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       this.scheduled = false;
+      this.lastResolveMs = performance.now();
       const ev = this.pending;
       this.pending = null;
       if (ev) this.#resolve(ev);
-    });
+    }, delay);
   }
 
   #hide() {
@@ -102,16 +113,19 @@ export class HoverTooltip {
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     _raycaster.setFromCamera(_ndc, this.camera);
 
-    // Three parallel picks: whichever reports the closest hit wins, so a wall
-    // in front of a cow behind a roof all sort correctly without manual
-    // priority rules.
+    // Cheap picks first — instanced meshes with real bounding spheres, so
+    // the frustum/sphere rejection skips most of the scene before we touch
+    // any triangles. Tile raycast is the expensive one (~40k tris, no BVH)
+    // and only runs if neither cow nor object gives us a label.
     const cowHit = _raycaster.intersectObject(this.cowInstancer.mesh, false)[0];
     const objHit = _raycaster.intersectObject(this.objectHitboxes.mesh, false)[0];
-    const tileHit = _raycaster.intersectObject(this.getTileMesh(), false)[0];
-
     const cowDist = cowHit?.instanceId !== undefined ? cowHit.distance : Number.POSITIVE_INFINITY;
     const objDist = objHit?.instanceId !== undefined ? objHit.distance : Number.POSITIVE_INFINITY;
 
+    // Closest hit wins so a wall in front of a cow behind a roof sorts
+    // correctly without manual priority rules. Only skip the tile pick when
+    // the winning instanced hit actually resolves to a label — otherwise
+    // fall through to the tile path.
     if (cowDist < objDist) {
       const ent = this.cowInstancer.entityFromInstanceId(/** @type {number} */ (cowHit.instanceId));
       if (ent !== null) return this.#cowLabel(ent);
@@ -126,13 +140,14 @@ export class HoverTooltip {
       }
     }
 
+    const tileHit = _raycaster.intersectObject(this.getTileMesh(), false)[0];
     if (!tileHit) return null;
-    const tile = pickTileFromEvent(e, this.dom, this.camera, this.getTileMesh(), this.grid);
-    if (!tile) return null;
+    const p = tileHit.point;
+    const tile = worldToTile(p.x, p.z, this.grid.W, this.grid.H);
+    if (tile.i < 0) return null;
 
     // Cow proximity fallback: at RTS zoom a moving cow can be a few pixels
     // wide, so grab any cow within a tile of the tile-hit point.
-    const p = tileHit.point;
     let best = /** @type {number | null} */ (null);
     let bestD2 = PICK_RADIUS * PICK_RADIUS;
     for (const { id, components } of this.world.query(['Cow', 'Position'])) {
