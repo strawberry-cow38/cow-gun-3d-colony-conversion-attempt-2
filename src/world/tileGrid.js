@@ -519,7 +519,7 @@ export class TileGrid {
             Math.sin(fx * 24 + fz * 19 + biomePhase.d) *
             Math.cos(fx * 15 + fz * 17 + biomePhase.e);
         if (n > bands * 0.6) this.skirtBiome[k] = BIOME.STONE;
-        else if (n < -bands * 0.4) this.skirtBiome[k] = BIOME.SAND;
+        else if (n < -bands * 0.95) this.skirtBiome[k] = BIOME.SAND;
         else if (Math.random() < 0.05) this.skirtBiome[k] = BIOME.DIRT;
         else this.skirtBiome[k] = BIOME.GRASS;
       }
