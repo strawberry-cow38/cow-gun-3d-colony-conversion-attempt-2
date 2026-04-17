@@ -153,6 +153,10 @@ export function carveWaterLakes(biome, W, H) {
 export function carveRiver(biome, EW, EH, waterR = 2) {
   const dir = Math.floor(Math.random() * 8);
   const angle = (dir * Math.PI) / 4;
+  // Flow direction: 50/50 downstream = entry→exit or exit→entry. Stored
+  // so later visual effects (drifting foam, current particles) can orient
+  // against it; gameplay is agnostic for now.
+  const flowSign = Math.random() < 0.5 ? 1 : -1;
   const ux = Math.cos(angle);
   const uy = Math.sin(angle);
   const cx = (EW - 1) / 2;
@@ -201,6 +205,9 @@ export function carveRiver(biome, EW, EH, waterR = 2) {
       }
     }
   }
+  // Return the flow heading in world radians (direction water moves along
+  // the river path, positive X = east, positive Z = south).
+  return { angle: angle + (flowSign < 0 ? Math.PI : 0) };
 }
 
 export function carveDeepWater(biome, W, H) {
@@ -257,6 +264,8 @@ export class TileGrid {
     this.skirtBiome = new Uint8Array(this.skirtW * this.skirtH);
     this.skirtElevation = new Float32Array(this.skirtW * this.skirtH);
     this.hasSkirt = false;
+    /** @type {number | null} Current river flow heading in radians, or null on lake maps. */
+    this.riverFlowAngle = null;
     // Derived counters + torch index — maintained in the setters so lighting
     // can skip its full-grid sweep. Call `recomputeCounts()` after any bulk
     // write that bypasses the setters (e.g. save load).
@@ -603,9 +612,11 @@ export class TileGrid {
       // roughly 1x / 1.5x / 2x / 3x off the baseline 5-tile river.
       const widthRoll = Math.random();
       const waterR = widthRoll < 0.25 ? 2 : widthRoll < 0.5 ? 3 : widthRoll < 0.75 ? 4 : 6;
-      carveRiver(this.skirtBiome, EW, EH, waterR);
+      const river = carveRiver(this.skirtBiome, EW, EH, waterR);
+      this.riverFlowAngle = river.angle;
     } else {
       carveWaterLakes(this.skirtBiome, EW, EH);
+      this.riverFlowAngle = null;
     }
     carveDeepWater(this.skirtBiome, EW, EH);
 

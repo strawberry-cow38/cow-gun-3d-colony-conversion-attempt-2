@@ -46,6 +46,7 @@ import { createStoveInstancer } from '../render/stoveInstancer.js';
 import { createTilledOverlay } from '../render/tilledOverlay.js';
 import { createTorchInstancer } from '../render/torchInstancer.js';
 import { createTreeInstancer } from '../render/treeInstancer.js';
+import { createWakeParticles } from '../render/wakeParticles.js';
 import { createWallArtInstancer } from '../render/wallArtInstancer.js';
 import { createWallInstancer } from '../render/wallInstancer.js';
 
@@ -102,5 +103,6 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     ignoreRoofOverlay: createIgnoreRoofOverlay(scene, tiles),
     deconstructOverlay: createDeconstructOverlay(scene, tiles),
     pickTileOverlay: createPickTileOverlay(scene),
+    wakeParticles: createWakeParticles(scene),
   };
 }

@@ -9,6 +9,8 @@
  */
 
 import { dayFractionOfTick, formatSimDate, formatSimTime, tickToSimDate } from '../sim/calendar.js';
+import { worldToTileClamp } from '../world/coords.js';
+import { BIOME } from '../world/tileGrid.js';
 
 /** @param {number} speed */
 function speedIcon(speed) {
@@ -107,6 +109,7 @@ export function createRenderFrame({
     torchInstancer,
     roofInstancer,
     roofCollapseParticles,
+    wakeParticles,
     floorInstancer,
     flowerInstancer,
     furnaceInstancer,
@@ -138,6 +141,11 @@ export function createRenderFrame({
   let measuredFps = 0;
   let lastRenderClock = performance.now();
   const startClock = performance.now();
+  /** Last wall-clock time we spawned a wake burst for each cow id. */
+  /** @type {Map<number, number>} */
+  const lastWakeAt = new Map();
+  const WAKE_INTERVAL = 0.18;
+  const WAKE_MIN_SPEED_SQ = 0.25;
 
   /** @param {number} alpha */
   const render = (alpha) => {
@@ -210,6 +218,21 @@ export function createRenderFrame({
     paintingInstancer.update(world, tileGrid);
     wallArtInstancer.update(world, tileGrid);
     roofCollapseParticles.update(rdt);
+    // Water wakes: burst once every ~0.18s per cow that's wading (in
+    // SHALLOW_WATER) and actually moving. `lastWakeAt` tracks the per-cow
+    // timestamp so fast cows don't spam bursts every frame.
+    for (const { id, components } of world.query(['Cow', 'Position', 'Velocity'])) {
+      const p = components.Position;
+      const v = components.Velocity;
+      if (v.x * v.x + v.z * v.z < WAKE_MIN_SPEED_SQ) continue;
+      const t = worldToTileClamp(p.x, p.z, tileGrid.W, tileGrid.H);
+      if (tileGrid.biome[tileGrid.idx(t.i, t.j)] !== BIOME.SHALLOW_WATER) continue;
+      const last = lastWakeAt.get(id) ?? 0;
+      if (tSec - last < WAKE_INTERVAL) continue;
+      lastWakeAt.set(id, tSec);
+      wakeParticles.burst(p.x, p.z);
+    }
+    wakeParticles.update(rdt);
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);
     cuttableMarkerInstancer.updateMarkers(world, tileGrid, tSec);
