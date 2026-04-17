@@ -123,8 +123,6 @@ export function makeEaselSystem(board, grid) {
             break;
           }
 
-          // Feasibility gate — see furnace.js. Only post supplies when every
-          // ingredient's deficit can be fully sourced right now.
           /** @type {{ kind: string, need: number }[]} */
           const deficits = [];
           let feasible = true;
