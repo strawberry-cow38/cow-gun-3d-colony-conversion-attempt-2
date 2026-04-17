@@ -668,9 +668,10 @@ export class TileGrid {
       }
     }
 
-    // 4. Heightmap over the extended range with lake-proximity capping.
-    //    `cap = (d - 1) * 2` steps gives ~1 tile ≈ 1.5m of rise per ring
-    //    around water, so you can't get a 10m cliff directly over a lake.
+    // 4. Heightmap over the extended range with water-proximity capping.
+    //    `cap = d - 1` steps gives ~0.75m of rise per ring around water, so
+    //    both lake shores and river banks slope up gently instead of jumping
+    //    to a 3m cliff one tile off the beach.
     for (let ej = 0; ej < EH; ej++) {
       for (let ei = 0; ei < EW; ei++) {
         const k = ej * EW + ei;
@@ -705,7 +706,7 @@ export class TileGrid {
         else if (steps > MAX_TERRAIN_STEPS) steps = MAX_TERRAIN_STEPS;
         const d = distToWater[k];
         if (d < 32767) {
-          const cap = Math.max(0, (d - 1) * 2);
+          const cap = Math.max(0, d - 1);
           if (steps > cap) steps = cap;
         }
         this.skirtElevation[k] = steps * TERRAIN_STEP;
