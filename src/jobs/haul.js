@@ -278,13 +278,15 @@ export function buildSiteInFlight(world, board, grid) {
  * @param {Map<number, number>} claimed  itemId → already-claimed units (mutated)
  * @param {string} kind
  * @param {number} i @param {number} j
+ * @param {Set<number> | null} [skipIds]  item IDs to skip (e.g. proven unreachable)
  */
-export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
+export function findNearestAvailableItem(world, grid, claimed, kind, i, j, skipIds = null) {
   let bestLoose = null;
   let bestLooseD = Number.POSITIVE_INFINITY;
   let bestStock = null;
   let bestStockD = Number.POSITIVE_INFINITY;
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
+    if (skipIds?.has(id)) continue;
     const item = components.Item;
     if (item.kind !== kind) continue;
     if (item.forbidden) continue;
@@ -295,11 +297,11 @@ export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
     if (grid.isStockpile(a.i, a.j)) {
       if (d < bestStockD) {
         bestStockD = d;
-        bestStock = { id, i: a.i, j: a.j, avail };
+        bestStock = { id, i: a.i, j: a.j, z: a.z | 0, avail };
       }
     } else if (d < bestLooseD) {
       bestLooseD = d;
-      bestLoose = { id, i: a.i, j: a.j, avail };
+      bestLoose = { id, i: a.i, j: a.j, z: a.z | 0, avail };
     }
   }
   return bestLoose ?? bestStock;
@@ -378,9 +380,12 @@ function findRelocationTile(grid, blueprintTiles, reservedDropTiles, i, j) {
  *
  * @param {import('./board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../sim/pathfinding.js').PathCache} [paths]  if provided, deliver jobs
+ *   are only posted when the source tile can actually reach the site — prevents the
+ *   pickup→drop loop when a z>0 blueprint has no stair built yet.
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
-export function makeHaulPostingSystem(board, grid) {
+export function makeHaulPostingSystem(board, grid, paths) {
   return {
     name: 'haulPoster',
     tier: 'rare',
@@ -415,6 +420,9 @@ export function makeHaulPostingSystem(board, grid) {
         const idx = grid.idx(a.i, a.j);
         const pending = siteInFlight.get(idx) ?? 0;
         let need = site.required - site.delivered - pending;
+        const siteZ = a.z | 0;
+        /** @type {Set<number> | null} Sources proven unreachable to this site this tick. Allocated lazily. */
+        let unreachable = null;
         while (need > 0) {
           const src = findNearestAvailableItem(
             world,
@@ -423,8 +431,20 @@ export function makeHaulPostingSystem(board, grid) {
             site.requiredKind,
             a.i,
             a.j,
+            unreachable,
           );
           if (!src) break;
+          if (paths) {
+            const route = paths.find(
+              { i: src.i, j: src.j, z: src.z },
+              { i: a.i, j: a.j, z: siteZ },
+            );
+            if (!route) {
+              if (!unreachable) unreachable = new Set();
+              unreachable.add(src.id);
+              continue;
+            }
+          }
           const bundle = Math.min(need, src.avail);
           board.post('deliver', {
             itemId: src.id,

@@ -212,6 +212,7 @@ export function createRenderFrame({
       selectedEasels: state.selectedEasels,
       selectedStoves: state.selectedStoves,
       selectedBeds: state.selectedBeds,
+      selectedStairs: state.selectedStairs,
     });
     easelInstancer.update(world, tileGrid);
     stoveInstancer.update(world, tileGrid);

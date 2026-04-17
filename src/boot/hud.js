@@ -132,6 +132,15 @@ export function createHud(ctx) {
           ? /** @type {number} */ (state.selectedBeds.values().next().value)
           : null;
     }
+    for (const id of state.selectedStairs) {
+      if (!world.get(id, 'Stair')) state.selectedStairs.delete(id);
+    }
+    if (state.primaryStair !== null && !state.selectedStairs.has(state.primaryStair)) {
+      state.primaryStair =
+        state.selectedStairs.size > 0
+          ? /** @type {number} */ (state.selectedStairs.values().next().value)
+          : null;
+    }
     for (const id of state.selectedObjects) {
       if (!objectTypeFor(world, id)) state.selectedObjects.delete(id);
     }

@@ -160,7 +160,7 @@ scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeTirednessSystem());
-scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid));
+scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid, pathCache));
 scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world));
 scheduler.add(
   makeFurnaceSystem(jobBoard, tileGrid, {
@@ -323,6 +323,8 @@ const state = {
   primaryStove: null,
   selectedBeds: new Set(),
   primaryBed: null,
+  selectedStairs: new Set(),
+  primaryStair: null,
   selectedObjects: new Set(),
   primaryObject: null,
   lastPick: null,
@@ -347,7 +349,7 @@ const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
  * (non-additive) pick is exclusive: picking a cow drops item/station/object
  * selections, picking an object drops cow/item/station, and so on.
  *
- * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'objects'} keep
+ * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'stairs'|'objects'} keep
  */
 const clearOtherSelections = (keep) => {
   if (keep !== 'cows') {
@@ -372,6 +374,10 @@ const clearOtherSelections = (keep) => {
   if (keep !== 'beds') {
     state.selectedBeds.clear();
     state.primaryBed = null;
+  }
+  if (keep !== 'stairs') {
+    state.selectedStairs.clear();
+    state.primaryStair = null;
   }
   if (keep !== 'objects') {
     state.selectedObjects.clear();
@@ -628,6 +634,41 @@ const selectBed = (id, additive) => {
   updateHud();
 };
 
+/**
+ * @param {number | null} id
+ * @param {boolean} additive
+ */
+const selectStair = (id, additive) => {
+  if (id === null) {
+    if (!additive) {
+      state.selectedStairs.clear();
+      state.primaryStair = null;
+    }
+  } else if (additive) {
+    if (state.selectedStairs.has(id)) {
+      state.selectedStairs.delete(id);
+      if (state.primaryStair === id) {
+        state.primaryStair =
+          state.selectedStairs.size > 0
+            ? /** @type {number} */ (state.selectedStairs.values().next().value)
+            : null;
+      }
+    } else {
+      state.selectedStairs.add(id);
+      state.primaryStair = id;
+    }
+    audio.play('click');
+  } else {
+    clearOtherSelections('stairs');
+    state.selectedStairs.clear();
+    state.selectedStairs.add(id);
+    state.primaryStair = id;
+    audio.play('click');
+  }
+  itemSelectionViz.markDirty();
+  updateHud();
+};
+
 new ItemSelector(
   canvas,
   camera,
@@ -712,6 +753,7 @@ const routeObjectPick = (id, additive) => {
     if (world.get(id, 'Easel')) return selectEasel(id, additive);
     if (world.get(id, 'Stove')) return selectStove(id, additive);
     if (world.get(id, 'Bed')) return selectBed(id, additive);
+    if (world.get(id, 'Stair')) return selectStair(id, additive);
     selectObject(id, additive);
     return;
   }
@@ -724,6 +766,7 @@ const routeObjectPick = (id, additive) => {
     selectEasel(null, false);
     selectStove(null, false);
     selectBed(null, false);
+    selectStair(null, false);
   }
 };
 

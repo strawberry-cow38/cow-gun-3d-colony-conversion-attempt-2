@@ -34,6 +34,7 @@ import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { createBedGhost } from './bedInstancer.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
+import { createStairGhost } from './stairInstancer.js';
 import { createStoveGhost } from './stoveInstancer.js';
 
 const _ndc = new THREE.Vector2();
@@ -259,6 +260,7 @@ export class BuildDesignator {
     this.furnaceGhost = config.kind === 'furnace' ? createFurnaceGhost(scene) : null;
     this.stoveGhost = config.kind === 'stove' ? createStoveGhost(scene) : null;
     this.bedGhost = config.kind === 'bed' ? createBedGhost(scene) : null;
+    this.stairGhost = config.kind === 'stair' ? createStairGhost(scene) : null;
     this.workSpotPreview = WORK_SPOT_KINDS.has(config.kind)
       ? buildPreview(scene, WORK_SPOT_COLOR)
       : null;
@@ -893,6 +895,13 @@ export class BuildDesignator {
       this.bedGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.bedGhost.group.visible = !this.removing;
     }
+    if (this.stairGhost) {
+      const anchor = this.curTile;
+      const aw = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
+      this.stairGhost.group.position.set(aw.x, grid.getElevation(anchor.i, anchor.j), aw.z);
+      this.stairGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
+      this.stairGhost.group.visible = !this.removing;
+    }
     if (this.workSpotPreview) {
       // Work spot is the tile the front faces. If that tile is blocked or
       // off-grid, fall back to any walkable cardinal neighbor so the player
@@ -917,6 +926,7 @@ export class BuildDesignator {
     if (this.furnaceGhost) this.furnaceGhost.group.visible = false;
     if (this.stoveGhost) this.stoveGhost.group.visible = false;
     if (this.bedGhost) this.bedGhost.group.visible = false;
+    if (this.stairGhost) this.stairGhost.group.visible = false;
     if (this.workSpotPreview) this.workSpotPreview.line.visible = false;
   }
 

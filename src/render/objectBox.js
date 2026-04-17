@@ -11,6 +11,8 @@ import { objectTypeFor } from '../ui/objectTypes.js';
 import { BOULDER_VISUALS } from '../world/boulders.js';
 import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { STAIR_LENGTH } from '../world/stair.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { TREE_VISUALS, growthScale } from '../world/trees.js';
 import { BED_HEADBOARD_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
@@ -42,7 +44,13 @@ export const TRACKED_COMPONENTS = ['Tree', 'Boulder', 'Wall', 'Door', 'Torch', '
 /** Crafting stations. Tracked separately because they live outside the
  * OBJECT_TYPES registry (they have dedicated panels) but still want
  * click-what-you-see 3D hitbox picking. */
-export const STATION_COMPONENTS = /** @type {const} */ (['Furnace', 'Easel', 'Stove', 'Bed']);
+export const STATION_COMPONENTS = /** @type {const} */ ([
+  'Furnace',
+  'Easel',
+  'Stove',
+  'Bed',
+  'Stair',
+]);
 
 /**
  * @param {import('../ui/objectTypes.js').ObjectType} entry
@@ -168,6 +176,22 @@ export function boxForStation(world, id) {
       yaw: FACING_YAWS[bed.facing | 0] ?? 0,
       offsetX: off.di * (TILE_SIZE / 2),
       offsetZ: off.dj * (TILE_SIZE / 2),
+    };
+  }
+  const stair = world.get(id, 'Stair');
+  if (stair) {
+    // Box center sits (length-1)/2 tiles forward of the anchor so it
+    // straddles the whole run.
+    const off = FACING_OFFSETS[stair.facing | 0] ?? FACING_OFFSETS[0];
+    const forwardOffset = ((STAIR_LENGTH - 1) / 2) * TILE_SIZE;
+    return {
+      w: TILE_SIZE,
+      h: LAYER_HEIGHT,
+      d: TILE_SIZE * STAIR_LENGTH,
+      yBase: 0,
+      yaw: FACING_YAWS[stair.facing | 0] ?? 0,
+      offsetX: off.di * forwardOffset,
+      offsetZ: off.dj * forwardOffset,
     };
   }
   return null;

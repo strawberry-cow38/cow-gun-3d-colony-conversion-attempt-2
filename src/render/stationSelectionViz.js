@@ -12,6 +12,8 @@
 import * as THREE from 'three';
 import { TILE_SIZE, tileToWorld } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { STAIR_LENGTH } from '../world/stair.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { BED_HEADBOARD_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
@@ -73,6 +75,7 @@ export function createStationSelectionViz(scene) {
    *   selectedEasels: Set<number>,
    *   selectedStoves: Set<number>,
    *   selectedBeds: Set<number>,
+   *   selectedStairs: Set<number>,
    * }} sel
    */
   function update(world, grid, sel) {
@@ -87,6 +90,10 @@ export function createStationSelectionViz(scene) {
       const b = world.get(id, 'Bed');
       sig += `B${id}:${b?.facing ?? 0},`;
     }
+    for (const id of sel.selectedStairs) {
+      const s = world.get(id, 'Stair');
+      sig += `T${id}:${s?.facing ?? 0},`;
+    }
     if (sig === lastSig) return;
     lastSig = sig;
 
@@ -95,6 +102,7 @@ export function createStationSelectionViz(scene) {
     n = writeSquares(world, grid, sel.selectedEasels, n, EASEL_FOOTPRINT, EASEL_HEIGHT);
     n = writeStoves(world, grid, sel.selectedStoves, n);
     n = writeBeds(world, grid, sel.selectedBeds, n);
+    n = writeStairs(world, grid, sel.selectedStairs, n);
 
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
@@ -181,6 +189,35 @@ export function createStationSelectionViz(scene) {
       _p.set(cx, yBase + BED_HEADBOARD_HEIGHT * 0.5, cz);
       _q.setFromAxisAngle(_yAxis, FACING_YAWS[b.facing | 0] ?? 0);
       _s.set(BED_WIDTH, BED_HEADBOARD_HEIGHT, BED_LENGTH);
+      _m.compose(_p, _q, _s);
+      writeInstance(n, _m);
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * @param {import('../ecs/world.js').World} world
+   * @param {import('../world/tileGrid.js').TileGrid} grid
+   * @param {Set<number>} selected
+   * @param {number} startN
+   */
+  function writeStairs(world, grid, selected, startN) {
+    let n = startN;
+    for (const id of selected) {
+      if (n >= CAPACITY) break;
+      const a = world.get(id, 'TileAnchor');
+      const s = world.get(id, 'Stair');
+      if (!a || !s) continue;
+      const anchor = tileToWorld(a.i, a.j, grid.W, grid.H);
+      const off = FACING_OFFSETS[s.facing | 0] ?? FACING_OFFSETS[0];
+      const forward = ((STAIR_LENGTH - 1) / 2) * TILE_SIZE;
+      const cx = anchor.x + off.di * forward;
+      const cz = anchor.z + off.dj * forward;
+      const yBase = grid.getElevation(a.i, a.j);
+      _p.set(cx, yBase + LAYER_HEIGHT * 0.5, cz);
+      _q.setFromAxisAngle(_yAxis, FACING_YAWS[s.facing | 0] ?? 0);
+      _s.set(TILE_SIZE, LAYER_HEIGHT, TILE_SIZE * STAIR_LENGTH);
       _m.compose(_p, _q, _s);
       writeInstance(n, _m);
       n++;

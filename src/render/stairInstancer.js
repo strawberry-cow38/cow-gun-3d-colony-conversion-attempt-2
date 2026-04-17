@@ -102,3 +102,58 @@ export function createStairInstancer(scene, capacity = 128) {
 
   return { mesh, update, markDirty };
 }
+
+/**
+ * Ghost (build-preview) silhouette for stair placement. Laid out in the canonical
+ * +Z orientation (facing=0). The designator rotates the group by FACING_YAWS[facing]
+ * so the up-arrow above the top landing always points along the real walk-up direction.
+ *
+ * @param {THREE.Scene} scene
+ */
+export function createStairGhost(scene) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x7ec8ff,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false,
+  });
+  for (let n = 0; n < TREAD_COUNT; n++) {
+    const h = STEP_RISE * (n + 1);
+    const geo = new THREE.BoxGeometry(TILE_SIZE, h, TILE_SIZE);
+    geo.translate(0, h * 0.5, TILE_SIZE * (n + 1));
+    group.add(new THREE.Mesh(geo, mat));
+  }
+  const landingGeo = new THREE.BoxGeometry(TILE_SIZE, SLAB_THICKNESS, TILE_SIZE);
+  landingGeo.translate(0, LAYER_HEIGHT - SLAB_THICKNESS * 0.5, TILE_SIZE * TREAD_COUNT + TILE_SIZE);
+  group.add(new THREE.Mesh(landingGeo, mat));
+
+  // Up-arrow: bright shaft + head floating above the top landing, pointing along
+  // +Z (the walk-up direction). The group rotates with facing so this arrow always
+  // points the way a cow will climb.
+  const arrowMat = new THREE.MeshBasicMaterial({
+    color: 0xffee44,
+    transparent: true,
+    opacity: 0.85,
+    depthTest: false,
+  });
+  const arrowBaseY = LAYER_HEIGHT + 4;
+  const arrowZ = TILE_SIZE * TREAD_COUNT + TILE_SIZE;
+  const shaftLen = TILE_SIZE * 1.6;
+  const shaftGeo = new THREE.BoxGeometry(2, 2, shaftLen);
+  shaftGeo.translate(0, arrowBaseY, arrowZ - shaftLen * 0.5);
+  const shaft = new THREE.Mesh(shaftGeo, arrowMat);
+  shaft.renderOrder = 999;
+  group.add(shaft);
+  const headGeo = new THREE.ConeGeometry(TILE_SIZE * 0.45, TILE_SIZE * 0.6, 4);
+  // Cone's default +Y axis → rotate to +Z, then translate to the arrow tip.
+  headGeo.rotateX(Math.PI / 2);
+  headGeo.translate(0, arrowBaseY, arrowZ + TILE_SIZE * 0.3);
+  const head = new THREE.Mesh(headGeo, arrowMat);
+  head.renderOrder = 999;
+  group.add(head);
+
+  group.visible = false;
+  scene.add(group);
+  return { group };
+}

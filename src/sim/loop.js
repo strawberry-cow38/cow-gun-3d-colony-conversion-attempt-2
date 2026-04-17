@@ -75,7 +75,7 @@ export class SimLoop {
           this.step(SIM_DT, this.tick);
         } catch (err) {
           console.error('[sim] step threw at tick', this.tick, err);
-          /** @type {any} */ (globalThis).__simError?.('step@' + this.tick, err);
+          /** @type {any} */ (globalThis).__simError?.(`step@${this.tick}`, err);
         }
         this.tick++;
         this.accumulator -= SIM_DT;
