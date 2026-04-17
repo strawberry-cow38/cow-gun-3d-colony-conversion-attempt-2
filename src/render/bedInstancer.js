@@ -38,7 +38,6 @@ export function createBedInstancer(scene, capacity = 64) {
   });
   const mattressMesh = new THREE.InstancedMesh(mattressGeo, mattressMat, capacity);
   mattressMesh.count = 0;
-  mattressMesh.frustumCulled = false;
   mattressMesh.castShadow = true;
   mattressMesh.receiveShadow = true;
   scene.add(mattressMesh);
@@ -56,7 +55,6 @@ export function createBedInstancer(scene, capacity = 64) {
   });
   const headboardMesh = new THREE.InstancedMesh(headboardGeo, headboardMat, capacity);
   headboardMesh.count = 0;
-  headboardMesh.frustumCulled = false;
   headboardMesh.castShadow = true;
   headboardMesh.receiveShadow = true;
   scene.add(headboardMesh);
@@ -102,6 +100,8 @@ export function createBedInstancer(scene, capacity = 64) {
     headboardMesh.count = i;
     mattressMesh.instanceMatrix.needsUpdate = true;
     headboardMesh.instanceMatrix.needsUpdate = true;
+    mattressMesh.computeBoundingSphere();
+    headboardMesh.computeBoundingSphere();
     dirty = false;
   }
 

@@ -38,7 +38,6 @@ export function createStoveInstancer(scene, capacity = 32) {
   });
   const bodyMesh = new THREE.InstancedMesh(bodyGeo, bodyMat, capacity);
   bodyMesh.count = 0;
-  bodyMesh.frustumCulled = false;
   bodyMesh.castShadow = true;
   bodyMesh.receiveShadow = true;
   scene.add(bodyMesh);
@@ -56,7 +55,6 @@ export function createStoveInstancer(scene, capacity = 32) {
   });
   const chimneyMesh = new THREE.InstancedMesh(chimneyGeo, chimneyMat, capacity);
   chimneyMesh.count = 0;
-  chimneyMesh.frustumCulled = false;
   chimneyMesh.castShadow = true;
   chimneyMesh.receiveShadow = true;
   scene.add(chimneyMesh);
@@ -90,6 +88,8 @@ export function createStoveInstancer(scene, capacity = 32) {
     chimneyMesh.count = i;
     bodyMesh.instanceMatrix.needsUpdate = true;
     chimneyMesh.instanceMatrix.needsUpdate = true;
+    bodyMesh.computeBoundingSphere();
+    chimneyMesh.computeBoundingSphere();
     dirty = false;
   }
 

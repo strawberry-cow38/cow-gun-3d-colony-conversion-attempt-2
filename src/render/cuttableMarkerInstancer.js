@@ -63,7 +63,6 @@ export function createCuttableMarkerInstancer(scene, capacity = 256) {
   });
   const bladeMesh = new THREE.InstancedMesh(bladeGeo, bladeMat, capacity * 2);
   bladeMesh.count = 0;
-  bladeMesh.frustumCulled = false;
   scene.add(bladeMesh);
 
   const handleGeo = new THREE.TorusGeometry(HANDLE_RADIUS, HANDLE_TUBE, 6, 12);
@@ -74,7 +73,6 @@ export function createCuttableMarkerInstancer(scene, capacity = 256) {
   });
   const handleMesh = new THREE.InstancedMesh(handleGeo, handleMat, capacity * 2);
   handleMesh.count = 0;
-  handleMesh.frustumCulled = false;
   scene.add(handleMesh);
 
   /**
@@ -111,6 +109,8 @@ export function createCuttableMarkerInstancer(scene, capacity = 256) {
     handleMesh.count = i * 2;
     bladeMesh.instanceMatrix.needsUpdate = true;
     handleMesh.instanceMatrix.needsUpdate = true;
+    bladeMesh.computeBoundingSphere();
+    handleMesh.computeBoundingSphere();
   }
 
   return { bladeMesh, handleMesh, updateMarkers };

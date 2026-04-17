@@ -79,7 +79,6 @@ export function createTreeInstancer(scene, capacity = 2048) {
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, capacity);
   trunkMesh.count = 0;
-  trunkMesh.frustumCulled = false;
   trunkMesh.castShadow = true;
   trunkMesh.receiveShadow = true;
   scene.add(trunkMesh);
@@ -93,7 +92,6 @@ export function createTreeInstancer(scene, capacity = 2048) {
   canopyConeGeo.translate(0, CANOPY_HEIGHT * 0.5, 0);
   const canopyConeMesh = new THREE.InstancedMesh(canopyConeGeo, canopyMat, capacity);
   canopyConeMesh.count = 0;
-  canopyConeMesh.frustumCulled = false;
   canopyConeMesh.castShadow = true;
   canopyConeMesh.receiveShadow = true;
   scene.add(canopyConeMesh);
@@ -102,7 +100,6 @@ export function createTreeInstancer(scene, capacity = 2048) {
   canopySphereGeo.translate(0, SPHERE_CANOPY_RADIUS, 0);
   const canopySphereMesh = new THREE.InstancedMesh(canopySphereGeo, canopyMat, capacity);
   canopySphereMesh.count = 0;
-  canopySphereMesh.frustumCulled = false;
   canopySphereMesh.castShadow = true;
   canopySphereMesh.receiveShadow = true;
   scene.add(canopySphereMesh);
@@ -120,7 +117,6 @@ export function createTreeInstancer(scene, capacity = 2048) {
   const handleMat = new THREE.MeshStandardMaterial({ color: 0x6b3a1a, flatShading: true });
   const markerHandleMesh = new THREE.InstancedMesh(handleGeo, handleMat, markerCap);
   markerHandleMesh.count = 0;
-  markerHandleMesh.frustumCulled = false;
   scene.add(markerHandleMesh);
 
   const headGeo = new THREE.BoxGeometry(MARKER_HEAD_WIDTH, MARKER_HEAD_HEIGHT, MARKER_HEAD_DEPTH);
@@ -132,7 +128,6 @@ export function createTreeInstancer(scene, capacity = 2048) {
   });
   const markerHeadMesh = new THREE.InstancedMesh(headGeo, headMat, markerCap);
   markerHeadMesh.count = 0;
-  markerHeadMesh.frustumCulled = false;
   scene.add(markerHeadMesh);
 
   /** @type {number[]} slot → entity id */
@@ -190,6 +185,9 @@ export function createTreeInstancer(scene, capacity = 2048) {
     if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
     if (canopyConeMesh.instanceColor) canopyConeMesh.instanceColor.needsUpdate = true;
     if (canopySphereMesh.instanceColor) canopySphereMesh.instanceColor.needsUpdate = true;
+    trunkMesh.computeBoundingSphere();
+    canopyConeMesh.computeBoundingSphere();
+    canopySphereMesh.computeBoundingSphere();
     dirty = false;
   }
 
@@ -228,6 +226,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
     markerHeadMesh.count = i;
     markerHandleMesh.instanceMatrix.needsUpdate = true;
     markerHeadMesh.instanceMatrix.needsUpdate = true;
+    markerHandleMesh.computeBoundingSphere();
+    markerHeadMesh.computeBoundingSphere();
   }
 
   function markDirty() {

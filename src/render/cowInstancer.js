@@ -210,7 +210,6 @@ export function createCowInstancer(scene, capacity = 256) {
     }
     const mesh = new THREE.InstancedMesh(geo, mat, capacity);
     mesh.count = 0;
-    mesh.frustumCulled = false;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
@@ -237,7 +236,6 @@ export function createCowInstancer(scene, capacity = 256) {
   const carryMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const carryMesh = new THREE.InstancedMesh(carryGeo, carryMat, capacity);
   carryMesh.count = 0;
-  carryMesh.frustumCulled = false;
   carryMesh.castShadow = true;
   scene.add(carryMesh);
 
@@ -384,10 +382,12 @@ export function createCowInstancer(scene, capacity = 256) {
       if (part.perInstanceColor && part.mesh.instanceColor && i > 0) {
         part.mesh.instanceColor.needsUpdate = true;
       }
+      part.mesh.computeBoundingSphere();
     }
     carryMesh.count = c;
     carryMesh.instanceMatrix.needsUpdate = true;
     if (carryMesh.instanceColor && c > 0) carryMesh.instanceColor.needsUpdate = true;
+    carryMesh.computeBoundingSphere();
     if (lastYaw.size > seen.size) {
       for (const entId of lastYaw.keys()) {
         if (!seen.has(entId)) lastYaw.delete(entId);

@@ -79,7 +79,6 @@ export function createTorchInstancer(scene, capacity = 512) {
   const stickMat = new THREE.MeshStandardMaterial({ color: 0x5a3820, flatShading: true });
   const stick = new THREE.InstancedMesh(stickGeo, stickMat, capacity);
   stick.count = 0;
-  stick.frustumCulled = false;
   scene.add(stick);
 
   const flameGeo = new THREE.ConeGeometry(FLAME_RADIUS, FLAME_HEIGHT, 6, 1);
@@ -94,7 +93,6 @@ export function createTorchInstancer(scene, capacity = 512) {
   });
   const flame = new THREE.InstancedMesh(flameGeo, flameMat, capacity);
   flame.count = 0;
-  flame.frustumCulled = false;
   scene.add(flame);
 
   const pointLights = /** @type {THREE.PointLight[]} */ ([]);
@@ -216,6 +214,8 @@ export function createTorchInstancer(scene, capacity = 512) {
     flame.count = n;
     stick.instanceMatrix.needsUpdate = true;
     flame.instanceMatrix.needsUpdate = true;
+    stick.computeBoundingSphere();
+    flame.computeBoundingSphere();
 
     // Pick the N nearest torches and drive the PointLight pool. Partial
     // sort would be marginal at 12 slots out of a typical few dozen torches;

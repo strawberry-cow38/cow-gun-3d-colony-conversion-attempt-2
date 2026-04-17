@@ -47,7 +47,6 @@ export function createFloorInstancer(scene, capacity = 4096) {
   });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity);
   mesh.count = 0;
-  mesh.frustumCulled = false;
   mesh.receiveShadow = true;
   const priming = new THREE.Color(1, 1, 1);
   mesh.setColorAt(0, priming);
@@ -79,6 +78,7 @@ export function createFloorInstancer(scene, capacity = 4096) {
     mesh.count = k;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
     dirty = false;
   }
 

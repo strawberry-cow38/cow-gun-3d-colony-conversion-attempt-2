@@ -41,7 +41,6 @@ export function createPaintingInstancer(scene, capacity = 32) {
   });
   const frameMesh = new THREE.InstancedMesh(frameGeo, frameMat, capacity);
   frameMesh.count = 0;
-  frameMesh.frustumCulled = false;
   frameMesh.castShadow = true;
   frameMesh.receiveShadow = true;
   scene.add(frameMesh);
@@ -61,7 +60,6 @@ export function createPaintingInstancer(scene, capacity = 32) {
   });
   const canvasMesh = new THREE.InstancedMesh(canvasGeo, canvasMat, capacity);
   canvasMesh.count = 0;
-  canvasMesh.frustumCulled = false;
   canvasMesh.castShadow = true;
   canvasMesh.receiveShadow = true;
   scene.add(canvasMesh);
@@ -102,6 +100,8 @@ export function createPaintingInstancer(scene, capacity = 32) {
     frameMesh.instanceMatrix.needsUpdate = true;
     canvasMesh.instanceMatrix.needsUpdate = true;
     if (canvasMesh.instanceColor) canvasMesh.instanceColor.needsUpdate = true;
+    frameMesh.computeBoundingSphere();
+    canvasMesh.computeBoundingSphere();
     dirty = false;
   }
 

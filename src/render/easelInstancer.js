@@ -47,7 +47,6 @@ export function createEaselInstancer(scene, capacity = 32) {
   });
   const postMesh = new THREE.InstancedMesh(postGeo, postMat, capacity);
   postMesh.count = 0;
-  postMesh.frustumCulled = false;
   postMesh.castShadow = true;
   postMesh.receiveShadow = true;
   scene.add(postMesh);
@@ -60,7 +59,6 @@ export function createEaselInstancer(scene, capacity = 32) {
   });
   const canvasMesh = new THREE.InstancedMesh(canvasGeo, canvasMat, capacity);
   canvasMesh.count = 0;
-  canvasMesh.frustumCulled = false;
   canvasMesh.castShadow = true;
   canvasMesh.receiveShadow = true;
   scene.add(canvasMesh);
@@ -102,6 +100,8 @@ export function createEaselInstancer(scene, capacity = 32) {
     canvasMesh.count = i;
     postMesh.instanceMatrix.needsUpdate = true;
     canvasMesh.instanceMatrix.needsUpdate = true;
+    postMesh.computeBoundingSphere();
+    canvasMesh.computeBoundingSphere();
     dirty = false;
   }
 

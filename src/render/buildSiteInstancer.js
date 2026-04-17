@@ -91,7 +91,6 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
   });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity * SLOTS_PER_SITE);
   mesh.count = 0;
-  mesh.frustumCulled = false;
   scene.add(mesh);
 
   /**
@@ -219,6 +218,7 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
   }
 
   // No-op kept for API parity with other instancers — the caller invokes

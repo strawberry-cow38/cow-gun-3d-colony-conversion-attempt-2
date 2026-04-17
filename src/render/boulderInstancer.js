@@ -51,7 +51,6 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, capacity);
   rockMesh.count = 0;
-  rockMesh.frustumCulled = false;
   rockMesh.castShadow = true;
   rockMesh.receiveShadow = true;
   scene.add(rockMesh);
@@ -68,7 +67,6 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   const handleMat = new THREE.MeshStandardMaterial({ color: 0x6b3a1a, flatShading: true });
   const markerHandleMesh = new THREE.InstancedMesh(handleGeo, handleMat, markerCap);
   markerHandleMesh.count = 0;
-  markerHandleMesh.frustumCulled = false;
   scene.add(markerHandleMesh);
 
   const headGeo = new THREE.BoxGeometry(MARKER_HEAD_WIDTH, MARKER_HEAD_HEIGHT, MARKER_HEAD_DEPTH);
@@ -80,7 +78,6 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   });
   const markerHeadMesh = new THREE.InstancedMesh(headGeo, headMat, markerCap);
   markerHeadMesh.count = 0;
-  markerHeadMesh.frustumCulled = false;
   scene.add(markerHeadMesh);
 
   /** @type {number[]} */
@@ -114,6 +111,7 @@ export function createBoulderInstancer(scene, capacity = 4096) {
     rockMesh.count = i;
     rockMesh.instanceMatrix.needsUpdate = true;
     if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
+    rockMesh.computeBoundingSphere();
     dirty = false;
   }
 
@@ -146,6 +144,8 @@ export function createBoulderInstancer(scene, capacity = 4096) {
     markerHeadMesh.count = i;
     markerHandleMesh.instanceMatrix.needsUpdate = true;
     markerHeadMesh.instanceMatrix.needsUpdate = true;
+    markerHandleMesh.computeBoundingSphere();
+    markerHeadMesh.computeBoundingSphere();
   }
 
   function markDirty() {

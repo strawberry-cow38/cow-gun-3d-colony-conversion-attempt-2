@@ -36,7 +36,6 @@ export function createFurnaceInstancer(scene, capacity = 64) {
   });
   const bodyMesh = new THREE.InstancedMesh(bodyGeo, bodyMat, capacity);
   bodyMesh.count = 0;
-  bodyMesh.frustumCulled = false;
   bodyMesh.castShadow = true;
   bodyMesh.receiveShadow = true;
   scene.add(bodyMesh);
@@ -49,7 +48,6 @@ export function createFurnaceInstancer(scene, capacity = 64) {
   });
   const chimneyMesh = new THREE.InstancedMesh(chimneyGeo, chimneyMat, capacity);
   chimneyMesh.count = 0;
-  chimneyMesh.frustumCulled = false;
   chimneyMesh.castShadow = true;
   scene.add(chimneyMesh);
 
@@ -62,7 +60,6 @@ export function createFurnaceInstancer(scene, capacity = 64) {
   });
   const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, capacity);
   glowMesh.count = 0;
-  glowMesh.frustumCulled = false;
   scene.add(glowMesh);
 
   /** @type {{ entityId: number, active: boolean }[]} */
@@ -113,6 +110,9 @@ export function createFurnaceInstancer(scene, capacity = 64) {
     bodyMesh.instanceMatrix.needsUpdate = true;
     chimneyMesh.instanceMatrix.needsUpdate = true;
     glowMesh.instanceMatrix.needsUpdate = true;
+    bodyMesh.computeBoundingSphere();
+    chimneyMesh.computeBoundingSphere();
+    glowMesh.computeBoundingSphere();
     dirty = false;
   }
 

@@ -139,7 +139,6 @@ export function createFlowerInstancer(scene, capacity = 2048) {
   });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity);
   mesh.count = 0;
-  mesh.frustumCulled = false;
   // Prime instanceColor so setColorAt works on the first update.
   mesh.setColorAt(0, new THREE.Color(1, 1, 1));
   scene.add(mesh);
@@ -182,6 +181,7 @@ export function createFlowerInstancer(scene, capacity = 2048) {
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
     dirty = false;
   }
 

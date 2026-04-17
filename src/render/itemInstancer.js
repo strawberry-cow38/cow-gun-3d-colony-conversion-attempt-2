@@ -33,7 +33,6 @@ export function createItemInstancer(scene, capacity = 1024) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity);
   mesh.count = 0;
-  mesh.frustumCulled = false;
   scene.add(mesh);
 
   let dirty = true;
@@ -62,6 +61,7 @@ export function createItemInstancer(scene, capacity = 1024) {
     mesh.count = i;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
     dirty = false;
   }
 

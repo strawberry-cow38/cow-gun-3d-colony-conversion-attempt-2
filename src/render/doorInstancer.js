@@ -56,7 +56,6 @@ export function createDoorInstancer(scene, capacity, audio) {
   slabGeo.translate(-TILE_SIZE * 0.5, DOOR_HEIGHT * 0.5, 0);
   const slab = new THREE.InstancedMesh(slabGeo, slabMat, capacity);
   slab.count = 0;
-  slab.frustumCulled = false;
   slab.castShadow = true;
   slab.receiveShadow = true;
   slab.setColorAt(0, priming);
@@ -66,7 +65,6 @@ export function createDoorInstancer(scene, capacity, audio) {
   frameGeo.translate(0, DOOR_HEIGHT + TOP_FRAME_HEIGHT * 0.5, 0);
   const frame = new THREE.InstancedMesh(frameGeo, frameMat, capacity);
   frame.count = 0;
-  frame.frustumCulled = false;
   frame.castShadow = true;
   frame.receiveShadow = true;
   frame.setColorAt(0, priming);
@@ -207,6 +205,8 @@ export function createDoorInstancer(scene, capacity, audio) {
     frame.instanceMatrix.needsUpdate = true;
     if (slab.instanceColor) slab.instanceColor.needsUpdate = true;
     if (frame.instanceColor) frame.instanceColor.needsUpdate = true;
+    slab.computeBoundingSphere();
+    frame.computeBoundingSphere();
   }
 
   return { update };

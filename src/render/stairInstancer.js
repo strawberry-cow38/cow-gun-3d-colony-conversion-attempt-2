@@ -39,7 +39,6 @@ export function createStairInstancer(scene, capacity = 128) {
   });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity * SLABS_PER_STAIR);
   mesh.count = 0;
-  mesh.frustumCulled = false;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   const priming = new THREE.Color(1, 1, 1);
@@ -93,6 +92,7 @@ export function createStairInstancer(scene, capacity = 128) {
     mesh.count = k;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
     dirty = false;
   }
 

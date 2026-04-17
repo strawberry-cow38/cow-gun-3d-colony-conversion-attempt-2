@@ -48,7 +48,6 @@ export function createWallInstancer(scene, capacity = 2048) {
   const priming = new THREE.Color(1, 1, 1);
   for (const m of faces) {
     m.count = 0;
-    m.frustumCulled = false;
     m.castShadow = true;
     m.receiveShadow = true;
     // Prime instance-color buffer so THREE allocates it before first render.
@@ -140,6 +139,7 @@ export function createWallInstancer(scene, capacity = 2048) {
     for (const m of faces) {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      m.computeBoundingSphere();
     }
     dirty = false;
   }
