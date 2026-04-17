@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PathCache, defaultWalkable, findPath } from '../../src/sim/pathfinding.js';
-import { TileGrid } from '../../src/world/tileGrid.js';
+import { TERRAIN_STEP, TileGrid } from '../../src/world/tileGrid.js';
 import { TileWorld } from '../../src/world/tileWorld.js';
 
 describe('findPath', () => {
@@ -168,6 +168,56 @@ describe('findPath (multi-layer via TileWorld)', () => {
       expect(p[0]).toEqual({ i: 4, j: 2, z: 1 });
       expect(p[p.length - 1]).toEqual({ i: 0, j: 0, z: 0 });
     }
+  });
+});
+
+describe('findPath cliff-climb rules', () => {
+  it('allows a 1-step cardinal climb with a small extra cost', () => {
+    const g = new TileGrid(4, 4);
+    g.setElevation(2, 0, TERRAIN_STEP);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 3, j: 0 });
+    expect(p).not.toBeNull();
+    if (p) {
+      expect(p[0]).toEqual({ i: 0, j: 0 });
+      expect(p[p.length - 1]).toEqual({ i: 3, j: 0 });
+      // Straight-line route preserved — the hop cost is small enough it
+      // shouldn't force a detour on a 4-wide board.
+      expect(p.length).toBe(4);
+    }
+  });
+
+  it('rejects a 2-step cliff and routes around it', () => {
+    const g = new TileGrid(4, 3);
+    // Two-step wall along column 2, with a single step down at the top so the
+    // planner must go around via row 2.
+    g.setElevation(2, 0, TERRAIN_STEP * 2);
+    g.setElevation(2, 1, TERRAIN_STEP * 2);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 3, j: 0 });
+    expect(p).not.toBeNull();
+    if (p) {
+      // Must detour — so it cannot be the straight 4-tile row.
+      const straight = p.length === 4 && p.every((s) => s.j === 0);
+      expect(straight).toBe(false);
+      expect(p[p.length - 1]).toEqual({ i: 3, j: 0 });
+    }
+  });
+
+  it('returns null when only route requires a 2-step cliff', () => {
+    const g = new TileGrid(3, 1);
+    g.setElevation(1, 0, TERRAIN_STEP * 2);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 2, j: 0 });
+    expect(p).toBeNull();
+  });
+
+  it('rejects a diagonal hop even at 1 TERRAIN_STEP', () => {
+    const g = new TileGrid(3, 3);
+    // Make the diagonal neighbor one step higher; block the cardinal-only
+    // detour so the only path would be the forbidden diagonal.
+    g.setElevation(1, 1, TERRAIN_STEP);
+    /** @type {(g: TileGrid, i: number, j: number) => boolean} */
+    const walkable = (_g, i, j) => !((i === 1 && j === 0) || (i === 0 && j === 1));
+    const p = findPath(g, { i: 0, j: 0 }, { i: 1, j: 1 }, walkable);
+    expect(p).toBeNull();
   });
 });
 

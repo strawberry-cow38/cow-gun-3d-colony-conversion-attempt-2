@@ -18,7 +18,7 @@
  * invalidation (full regen, load).
  */
 
-import { BIOME, TileGrid } from '../world/tileGrid.js';
+import { BIOME, TERRAIN_STEP, TileGrid } from '../world/tileGrid.js';
 /** @typedef {import('../world/tileWorld.js').TileWorld} TileWorld */
 
 const SQRT2 = Math.SQRT2;
@@ -34,6 +34,22 @@ const NEIGHBORS = [
   [-1, 1, SQRT2],
   [-1, -1, SQRT2],
 ];
+
+/**
+ * Cliff-climb rules.
+ *  - Flat or sub-one-step moves: free.
+ *  - Cardinal neighbours one TERRAIN_STEP higher or lower: allowed, but with
+ *    a small extra cost so a ramp (no hop cost) is strictly preferred when
+ *    both routes exist.
+ *  - Anything above one step: blocked — the pathfinder must find another
+ *    route or give up, so a Z-layer climb really does need a ramp.
+ *  - Diagonals with any elevation change: blocked. Visually a diagonal hop
+ *    over a corner looks wrong, and the cardinal neighbours already cover
+ *    the case.
+ */
+const HOP_EPS = TERRAIN_STEP * 0.5;
+const MAX_CLIMB = TERRAIN_STEP * 1.5;
+const HOP_EXTRA_COST = 0.3;
 
 /**
  * @param {number} ax @param {number} ay @param {number} bx @param {number} by
@@ -215,6 +231,8 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
     const cz = world ? czFlat : sz;
 
     // 8 horizontal neighbors on the same layer.
+    const curLayer = layerAt(cz);
+    const curEl = curLayer.getElevation(ci, cj);
     for (const [di, dj, cost] of NEIGHBORS) {
       const ni = ci + di;
       const nj = cj + dj;
@@ -224,7 +242,17 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
       if (di !== 0 && dj !== 0) {
         if (!passable(ci + di, cj, cz) || !passable(ci, cj + dj, cz)) continue;
       }
-      relax(flatZ(cz) * layerSize + nj * W + ni, ni, nj, cz, current, cost);
+      // Cliff-climb gate. Anything above one TERRAIN_STEP is a 3m+ jump and
+      // is rejected outright — cows must find another route or a ramp.
+      // Diagonals refuse even a single-step hop (reads weird visually and the
+      // cardinal neighbours already cover that traversal).
+      const nEl = curLayer.getElevation(ni, nj);
+      const dEl = Math.abs(nEl - curEl);
+      if (dEl >= MAX_CLIMB) continue;
+      const hop = dEl > HOP_EPS;
+      if (hop && di !== 0 && dj !== 0) continue;
+      const stepCost = hop ? cost + HOP_EXTRA_COST : cost;
+      relax(flatZ(cz) * layerSize + nj * W + ni, ni, nj, cz, current, stepCost);
     }
 
     // Vertical moves through ramps. Only meaningful on multi-layer worlds.

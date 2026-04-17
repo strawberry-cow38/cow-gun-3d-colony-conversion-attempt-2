@@ -60,7 +60,7 @@ import {
 import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
 import { XP_PER_WORK, awardXp } from '../world/skills.js';
 import { stoveFootprintTiles } from '../world/stove.js';
-import { BIOME } from '../world/tileGrid.js';
+import { BIOME, TERRAIN_STEP } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
 import { canCowDoJobKind, priorityForJobKind } from '../world/workPriorities.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -3298,10 +3298,26 @@ export function makeCowFollowPathSystem(deps) {
 
         let speed = crowded ? COW_SPEED_UNITS_PER_SEC * SLOW_FACTOR : COW_SPEED_UNITS_PER_SEC;
         // Snap y to the elevation of the tile we currently stand on so cows
-        // don't float when crossing terrain.
+        // don't float when crossing terrain. When the next step is one
+        // TERRAIN_STEP higher or lower than the current tile (pathfinder only
+        // allows ≤1 step cliffs), play a short hop: lerp Y between the two
+        // elevations by horizontal progress and add a sine arc so the cow
+        // visibly jumps up instead of gliding, and slow the cow so ramps
+        // stay the efficient choice.
         const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
         if (grid.inBounds(cur.i, cur.j)) {
-          pos.y = grid.getElevation(cur.i, cur.j);
+          const curElev = grid.getElevation(cur.i, cur.j);
+          const dElev = targetY - curElev;
+          if (Math.abs(dElev) > TERRAIN_STEP * 0.5) {
+            const curCenter = tileToWorld(cur.i, cur.j, grid.W, grid.H);
+            const totalLen = Math.hypot(target.x - curCenter.x, target.z - curCenter.z);
+            const progress = totalLen > 0.0001 ? Math.max(0, Math.min(1, 1 - dist / totalLen)) : 1;
+            const bump = Math.sin(progress * Math.PI) * TERRAIN_STEP * 0.35;
+            pos.y = curElev + dElev * progress + bump;
+            speed *= 0.65;
+          } else {
+            pos.y = curElev;
+          }
           // Finished floor tiles are full speed; bare terrain drags to 85%.
           // Applied before the darkness check so both stack multiplicatively.
           if (!grid.isFloor(cur.i, cur.j)) speed *= 0.85;
