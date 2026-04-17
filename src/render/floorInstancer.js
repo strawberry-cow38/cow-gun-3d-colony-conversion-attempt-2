@@ -65,7 +65,7 @@ export function createFloorInstancer(scene, capacity = 4096) {
     for (const { components } of world.query(['Floor', 'TileAnchor', 'FloorViz'])) {
       if (k >= capacity) break;
       const a = components.TileAnchor;
-      if (grid.isWall(a.i, a.j)) continue;
+      if (grid.isFullWall(a.i, a.j)) continue;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const y = grid.getElevation(a.i, a.j) + BASE_LIFT;
       _position.set(w.x, y, w.z);

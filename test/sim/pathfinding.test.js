@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PathCache, defaultWalkable, findPath } from '../../src/sim/pathfinding.js';
-import { BIOME, TERRAIN_STEP, TileGrid } from '../../src/world/tileGrid.js';
+import { BIOME, TERRAIN_STEP, TileGrid, WALL_FILL_FULL } from '../../src/world/tileGrid.js';
 import { TileWorld } from '../../src/world/tileWorld.js';
 
 describe('findPath', () => {
@@ -146,7 +146,7 @@ describe('findPath (multi-layer via TileWorld)', () => {
     // Wall line on z=0 between (1..3, 2). Path must reach the top via the
     // ramp at (0,2) and then traverse wall tops to (3,2,1).
     world.layers[0].setRamp(0, 2, 1);
-    for (let i = 1; i <= 3; i++) world.layers[0].wall[world.layers[0].idx(i, 2)] = 1;
+    for (let i = 1; i <= 3; i++) world.layers[0].wall[world.layers[0].idx(i, 2)] = WALL_FILL_FULL;
     const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 3, j: 2, z: 1 });
     expect(p).not.toBeNull();
     if (p) {
@@ -185,6 +185,41 @@ describe('findPath (multi-layer via TileWorld)', () => {
       expect(p[0]).toEqual({ i: 4, j: 2, z: 1 });
       expect(p[p.length - 1]).toEqual({ i: 0, j: 0, z: 0 });
     }
+  });
+});
+
+describe('findPath partial walls', () => {
+  it('full walls (fill=4) block passage', () => {
+    const g = new TileGrid(4, 3);
+    for (let j = 0; j < 3; j++) g.setWallFill(2, j, WALL_FILL_FULL);
+    const p = findPath(g, { i: 0, j: 1 }, { i: 3, j: 1 });
+    expect(p).toBeNull();
+  });
+
+  it('quarter walls (fill=1) are hoppable — straight path preserved', () => {
+    const g = new TileGrid(4, 1);
+    g.setWallFill(2, 0, 1);
+    const p = findPath(g, { i: 0, j: 0 }, { i: 3, j: 0 });
+    expect(p).not.toBeNull();
+    if (p) expect(p.length).toBe(4);
+  });
+
+  it('half walls (fill=2) are climbable but expensive — planner detours when available', () => {
+    const g = new TileGrid(4, 3);
+    g.setWallFill(2, 1, 2);
+    const pStraight = findPath(g, { i: 0, j: 1 }, { i: 3, j: 1 });
+    expect(pStraight).not.toBeNull();
+    if (pStraight) {
+      const detoured = pStraight.some((s) => s.j !== 1);
+      expect(detoured).toBe(true);
+    }
+  });
+
+  it('3-quarter walls (fill=3) block — above climb threshold', () => {
+    const g = new TileGrid(4, 3);
+    for (let j = 0; j < 3; j++) g.setWallFill(2, j, 3);
+    const p = findPath(g, { i: 0, j: 1 }, { i: 3, j: 1 });
+    expect(p).toBeNull();
   });
 });
 

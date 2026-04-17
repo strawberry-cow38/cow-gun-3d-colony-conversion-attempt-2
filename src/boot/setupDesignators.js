@@ -20,6 +20,8 @@ import {
   EASEL_DESIGNATOR_CONFIG,
   FLOOR_DESIGNATOR_CONFIG,
   FURNACE_DESIGNATOR_CONFIG,
+  HALF_WALL_DESIGNATOR_CONFIG,
+  QUARTER_WALL_DESIGNATOR_CONFIG,
   ROOF_DESIGNATOR_CONFIG,
   STAIR_DESIGNATOR_CONFIG,
   STOVE_DESIGNATOR_CONFIG,
@@ -151,6 +153,22 @@ export function setupDesignators({
     onChanged: () => notifyChanged(wallDesignator),
   });
   designators.push(wallDesignator);
+
+  const halfWallDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: HALF_WALL_DESIGNATOR_CONFIG,
+    buildSiteInstancer,
+    onChanged: () => notifyChanged(halfWallDesignator),
+  });
+  designators.push(halfWallDesignator);
+
+  const quarterWallDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: QUARTER_WALL_DESIGNATOR_CONFIG,
+    buildSiteInstancer,
+    onChanged: () => notifyChanged(quarterWallDesignator),
+  });
+  designators.push(quarterWallDesignator);
 
   const doorDesignator = new BuildDesignator({
     ...jobArgs,
@@ -323,6 +341,8 @@ export function setupDesignators({
     stockpileDesignator,
     farmZoneDesignator,
     wallDesignator,
+    halfWallDesignator,
+    quarterWallDesignator,
     doorDesignator,
     torchDesignator,
     wallTorchDesignator,

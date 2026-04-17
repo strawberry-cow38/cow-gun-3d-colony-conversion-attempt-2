@@ -12,7 +12,7 @@ import { BOULDER_VISUALS } from '../world/boulders.js';
 import { TILE_SIZE, UNITS_PER_METER } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { STAIR_LENGTH } from '../world/stair.js';
-import { LAYER_HEIGHT } from '../world/tileGrid.js';
+import { LAYER_HEIGHT, WALL_FILL_FULL } from '../world/tileGrid.js';
 import { TREE_VISUALS, growthScale } from '../world/trees.js';
 import { BED_HEADBOARD_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { EASEL_FOOTPRINT, EASEL_HEIGHT } from './easelInstancer.js';
@@ -82,8 +82,11 @@ export function boxFor(entry, world, id) {
       const h = BOULDER_HEIGHT_M * v.scale[1] * UNITS_PER_METER;
       return { w: side, h, d: side, yBase: 0 };
     }
-    case 'wall':
-      return { w: TILE_SIZE, h: WALL_HEIGHT, d: TILE_SIZE, yBase: 0 };
+    case 'wall': {
+      const wall = world.get(id, 'Wall');
+      const fill = Math.max(1, Math.min(WALL_FILL_FULL, wall?.fill ?? WALL_FILL_FULL));
+      return { w: TILE_SIZE, h: WALL_HEIGHT * (fill / WALL_FILL_FULL), d: TILE_SIZE, yBase: 0 };
+    }
     case 'door':
       return { w: TILE_SIZE, h: DOOR_HEIGHT, d: TILE_SIZE, yBase: 0 };
     case 'torch': {
@@ -114,6 +117,10 @@ export function boxFor(entry, world, id) {
           };
         case 'furnace':
           return { w: FURNACE_FOOTPRINT, h: FURNACE_HEIGHT, d: FURNACE_FOOTPRINT, yBase: 0 };
+        case 'quarterWall':
+          return { w: TILE_SIZE, h: WALL_HEIGHT * 0.25, d: TILE_SIZE, yBase: 0 };
+        case 'halfWall':
+          return { w: TILE_SIZE, h: WALL_HEIGHT * 0.5, d: TILE_SIZE, yBase: 0 };
         default:
           return { w: TILE_SIZE, h: WALL_HEIGHT, d: TILE_SIZE, yBase: 0 };
       }

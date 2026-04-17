@@ -61,7 +61,7 @@ import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
 import { XP_PER_WORK, awardXp } from '../world/skills.js';
 import { stairRampTiles, stairTopLandingTile } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
-import { BIOME, LAYER_HEIGHT, TERRAIN_STEP } from '../world/tileGrid.js';
+import { BIOME, LAYER_HEIGHT, TERRAIN_STEP, WALL_FILL_FULL } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
 import { canCowDoJobKind, priorityForJobKind } from '../world/workPriorities.js';
 import { DARKNESS_SLOWDOWN_THRESHOLD } from './lighting.js';
@@ -1336,16 +1336,28 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
   } else {
     // Wall lives on its anchor's z-layer so upper-floor walls write to the
     // right occupancy bitmap. Fallback to `grid` if tileWorld or the layer is
-    // missing (keeps legacy z=0-only callers intact).
+    // missing (keeps legacy z=0-only callers intact). Wall-family blueprints
+    // (full / half / quarter) share this branch: the tier adds to an existing
+    // Wall.fill if one's already there, otherwise a fresh entity is spawned.
     const wallZ = anchor.z | 0;
     const wallLayer = tileWorld?.layers[wallZ] ?? grid;
-    wallLayer.setWall(anchor.i, anchor.j, 1);
-    world.spawn({
-      Wall: { stuff },
-      WallViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
-      Position: position,
-    });
+    const tier = WALL_TIER_BY_KIND[site.kind] ?? WALL_FILL_FULL;
+    const existingWallId = findWallAt(world, anchor.i, anchor.j, wallZ);
+    if (existingWallId !== null) {
+      const wall = world.get(existingWallId, 'Wall');
+      if (wall) {
+        wall.fill = Math.min(WALL_FILL_FULL, (wall.fill | 0) + tier);
+        wallLayer.setWallFill(anchor.i, anchor.j, wall.fill);
+      }
+    } else {
+      wallLayer.setWallFill(anchor.i, anchor.j, tier);
+      world.spawn({
+        Wall: { stuff, fill: tier },
+        WallViz: {},
+        TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
+        Position: position,
+      });
+    }
   }
   world.despawn(siteId);
   board.complete(jobId);
@@ -1374,6 +1386,29 @@ function pickStationWorkSpot(grid, walkable, anchor, facing) {
       j: anchor.j,
     }
   );
+}
+
+/** Fill contributed per wall-family BuildSite kind, in quarter-layer units. */
+const WALL_TIER_BY_KIND = /** @type {Record<string, number>} */ ({
+  wall: WALL_FILL_FULL,
+  halfWall: 2,
+  quarterWall: 1,
+});
+
+/**
+ * Find an existing Wall entity at (i,j,z), or null. Used by the build-finish
+ * path to decide between spawning a new wall and bumping an existing wall's
+ * fill when a partial-wall blueprint completes atop it.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} i @param {number} j @param {number} z
+ */
+function findWallAt(world, i, j, z) {
+  for (const { id, components } of world.query(['Wall', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    if (a.i === i && a.j === j && (a.z | 0) === z) return id;
+  }
+  return null;
 }
 
 /**
@@ -2744,7 +2779,7 @@ function allWallsIntact(grid, anchorI, anchorJ, face, size) {
     const wi = anchorI + step.di * k;
     const wj = anchorJ + step.dj * k;
     if (!grid.inBounds(wi, wj)) return false;
-    if (!grid.isWall(wi, wj)) return false;
+    if (!grid.isFullWall(wi, wj)) return false;
   }
   return true;
 }

@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { tileToWorld } from '../world/coords.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { boxForEntity } from './objectBox.js';
 
 const SELECT_COLOR = 0xffe14a;
@@ -69,7 +70,8 @@ export function createObjectSelectionViz(scene) {
       const box = boxForEntity(world, id);
       if (!box) return;
       const center = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-      const yBase = grid.getElevation(anchor.i, anchor.j) + box.yBase;
+      const zLift = (anchor.z | 0) * LAYER_HEIGHT;
+      const yBase = grid.getElevation(anchor.i, anchor.j) + zLift + box.yBase;
       _p.set(center.x, yBase + box.h * 0.5, center.z);
       _q.identity();
       _s.set(box.w, box.h, box.d);

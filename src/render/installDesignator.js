@@ -176,7 +176,7 @@ export class InstallDesignator {
       const wi = anchorI + step.di * k;
       const wj = anchorJ + step.dj * k;
       if (!grid.inBounds(wi, wj)) return null;
-      if (!grid.isWall(wi, wj)) return null;
+      if (!grid.isFullWall(wi, wj)) return null;
       const vi = wi + offset.di;
       const vj = wj + offset.dj;
       if (!grid.inBounds(vi, vj)) return null;

@@ -111,6 +111,8 @@ const SHARED_ORDER_ENTRIES = /** @type {const} */ ([
  * @property {ToggleableDesignator} stockpileDesignator
  * @property {ToggleableDesignator} farmZoneDesignator
  * @property {ToggleableDesignator} wallDesignator
+ * @property {ToggleableDesignator} halfWallDesignator
+ * @property {ToggleableDesignator} quarterWallDesignator
  * @property {ToggleableDesignator} doorDesignator
  * @property {ToggleableDesignator} torchDesignator
  * @property {ToggleableDesignator} wallTorchDesignator
@@ -259,6 +261,28 @@ export function createBuildTab(opts) {
       categoryId: 'structure',
       hotkey: 'KeyL',
       designator: opts.wallDesignator,
+      stuffed: true,
+    },
+    {
+      id: 'half-wall',
+      label: 'Half Wall',
+      icon: '🧱',
+      hotkeyHint: 'build 1.5m half walls — cows can climb but not hop (right-click for material)',
+      activeColor: '#e9c060',
+      categoryId: 'structure',
+      hotkey: 'KeyH',
+      designator: opts.halfWallDesignator,
+      stuffed: true,
+    },
+    {
+      id: 'quarter-wall',
+      label: 'Quarter Wall',
+      icon: '🧱',
+      hotkeyHint: 'build 0.75m quarter walls — cows hop over freely (right-click for material)',
+      activeColor: '#e9a850',
+      categoryId: 'structure',
+      hotkey: 'KeyQ',
+      designator: opts.quarterWallDesignator,
       stuffed: true,
     },
     {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BIOME, TERRAIN_STEP, TileGrid } from '../../src/world/tileGrid.js';
+import {
+  BIOME,
+  TERRAIN_STEP,
+  TileGrid,
+  WALL_FILL_FULL,
+  WALL_FILL_HALF,
+  WALL_FILL_QUARTER,
+} from '../../src/world/tileGrid.js';
 
 describe('TileGrid', () => {
   it('constructs with TypedArray storage of correct size', () => {
@@ -137,6 +144,37 @@ describe('TileGrid structureTiles index', () => {
     expect(grid.structureTiles.has(grid.idx(1, 1))).toBe(true);
     expect(grid.structureTiles.has(grid.idx(2, 2))).toBe(true);
     expect(grid.structureTiles.has(grid.idx(3, 3))).toBe(true);
+  });
+});
+
+describe('TileGrid partial wall fill', () => {
+  it('setWallFill stores quarter-unit values; isFullWall only matches 4', () => {
+    const g = new TileGrid(5, 5);
+    g.setWallFill(1, 1, WALL_FILL_QUARTER);
+    expect(g.wallFill(1, 1)).toBe(1);
+    expect(g.isWall(1, 1)).toBe(true);
+    expect(g.isFullWall(1, 1)).toBe(false);
+    g.setWallFill(1, 1, WALL_FILL_HALF);
+    expect(g.isFullWall(1, 1)).toBe(false);
+    g.setWallFill(1, 1, WALL_FILL_FULL);
+    expect(g.isFullWall(1, 1)).toBe(true);
+  });
+
+  it('setWallFill clamps out-of-range values and keeps wallCount correct', () => {
+    const g = new TileGrid(4, 4);
+    g.setWallFill(0, 0, 99);
+    expect(g.wallFill(0, 0)).toBe(WALL_FILL_FULL);
+    expect(g.wallCount).toBe(1);
+    g.setWallFill(0, 0, -3);
+    expect(g.wallFill(0, 0)).toBe(0);
+    expect(g.wallCount).toBe(0);
+  });
+
+  it('setWall legacy setter writes WALL_FILL_FULL', () => {
+    const g = new TileGrid(3, 3);
+    g.setWall(1, 1, 1);
+    expect(g.wallFill(1, 1)).toBe(WALL_FILL_FULL);
+    expect(g.isFullWall(1, 1)).toBe(true);
   });
 });
 

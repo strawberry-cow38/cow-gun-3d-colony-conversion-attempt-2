@@ -30,7 +30,7 @@ import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { stairFootprintTiles } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
-import { LAYER_HEIGHT } from '../world/tileGrid.js';
+import { LAYER_HEIGHT, WALL_FILL_FULL } from '../world/tileGrid.js';
 import { createBedGhost } from './bedInstancer.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
@@ -44,13 +44,21 @@ const WORK_SPOT_COLOR = 0x7cffb0;
 
 /** Station kinds that have a facing (R-cycles during placement). */
 const FACING_KINDS = new Set(['furnace', 'easel', 'stove', 'bed', 'stair']);
+/** Wall-family kinds: full, half, quarter. All stack via BuildSite.baseFill. */
+const WALL_FAMILY = new Set(['wall', 'halfWall', 'quarterWall']);
+/** Fill contributed per wall-family BuildSite kind, in quarter-layer units. */
+const WALL_TIER_BY_KIND = /** @type {Record<string, number>} */ ({
+  wall: 4,
+  halfWall: 2,
+  quarterWall: 1,
+});
 /** Facing kinds that also have a "work here" tile preview. Beds don't — cows
  * just climb onto the mattress, there's no adjacent stand tile. */
 const WORK_SPOT_KINDS = new Set(['furnace', 'easel', 'stove']);
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove' | 'bed' | 'stair'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'halfWall' | 'quarterWall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove' | 'bed' | 'stair'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -74,6 +82,24 @@ export const WALL_DESIGNATOR_CONFIG = {
   previewColorAdd: 0xe9d477,
   addVerb: 'build',
   cancelVerb: 'cancel',
+  stuffed: true,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const HALF_WALL_DESIGNATOR_CONFIG = {
+  kind: 'halfWall',
+  previewColorAdd: 0xe9c060,
+  addVerb: 'half wall',
+  cancelVerb: 'cancel half wall',
+  stuffed: true,
+};
+
+/** @type {BuildDesignatorConfig} */
+export const QUARTER_WALL_DESIGNATOR_CONFIG = {
+  kind: 'quarterWall',
+  previewColorAdd: 0xe9a850,
+  addVerb: 'quarter wall',
+  cancelVerb: 'cancel quarter wall',
   stuffed: true,
 };
 
@@ -573,19 +599,24 @@ export class BuildDesignator {
       });
       return true;
     }
-    // Walls are the only kind that honors the layer switcher. Wall placement
-    // auto-stacks: if the clicked tile already has a wall / wall blueprint at
-    // z=0, the new wall lands at z=1; at z=1, it lands at z=2; etc. The Q/E
-    // switcher still works as an explicit floor — we take the HIGHER of the
-    // two so the player can't accidentally place under existing stacks but
-    // can force an upper floor even when the tile below is empty.
-    const placeZ = kind === 'wall' ? this.#resolveWallPlaceZ(i, j) : 0;
+    // Wall-family (wall / halfWall / quarterWall) honors the layer switcher
+    // and auto-stacks inside each tile's 0..WALL_FILL_FULL quarter-unit budget.
+    // Placement picks the lowest z where current+pending fill + new tier fits;
+    // baseFill records the stacking offset so the blueprint renders at the
+    // right height. The Q/E switcher is the floor for the search (can't place
+    // below the active layer).
+    const isWallFamily = WALL_FAMILY.has(kind);
+    const tier = isWallFamily ? WALL_TIER_BY_KIND[kind] : 0;
+    const placement = isWallFamily ? this.#resolveWallPlacement(i, j, tier) : null;
+    if (isWallFamily && !placement) return false;
+    const placeZ = placement ? placement.z : 0;
+    const baseFill = placement ? placement.baseFill : 0;
     const layer = placeZ === 0 ? this.tileGrid : (this.tileWorld?.layers[placeZ] ?? this.tileGrid);
-    // Walls above the ground layer need something to rest on — a stacked wall,
-    // stair ramp below, or a floor on the same layer. Without this guard the
-    // auto-stacker cheerfully drops floating wall blueprints wherever the
+    // Walls above the ground layer need something to rest on — a stacked full
+    // wall, stair ramp below, or a floor on the same layer. Without this guard
+    // the auto-stacker cheerfully drops floating blueprints wherever the
     // player clicked at a raised activeZ.
-    if (kind === 'wall' && placeZ > 0 && !this.#hasUpperSupport(i, j, placeZ)) return false;
+    if (isWallFamily && placeZ > 0 && !this.#hasUpperSupport(i, j, placeZ)) return false;
     if (isRoof) {
       if (layer.isRoof(i, j)) return false;
       if (!hasRoofSupport(layer, this.world, i, j)) return false;
@@ -597,10 +628,10 @@ export class BuildDesignator {
       if (layer.isFloor(i, j)) return false;
       if (layer.isBlocked(i, j)) return false;
     } else {
-      // Doors can be placed on built walls — queued as "deconstruct wall,
-      // then build door on the cleared tile" below. Everything else keeps
-      // the hard blocked check.
-      if (layer.isBlocked(i, j) && !(isDoor && layer.isWall(i, j))) return false;
+      // Doors can be placed on full-height walls — queued as "deconstruct
+      // wall, then build door on the cleared tile" below. Partial walls can't
+      // host a door and everything else keeps the hard blocked check.
+      if (layer.isBlocked(i, j) && !(isDoor && layer.isFullWall(i, j))) return false;
       if (layer.isDoor(i, j)) return false;
       if (layer.isTorch(i, j)) return false;
     }
@@ -615,39 +646,45 @@ export class BuildDesignator {
       return false;
     }
     // Roofs sit above, floors below, and everything else shares the ground
-    // plane. Blueprints only conflict with others in the same plane.
+    // plane. Blueprints only conflict with others in the same plane. Wall-
+    // family kinds skip this check: stacking is already bounded by the
+    // baseFill search above, so multiple partial-wall blueprints can coexist.
     const samePlane = isRoof
       ? /** @param {string} k */ (k) => k === 'roof'
       : isFloor
         ? /** @param {string} k */ (k) => k === 'floor'
         : /** @param {string} k */ (k) => k !== 'roof' && k !== 'floor';
-    const existingSiteId = this.#findSiteAt(i, j, samePlane, placeZ);
-    if (existingSiteId !== null) {
-      // Door over wall blueprint: upgrade the plan in-place — cancel the
-      // wall blueprint (refunds delivered resources) and drop through to
-      // spawn the door blueprint.
-      if (isDoor) {
-        const existingSite = this.world.get(existingSiteId, 'BuildSite');
-        if (existingSite && existingSite.kind === 'wall') {
-          releaseBuildSite(this.world, this.board, this.tileGrid, existingSite, i, j);
-          this.world.despawn(existingSiteId);
+    if (!isWallFamily) {
+      const existingSiteId = this.#findSiteAt(i, j, samePlane, placeZ);
+      if (existingSiteId !== null) {
+        // Door over wall blueprint: upgrade the plan in-place — cancel the
+        // wall blueprint (refunds delivered resources) and drop through to
+        // spawn the door blueprint. Only full-wall blueprints convert; half
+        // or quarter can't host a door.
+        if (isDoor) {
+          const existingSite = this.world.get(existingSiteId, 'BuildSite');
+          if (existingSite && existingSite.kind === 'wall') {
+            releaseBuildSite(this.world, this.board, this.tileGrid, existingSite, i, j);
+            this.world.despawn(existingSiteId);
+          } else {
+            return false;
+          }
         } else {
           return false;
         }
-      } else {
-        return false;
       }
     }
     // Door over built wall: queue the wall's deconstruct. The haul poster
-    // holds the door's build job until grid.isWall flips back to 0.
-    if (isDoor && this.tileGrid.isWall(i, j)) {
+    // holds the door's build job until grid.isFullWall flips back to 0.
+    if (isDoor && this.tileGrid.isFullWall(i, j)) {
       this.#queueWallDeconstructAt(i, j);
     }
-    // A finished wall covers the floor entirely, so a pending floor blueprint
-    // under the wall is wasted work — cancel it (refunds delivered materials).
-    // Doors don't trigger this: they're walkable + floor stays visible/usable.
-    // Only a ground-floor wall (z=0) shadows the ground-plane floor; z>0 walls
-    // float above the floor and leave it intact.
+    // A finished full wall covers the floor entirely, so a pending floor
+    // blueprint under the wall is wasted work — cancel it (refunds delivered
+    // materials). Doors don't trigger this: they're walkable + floor stays
+    // visible/usable. Partial walls don't cover the whole footprint so they
+    // don't invalidate an underlying floor. Only a ground-layer full wall
+    // (z=0) shadows the ground-plane floor.
     if (kind === 'wall' && placeZ === 0) {
       const floorSiteId = this.#findSiteAt(i, j, (k) => k === 'floor');
       if (floorSiteId !== null) {
@@ -672,6 +709,7 @@ export class BuildDesignator {
         buildJobId: 0,
         progress: 0,
         facing: FACING_KINDS.has(kind) ? this.currentFacing : 0,
+        baseFill,
       },
       BuildSiteViz: {},
       TileAnchor: { i, j, z: placeZ },
@@ -695,36 +733,51 @@ export class BuildDesignator {
     if (z === 0) return true;
     const below = this.tileWorld?.layers[z - 1];
     if (below) {
-      if (below.isWall(i, j)) return true;
+      if (below.isFullWall(i, j)) return true;
       if (below.isRamp(i, j)) return true;
     }
     const here = this.tileWorld?.layers[z] ?? this.tileGrid;
     if (here.isFloor(i, j)) return true;
-    if (this.#findSiteAt(i, j, (k) => k === 'wall', z - 1) !== null) return true;
+    if (this.#pendingWallFillAt(i, j, z - 1) >= WALL_FILL_FULL) return true;
     if (this.#findSiteAt(i, j, (k) => k === 'floor', z) !== null) return true;
     return false;
   }
 
   /**
-   * Pick a wall-blueprint z for tile (i,j). Returns max(activeZ, first-empty-z)
-   * where "empty" means the layer has no finished wall AND no pending wall
-   * blueprint at (i,j). Keeps the Q/E layer switcher as an explicit floor
-   * while auto-stacking when the chosen layer is already occupied.
-   * @param {number} i @param {number} j
+   * Sum of built + pending wall-family fill at (i,j,z), in quarter units.
+   * Drives auto-stacking so two halfWall blueprints at the same tile land at
+   * baseFill 0 and baseFill 2.
+   * @param {number} i @param {number} j @param {number} z
    */
-  #resolveWallPlaceZ(i, j) {
+  #pendingWallFillAt(i, j, z) {
+    const layer = z === 0 ? this.tileGrid : this.tileWorld?.layers[z];
+    let fill = layer ? layer.wallFill(i, j) : 0;
+    for (const { components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if (a.i !== i || a.j !== j) continue;
+      if ((a.z | 0) !== z) continue;
+      const tier = WALL_TIER_BY_KIND[components.BuildSite.kind];
+      if (tier) fill += tier;
+    }
+    return fill;
+  }
+
+  /**
+   * Pick a z and baseFill for a wall-family blueprint of `tier` quarter-units
+   * at (i,j). Scans from activeZ upward and picks the first layer where
+   * currentFill + tier fits within WALL_FILL_FULL. Returns null when nothing
+   * fits anywhere in the stack — the caller bails on placement.
+   * @param {number} i @param {number} j @param {number} tier
+   * @returns {{ z: number, baseFill: number } | null}
+   */
+  #resolveWallPlacement(i, j, tier) {
     const activeZ = this.tileWorld?.activeZ ?? 0;
     const depth = this.tileWorld?.layers.length ?? 1;
     for (let z = activeZ; z < depth; z++) {
-      const layer = z === 0 ? this.tileGrid : this.tileWorld?.layers[z];
-      if (!layer) return activeZ;
-      if (layer.isWall(i, j)) continue;
-      if (this.#findSiteAt(i, j, (k) => k === 'wall', z) !== null) continue;
-      return z;
+      const fill = this.#pendingWallFillAt(i, j, z);
+      if (fill + tier <= WALL_FILL_FULL) return { z, baseFill: fill };
     }
-    // Every in-range layer already has a wall/blueprint at (i,j); fall back to
-    // activeZ (the spawn will then bail on the existing-site check below).
-    return activeZ;
+    return null;
   }
 
   /** @param {number} i @param {number} j */
@@ -759,7 +812,7 @@ export class BuildDesignator {
     if (kind === 'stove') id = this.#findStoveSiteCovering(i, j);
     else if (kind === 'bed') id = this.#findBedSiteCovering(i, j);
     else if (kind === 'stair') id = this.#findStairSiteCovering(i, j);
-    else if (kind === 'wall') id = this.#findTopmostSiteAt(i, j, 'wall');
+    else if (WALL_FAMILY.has(kind)) id = this.#findTopmostSiteAt(i, j, kind);
     else id = this.#findSiteAt(i, j, (k) => k === kind, 0);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
@@ -896,8 +949,8 @@ export class BuildDesignator {
     const activeZ = this.tileWorld?.activeZ ?? 0;
     const previewZ = this.removing
       ? 0
-      : this.config.kind === 'wall'
-        ? this.#resolveWallPlaceZ(i0, j0)
+      : WALL_FAMILY.has(this.config.kind)
+        ? (this.#resolveWallPlacement(i0, j0, WALL_TIER_BY_KIND[this.config.kind])?.z ?? activeZ)
         : this.config.kind === 'stair'
           ? activeZ
           : 0;

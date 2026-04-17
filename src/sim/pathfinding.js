@@ -18,7 +18,7 @@
  * invalidation (full regen, load).
  */
 
-import { BIOME, TERRAIN_STEP, TileGrid } from '../world/tileGrid.js';
+import { BIOME, TERRAIN_STEP, TileGrid, WALL_FILL_FULL } from '../world/tileGrid.js';
 /** @typedef {import('../world/tileWorld.js').TileWorld} TileWorld */
 
 const SQRT2 = Math.SQRT2;
@@ -75,17 +75,31 @@ function octile(ax, ay, bx, by) {
 
 /**
  * Default walkability: tile must be in-bounds, not in the occupancy array
- * (trees/rocks), not flagged as a finished wall, and not deep water. Shallow
- * water is walkable — cows wade across it at reduced speed (see cow.js).
- * BuildSites deliberately do NOT block — haulers walk onto them to deliver
- * materials — only the erected Wall does.
+ * (trees/rocks), not topped by a full-height wall, and not deep water. Partial
+ * walls (quarter/half, fill 1-2) do NOT block — cows hop/climb over them via
+ * the cliff-climb rules using their fill as effective elevation. Shallow water
+ * is walkable — cows wade across it at reduced speed (see cow.js). BuildSites
+ * deliberately do NOT block — haulers walk onto them to deliver materials.
  * @param {TileGrid} grid @param {number} i @param {number} j
  */
 export function defaultWalkable(grid, i, j) {
   if (!grid.inBounds(i, j)) return false;
   const k = grid.idx(i, j);
   if (grid.biome[k] === BIOME.DEEP_WATER) return false;
-  return grid.occupancy[k] === 0 && grid.wall[k] === 0;
+  if (grid.occupancy[k] !== 0) return false;
+  return grid.wall[k] < WALL_FILL_FULL;
+}
+
+/**
+ * Effective walking elevation = terrain elevation + wall-fill bump. Partial
+ * walls sit on the tile and lift a traverser's height by 0.75m per fill unit;
+ * the cliff-climb threshold then decides hop / climb / block without any new
+ * primitive. Full walls are already rejected at defaultWalkable so they never
+ * reach this function.
+ * @param {TileGrid} g @param {number} i @param {number} j
+ */
+function effectiveElevation(g, i, j) {
+  return g.getElevation(i, j) + g.wall[g.idx(i, j)] * TERRAIN_STEP;
 }
 
 /**
@@ -112,7 +126,7 @@ export function passableAt(gridOrWorld, i, j, z, walkable = defaultWalkable) {
   const below = world.layers[z - 1];
   if (!below) return false;
   if (below.isRamp(i, j)) return true;
-  return below.wall[below.idx(i, j)] !== 0;
+  return below.isFullWall(i, j);
 }
 
 // Module-scoped scratch buffers sized to the largest grid we've seen so far.
@@ -187,10 +201,11 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
     if (world) {
       const below = world.layers[z - 1];
       if (below?.isRamp(i, j)) return true;
-      // Wall-top walkability: a finished wall on the layer below provides a
-      // solid surface to stand on at (i, j, z). Lets cows cross on top of
-      // walls as a battlement / second-floor structure.
-      if (below && below.wall[below.idx(i, j)] !== 0) return true;
+      // Wall-top walkability: a finished full-height wall on the layer below
+      // provides a solid surface to stand on at (i, j, z). Partial walls
+      // (quarter/half) don't reach the layer ceiling so they don't support a
+      // cow standing on the layer above.
+      if (below?.isFullWall(i, j)) return true;
       return false;
     }
     // Raw TileGrid with z>0: no stack to ask, floor is the only lift.
@@ -276,7 +291,7 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
 
     // 8 horizontal neighbors on the same layer.
     const curLayer = layerAt(cz);
-    const curEl = curLayer.getElevation(ci, cj);
+    const curEl = effectiveElevation(curLayer, ci, cj);
     for (const [di, dj, cost] of NEIGHBORS) {
       const ni = ci + di;
       const nj = cj + dj;
@@ -291,7 +306,7 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
       // than two steps is rejected outright so a ramp really is required for
       // a full Z-layer crossing. Diagonals refuse any elevation change so a
       // cow can't hop across a corner.
-      const nEl = curLayer.getElevation(ni, nj);
+      const nEl = effectiveElevation(curLayer, ni, nj);
       const dEl = Math.abs(nEl - curEl);
       if (dEl >= CLIMB_MAX) continue;
       const hop = dEl > HOP_EPS && dEl < HOP_MAX;

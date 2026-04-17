@@ -36,6 +36,7 @@ import {
 } from './stoveInstancer.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
+const WALL_QUARTER_H = WALL_HEIGHT / 4;
 const DOOR_HEIGHT = 2.4 * UNITS_PER_METER;
 const DOOR_THICKNESS = TILE_SIZE * 0.2;
 const DOOR_FRAME_HEIGHT = WALL_HEIGHT - DOOR_HEIGHT;
@@ -206,6 +207,12 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
         sx = FURNACE_FOOTPRINT;
         sy = FURNACE_HEIGHT;
         sz = FURNACE_FOOTPRINT;
+      } else if (site.kind === 'quarterWall') {
+        sy = WALL_QUARTER_H;
+        py = y + (site.baseFill | 0) * WALL_QUARTER_H;
+      } else if (site.kind === 'halfWall') {
+        sy = WALL_QUARTER_H * 2;
+        py = y + (site.baseFill | 0) * WALL_QUARTER_H;
       }
       _scale.set(sx, sy, sz);
       _position.set(w.x, py, w.z);

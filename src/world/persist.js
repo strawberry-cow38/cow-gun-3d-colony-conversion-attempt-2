@@ -151,6 +151,7 @@ function sanitizeSkillLevels(levels) {
  * @typedef SerializedBuildSite
  * @property {number} i
  * @property {number} j
+ * @property {number} [z]
  * @property {string} kind
  * @property {string} stuff
  * @property {string} requiredKind
@@ -158,15 +159,18 @@ function sanitizeSkillLevels(levels) {
  * @property {number} delivered
  * @property {number} progress
  * @property {number} [facing]
+ * @property {number} [baseFill]  starting stack height in quarter-units for wall-family blueprints
  */
 
 /**
  * @typedef SerializedWall
  * @property {number} i
  * @property {number} j
+ * @property {number} [z]
  * @property {string} stuff
  * @property {boolean} decon  player marked it for demolition
  * @property {number} progress  0..1 demolition progress at save time
+ * @property {number} [fill]  quarter-unit height 1..4 (missing = full 4, legacy saves)
  */
 
 /**
@@ -485,6 +489,7 @@ export function serializeState(tileGrid, world) {
     buildSites.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
+      z: components.TileAnchor.z | 0,
       kind: components.BuildSite.kind,
       stuff: components.BuildSite.stuff ?? 'wood',
       requiredKind: components.BuildSite.requiredKind,
@@ -492,6 +497,7 @@ export function serializeState(tileGrid, world) {
       delivered: components.BuildSite.delivered,
       progress: components.BuildSite.progress,
       facing: components.BuildSite.facing ?? 0,
+      baseFill: components.BuildSite.baseFill | 0,
     });
   }
   /** @type {SerializedWall[]} */
@@ -500,9 +506,11 @@ export function serializeState(tileGrid, world) {
     walls.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
+      z: components.TileAnchor.z | 0,
       stuff: components.Wall.stuff ?? 'wood',
       decon: components.Wall.deconstructJobId > 0,
       progress: components.Wall.progress ?? 0,
+      fill: components.Wall.fill ?? 4,
     });
   }
   /** @type {SerializedDoor[]} */
@@ -941,9 +949,10 @@ export function hydrateBuildSites(world, grid, state) {
         buildJobId: 0,
         progress: s.progress ?? 0,
         facing: s.facing ?? 0,
+        baseFill: (s.baseFill ?? 0) | 0,
       },
       BuildSiteViz: {},
-      TileAnchor: { i: s.i, j: s.j },
+      TileAnchor: { i: s.i, j: s.j, z: (s.z ?? 0) | 0 },
       Position: { x: w.x, y: grid.getElevation(s.i, s.j), z: w.z },
     });
   }
@@ -960,7 +969,7 @@ export function hydrateBuildSites(world, grid, state) {
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
- * @param {Array<{i: number, j: number, stuff?: string, decon?: boolean, progress?: number, wallMounted?: boolean, yaw?: number}>} items
+ * @param {Array<{i: number, j: number, z?: number, stuff?: string, decon?: boolean, progress?: number, wallMounted?: boolean, yaw?: number, fill?: number}>} items
  * @param {'wall'|'door'|'torch'|'roof'|'floor'} kind
  */
 const STRUCT_COMP_BY_KIND = /** @type {const} */ ({
@@ -986,10 +995,14 @@ function hydrateStructures(world, grid, board, items, kind) {
       tag.wallMounted = s.wallMounted === true;
       tag.yaw = s.yaw ?? 0;
     }
+    if (kind === 'wall') {
+      const rawFill = typeof s.fill === 'number' ? s.fill | 0 : 4;
+      tag.fill = Math.max(1, Math.min(4, rawFill));
+    }
     const id = world.spawn({
       [compName]: tag,
       [vizName]: {},
-      TileAnchor: { i: s.i, j: s.j },
+      TileAnchor: { i: s.i, j: s.j, z: (s.z ?? 0) | 0 },
       Position: { x: w.x, y: grid.getElevation(s.i, s.j), z: w.z },
     });
     if (s.decon) {

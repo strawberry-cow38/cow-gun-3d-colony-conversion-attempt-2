@@ -330,9 +330,18 @@ export function registerComponents(world) {
     progress: 0,
     facing: 0,
     forbidden: false,
+    baseFill: 0,
   }));
   world.defineComponent('BuildSiteViz', () => ({}));
-  world.defineComponent('Wall', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
+  // `fill` is in quarter-layer units (1..4): 1 = quarter wall (0.75m), 2 = half
+  // (1.5m), 4 = full (3m). Authoritative for rendered height; the tileGrid.wall
+  // bitmap mirrors this for fast pathfinder reads.
+  world.defineComponent('Wall', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    stuff: 'wood',
+    fill: 4,
+  }));
   world.defineComponent('WallViz', () => ({}));
   world.defineComponent('Door', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
   world.defineComponent('DoorViz', () => ({}));
