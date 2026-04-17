@@ -116,6 +116,7 @@ const SHARED_ORDER_ENTRIES = /** @type {const} */ ([
  * @property {ToggleableDesignator} wallTorchDesignator
  * @property {ToggleableDesignator} roofDesignator
  * @property {ToggleableDesignator} floorDesignator
+ * @property {ToggleableDesignator} stairDesignator
  * @property {ToggleableDesignator} furnaceDesignator
  * @property {ToggleableDesignator} easelDesignator
  * @property {ToggleableDesignator} stoveDesignator
@@ -293,6 +294,18 @@ export function createBuildTab(opts) {
       categoryId: 'structure',
       hotkey: 'KeyJ',
       designator: opts.floorDesignator,
+      stuffed: true,
+    },
+    {
+      id: 'stair',
+      label: 'Stair',
+      icon: '🪜',
+      hotkeyHint:
+        '5-tile staircase from z to z+1 (bottom landing + 3 ramps + top landing) — R rotates facing',
+      activeColor: '#b0c8e9',
+      categoryId: 'structure',
+      hotkey: 'KeyP',
+      designator: opts.stairDesignator,
       stuffed: true,
     },
 

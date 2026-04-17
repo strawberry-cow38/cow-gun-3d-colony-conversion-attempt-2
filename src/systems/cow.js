@@ -59,6 +59,7 @@ import {
 } from '../world/quality.js';
 import { PAINTING_SIZE_BY_RECIPE, RECIPES } from '../world/recipes.js';
 import { XP_PER_WORK, awardXp } from '../world/skills.js';
+import { stairRampTiles, stairTopLandingTile } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { BIOME, TERRAIN_STEP } from '../world/tileGrid.js';
 import { woodYieldFor } from '../world/trees.js';
@@ -138,6 +139,7 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  *   onPlantComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onHarvestComplete: (pos: {x:number,y:number,z:number}) => void,
  *   onItemChange: () => void,
+ *   tileWorld?: import('../world/tileWorld.js').TileWorld,
  * }} BrainDeps
  */
 
@@ -146,7 +148,7 @@ const NEIGHBOR_CELL_STRIDE = 1024;
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
 export function makeCowBrainSystem(deps) {
-  const { grid, paths, walkable, board } = deps;
+  const { grid, paths, walkable, board, tileWorld } = deps;
   return {
     name: 'cowBrain',
     tier: 'every',
@@ -1128,7 +1130,7 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
         return;
       }
       deps.onBuildComplete(pos, site.kind);
-      finishBuild(world, grid, siteId, jobId, board, walkable);
+      finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld);
       awardXp(world, builderId, 'construction', XP_PER_WORK);
       job.kind = 'none';
       job.state = 'idle';
@@ -1181,8 +1183,9 @@ function cowOnTileExcluding(world, grid, i, j, excludeId) {
  * @param {number} jobId
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
+ * @param {import('../world/tileWorld.js').TileWorld} [tileWorld]
  */
-function finishBuild(world, grid, siteId, jobId, board, walkable) {
+function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
   const anchor = world.get(siteId, 'TileAnchor');
   const site = world.get(siteId, 'BuildSite');
   if (!anchor || !site) {
@@ -1287,6 +1290,24 @@ function finishBuild(world, grid, siteId, jobId, board, walkable) {
       Bed: { stuff, facing },
       BedViz: {},
       TileAnchor: { i: anchor.i, j: anchor.j },
+      Position: position,
+    });
+  } else if (site.kind === 'stair') {
+    const facing = site.facing | 0;
+    const bottomZ = anchor.z | 0;
+    const bottom = tileWorld?.layers[bottomZ];
+    const top = tileWorld?.layers[bottomZ + 1];
+    if (bottom && top) {
+      for (const t of stairRampTiles(anchor, facing)) {
+        bottom.setRamp(t.i, t.j, 1);
+      }
+      const landing = stairTopLandingTile(anchor, facing);
+      top.setFloor(landing.i, landing.j, 1);
+    }
+    world.spawn({
+      Stair: { stuff, facing, bottomZ },
+      StairViz: {},
+      TileAnchor: { i: anchor.i, j: anchor.j, z: bottomZ },
       Position: position,
     });
   } else {

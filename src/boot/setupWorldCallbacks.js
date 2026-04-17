@@ -150,7 +150,8 @@ export function setupWorldCallbacks({
         kind === 'door' ||
         kind === 'furnace' ||
         kind === 'easel' ||
-        kind === 'stove'
+        kind === 'stove' ||
+        kind === 'stair'
       ) {
         invalidatePathCacheAt(pos);
         scheduler.dirty.mark('topology');

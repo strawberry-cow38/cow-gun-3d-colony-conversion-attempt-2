@@ -21,6 +21,7 @@ import {
   FLOOR_DESIGNATOR_CONFIG,
   FURNACE_DESIGNATOR_CONFIG,
   ROOF_DESIGNATOR_CONFIG,
+  STAIR_DESIGNATOR_CONFIG,
   STOVE_DESIGNATOR_CONFIG,
   TORCH_DESIGNATOR_CONFIG,
   WALL_DESIGNATOR_CONFIG,
@@ -190,6 +191,14 @@ export function setupDesignators({
   });
   designators.push(floorDesignator);
 
+  const stairDesignator = new BuildDesignator({
+    ...jobArgs,
+    config: STAIR_DESIGNATOR_CONFIG,
+    buildSiteInstancer,
+    onChanged: () => notifyChanged(stairDesignator),
+  });
+  designators.push(stairDesignator);
+
   const furnaceDesignator = new BuildDesignator({
     ...jobArgs,
     config: FURNACE_DESIGNATOR_CONFIG,
@@ -317,6 +326,7 @@ export function setupDesignators({
     wallTorchDesignator,
     roofDesignator,
     floorDesignator,
+    stairDesignator,
     furnaceDesignator,
     easelDesignator,
     stoveDesignator,

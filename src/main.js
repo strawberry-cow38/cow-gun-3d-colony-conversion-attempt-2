@@ -130,6 +130,7 @@ scheduler.add(snapshotPositions);
 scheduler.add(
   makeCowBrainSystem({
     grid: tileGrid,
+    tileWorld,
     paths: pathCache,
     walkable: defaultWalkable,
     board: jobBoard,
@@ -791,6 +792,7 @@ const {
   wallTorchDesignator,
   roofDesignator,
   floorDesignator,
+  stairDesignator,
   furnaceDesignator,
   easelDesignator,
   stoveDesignator,
@@ -841,6 +843,7 @@ const buildTab = createBuildTab({
   wallTorchDesignator,
   roofDesignator,
   floorDesignator,
+  stairDesignator,
   furnaceDesignator,
   easelDesignator,
   stoveDesignator,

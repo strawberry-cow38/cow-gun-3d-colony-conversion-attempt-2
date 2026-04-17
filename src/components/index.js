@@ -414,6 +414,15 @@ export function registerComponents(world) {
     stored: [],
   }));
   world.defineComponent('StoveViz', () => ({}));
+  world.defineComponent('Stair', () => ({
+    deconstructJobId: 0,
+    progress: 0,
+    stuff: 'wood',
+    facing: 0,
+    /** Layer of the bottom landing; top landing lives on bottomZ+1. */
+    bottomZ: 0,
+  }));
+  world.defineComponent('StairViz', () => ({}));
   world.defineComponent('Painting', () => ({
     size: 1,
     title: '',

@@ -27,6 +27,7 @@ import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { bedFootprintTiles } from '../world/bed.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { stairFootprintTiles } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
 import { createBedGhost } from './bedInstancer.js';
@@ -40,14 +41,14 @@ const PREVIEW_COLOR_REMOVE = 0xff6a4a;
 const WORK_SPOT_COLOR = 0x7cffb0;
 
 /** Station kinds that have a facing (R-cycles during placement). */
-const FACING_KINDS = new Set(['furnace', 'easel', 'stove', 'bed']);
+const FACING_KINDS = new Set(['furnace', 'easel', 'stove', 'bed', 'stair']);
 /** Facing kinds that also have a "work here" tile preview. Beds don't — cows
  * just climb onto the mattress, there's no adjacent stand tile. */
 const WORK_SPOT_KINDS = new Set(['furnace', 'easel', 'stove']);
 
 /**
  * @typedef {Object} BuildDesignatorConfig
- * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove' | 'bed'} kind - BuildSite.kind to spawn
+ * @property {'wall' | 'door' | 'torch' | 'wallTorch' | 'roof' | 'floor' | 'furnace' | 'easel' | 'stove' | 'bed' | 'stair'} kind - BuildSite.kind to spawn
  * @property {number} previewColorAdd - hex color for ADD preview line + label border
  * @property {string} addVerb - label verb on add ("build", "door")
  * @property {string} cancelVerb - label verb on cancel ("cancel", "cancel door")
@@ -154,6 +155,17 @@ export const STOVE_DESIGNATOR_CONFIG = {
   singlePlace: true,
   required: 25,
   requiredKind: 'stone',
+};
+
+/** @type {BuildDesignatorConfig} */
+export const STAIR_DESIGNATOR_CONFIG = {
+  kind: 'stair',
+  previewColorAdd: 0xb0c8e9,
+  addVerb: 'stair',
+  cancelVerb: 'cancel stair',
+  singlePlace: true,
+  required: 10,
+  stuffed: true,
 };
 
 /** @type {BuildDesignatorConfig} */
@@ -470,6 +482,37 @@ export class BuildDesignator {
       });
       return true;
     }
+    if (kind === 'stair') {
+      const footprint = stairFootprintTiles({ i, j }, this.currentFacing);
+      for (const t of footprint) {
+        if (!this.tileGrid.inBounds(t.i, t.j)) return false;
+        if (this.tileGrid.isBlocked(t.i, t.j)) return false;
+        if (this.tileGrid.isDoor(t.i, t.j)) return false;
+        if (this.tileGrid.isTorch(t.i, t.j)) return false;
+        if (this.tileGrid.isStockpile(t.i, t.j)) return false;
+        if (this.tileGrid.isRamp(t.i, t.j)) return false;
+        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof') !== null) return false;
+      }
+      const stuff = this.config.stuffed ? this.currentStuff : null;
+      const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
+      const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
+      this.world.spawn({
+        BuildSite: {
+          kind,
+          stuff: stuff ?? 'wood',
+          requiredKind,
+          required: this.config.required ?? 1,
+          delivered: 0,
+          buildJobId: 0,
+          progress: 0,
+          facing: this.currentFacing,
+        },
+        BuildSiteViz: {},
+        TileAnchor: { i, j },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+      });
+      return true;
+    }
     const isBed = kind === 'bed';
     if (isBed) {
       const footprint = bedFootprintTiles({ i, j }, this.currentFacing);
@@ -629,7 +672,9 @@ export class BuildDesignator {
         ? this.#findStoveSiteCovering(i, j)
         : kind === 'bed'
           ? this.#findBedSiteCovering(i, j)
-          : this.#findSiteAt(i, j, (k) => k === kind);
+          : kind === 'stair'
+            ? this.#findStairSiteCovering(i, j)
+            : this.#findSiteAt(i, j, (k) => k === kind);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
@@ -669,6 +714,19 @@ export class BuildDesignator {
   }
 
   /** @param {number} i @param {number} j */
+  #findStairSiteCovering(i, j) {
+    for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+      const site = components.BuildSite;
+      if (site.kind !== 'stair') continue;
+      const anchor = components.TileAnchor;
+      for (const t of stairFootprintTiles(anchor, site.facing | 0)) {
+        if (t.i === i && t.j === j) return id;
+      }
+    }
+    return null;
+  }
+
+  /** @param {number} i @param {number} j */
   #findBedSiteCovering(i, j) {
     for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
       const site = components.BuildSite;
@@ -699,6 +757,12 @@ export class BuildDesignator {
       j1 = Math.max(...fp.map((t) => t.j));
     } else if (this.config.kind === 'bed') {
       const fp = bedFootprintTiles(this.curTile, this.currentFacing);
+      i0 = Math.min(...fp.map((t) => t.i));
+      i1 = Math.max(...fp.map((t) => t.i));
+      j0 = Math.min(...fp.map((t) => t.j));
+      j1 = Math.max(...fp.map((t) => t.j));
+    } else if (this.config.kind === 'stair') {
+      const fp = stairFootprintTiles(this.curTile, this.currentFacing);
       i0 = Math.min(...fp.map((t) => t.i));
       i1 = Math.max(...fp.map((t) => t.i));
       j0 = Math.min(...fp.map((t) => t.j));
