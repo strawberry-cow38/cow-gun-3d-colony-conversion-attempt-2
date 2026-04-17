@@ -31,6 +31,7 @@ import {
   computeStockpileSlots,
   findAndReserveSlot,
   findNearestAvailableItem,
+  totalAvailableByKind,
 } from '../jobs/haul.js';
 import { stackAdd, stackCount, stackRemove } from '../world/items.js';
 import { RECIPES } from '../world/recipes.js';
@@ -81,6 +82,7 @@ export function makeFurnaceSystem(board, grid, opts) {
 
       const claimed = buildHaulTargetedCounts(world, board);
       const slots = computeStockpileSlots(world, grid, board);
+      const availableByKind = totalAvailableByKind(world, claimed);
 
       for (const { id: furnaceId, components } of world.query(['Furnace', 'Bills', 'TileAnchor'])) {
         const furnace = components.Furnace;
@@ -165,17 +167,36 @@ export function makeFurnaceSystem(board, grid, opts) {
             break;
           }
 
+          // Feasibility gate: only post supplies when every ingredient's
+          // remaining deficit can be fully sourced from the map right now.
+          // Otherwise a bill stalls mid-supply (2 coal sitting on the furnace
+          // while no copper_ore has even been mined).
+          /** @type {{ kind: string, need: number }[]} */
+          const deficits = [];
+          let feasible = true;
           for (const ing of recipe.ingredients) {
             const have = stackCount(furnace.stored, ing.kind);
             const key = `${furnaceId}:${ing.kind}`;
             const inFlight = supplyInFlight.get(key) ?? 0;
-            let need = ing.count - have - inFlight;
+            const need = ing.count - have - inFlight;
+            if (need <= 0) continue;
+            if ((availableByKind.get(ing.kind) ?? 0) < need) {
+              feasible = false;
+              break;
+            }
+            deficits.push({ kind: ing.kind, need });
+          }
+          if (!feasible) break;
+
+          for (const { kind, need: initialNeed } of deficits) {
+            let need = initialNeed;
+            const key = `${furnaceId}:${kind}`;
             while (need > 0) {
               const src = findNearestAvailableItem(
                 world,
                 grid,
                 claimed,
-                ing.kind,
+                kind,
                 furnace.workI,
                 furnace.workJ,
               );
@@ -183,7 +204,7 @@ export function makeFurnaceSystem(board, grid, opts) {
               const bundle = Math.min(need, src.avail);
               board.post('supply', {
                 itemId: src.id,
-                kind: ing.kind,
+                kind,
                 count: bundle,
                 fromI: src.i,
                 fromJ: src.j,
@@ -194,6 +215,7 @@ export function makeFurnaceSystem(board, grid, opts) {
               });
               claimed.set(src.id, (claimed.get(src.id) ?? 0) + bundle);
               supplyInFlight.set(key, (supplyInFlight.get(key) ?? 0) + bundle);
+              availableByKind.set(kind, (availableByKind.get(kind) ?? 0) - bundle);
               need -= bundle;
             }
           }

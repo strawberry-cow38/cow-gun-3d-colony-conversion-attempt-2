@@ -104,6 +104,37 @@ describe('furnace system: supply posting', () => {
     expect(sourceIds.has(ore2)).toBe(true);
   });
 
+  it('posts no supplies when one ingredient cannot be fully sourced', () => {
+    // Recipe needs 1 coal + 5 copper_ore; only coal exists on the map. The
+    // poster must hold off on the coal supply too, otherwise coal would pile
+    // in the furnace while the ore never arrives.
+    const grid = new TileGrid(8, 8);
+    const world = makeWorld();
+    spawnFurnace(world, 2, 2, 2, 3, [{}]);
+    spawnItem(world, 5, 5, 'coal', 5);
+    const board = new JobBoard();
+
+    tick(world, board, grid);
+
+    expect(board.jobs.filter((j) => j.kind === 'supply')).toHaveLength(0);
+  });
+
+  it('posts supplies once every ingredient is fully sourceable', () => {
+    const grid = new TileGrid(8, 8);
+    const world = makeWorld();
+    spawnFurnace(world, 2, 2, 2, 3, [{}]);
+    spawnItem(world, 5, 5, 'coal', 5);
+    const board = new JobBoard();
+
+    tick(world, board, grid);
+    expect(board.jobs.filter((j) => j.kind === 'supply')).toHaveLength(0);
+
+    spawnItem(world, 6, 6, 'copper_ore', 20);
+    tick(world, board, grid);
+    const supply = board.jobs.filter((j) => j.kind === 'supply');
+    expect(supply).toHaveLength(2);
+  });
+
   it('does not double-post supplies when ones are already in flight', () => {
     const grid = new TileGrid(8, 8);
     const world = makeWorld();

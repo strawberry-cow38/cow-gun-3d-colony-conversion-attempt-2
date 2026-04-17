@@ -306,6 +306,30 @@ export function findNearestAvailableItem(world, grid, claimed, kind, i, j) {
 }
 
 /**
+ * Total unclaimed units of every (non-forbidden) kind on the map. Sums
+ * `item.count - claimed[id]` across all Item entities. Used by bill posters
+ * to pre-check whether a recipe is fully sourceable before committing to
+ * any supply haul — prevents "2 coal in the furnace with no ore mined"
+ * partial-supply deadlocks.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {Map<number, number>} claimed  itemId → already-claimed units
+ * @returns {Map<string, number>}  kind → available units
+ */
+export function totalAvailableByKind(world, claimed) {
+  /** @type {Map<string, number>} */
+  const out = new Map();
+  for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
+    const item = components.Item;
+    if (item.forbidden) continue;
+    const avail = item.count - (claimed.get(id) ?? 0);
+    if (avail <= 0) continue;
+    out.set(item.kind, (out.get(item.kind) ?? 0) + avail);
+  }
+  return out;
+}
+
+/**
  * Find the nearest walkable tile to (i, j) that is not itself a blueprint
  * tile and not already reserved by an in-flight relocation. Used to pick a
  * drop spot for forbidden stacks blocking a wall blueprint.

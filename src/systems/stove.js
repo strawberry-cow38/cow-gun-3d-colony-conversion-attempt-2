@@ -6,7 +6,11 @@
  * finishes — two meals with different ingredients or rolls never stack.
  */
 
-import { buildHaulTargetedCounts, findNearestAvailableItem } from '../jobs/haul.js';
+import {
+  buildHaulTargetedCounts,
+  findNearestAvailableItem,
+  totalAvailableByKind,
+} from '../jobs/haul.js';
 import { kindsWithTag, stackCount, stackRemove } from '../world/items.js';
 import { cookingSkillFor, rollQuality } from '../world/quality.js';
 import { RECIPES, STATION_RECIPES } from '../world/recipes.js';
@@ -50,6 +54,7 @@ export function makeStoveSystem(board, grid) {
 
       const stockByKind = computeStockByKind(world, { includeActiveCrafts: true });
       const claimed = buildHaulTargetedCounts(world, board);
+      const availableByKind = totalAvailableByKind(world, claimed);
       const allowed = new Set(STATION_RECIPES.stove ?? []);
 
       for (const { id: stoveId, components } of world.query(['Stove', 'Bills', 'TileAnchor'])) {
@@ -127,6 +132,12 @@ export function makeStoveSystem(board, grid) {
             break;
           }
 
+          // Feasibility gate — see furnace.js. Only post supplies when every
+          // ingredient's deficit can be fully sourced right now; otherwise
+          // the bill stalls mid-supply.
+          /** @type {{ kinds: string[], need: number }[]} */
+          const deficits = [];
+          let feasible = true;
           for (const ing of recipe.ingredients) {
             const kinds = ingredientKinds(ing);
             let have = 0;
@@ -135,7 +146,20 @@ export function makeStoveSystem(board, grid) {
               have += stackCount(stove.stored ?? [], k);
               inFlight += supplyInFlight.get(`${stoveId}:${k}`) ?? 0;
             }
-            let need = ing.count - have - inFlight;
+            const need = ing.count - have - inFlight;
+            if (need <= 0) continue;
+            let avail = 0;
+            for (const k of kinds) avail += availableByKind.get(k) ?? 0;
+            if (avail < need) {
+              feasible = false;
+              break;
+            }
+            deficits.push({ kinds, need });
+          }
+          if (!feasible) break;
+
+          for (const { kinds, need: initialNeed } of deficits) {
+            let need = initialNeed;
             while (need > 0) {
               /** Find the nearest source across any kind that satisfies this
                *  ingredient — for tag ingredients this lets us pull corn from
@@ -177,6 +201,7 @@ export function makeStoveSystem(board, grid) {
               claimed.set(best.id, (claimed.get(best.id) ?? 0) + bundle);
               const key = `${stoveId}:${bestKind}`;
               supplyInFlight.set(key, (supplyInFlight.get(key) ?? 0) + bundle);
+              availableByKind.set(bestKind, (availableByKind.get(bestKind) ?? 0) - bundle);
               need -= bundle;
             }
           }
