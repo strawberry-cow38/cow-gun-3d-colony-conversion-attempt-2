@@ -22,10 +22,11 @@ const BIOME_COLORS = {
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 
-// Cliff faces show exposed earth rather than the top-biome color — grass tiles
-// shouldn't have green vertical walls. Darken the top color as a proxy for
-// "subsurface rock/dirt" until we have a dedicated side material.
-const CLIFF_SHADE = 0.55;
+// Cliff faces show exposed earth rather than the top biome. A fixed warm
+// brown reads fine under any lighting — horizontal normals barely pick up
+// the hemisphere light's ground term, so tying cliff colour to the (often
+// dark) top biome × 0.55 made them look pure black.
+const CLIFF_COLOR = new THREE.Color(0x8a6b48);
 
 /**
  * @param {import('../world/tileGrid.js').TileGrid} tileGrid
@@ -129,9 +130,9 @@ export function buildTileMesh(tileGrid) {
 
       // Out-of-bounds neighbors drop to Y=0 (the water plane). Same-or-higher
       // neighbors get skipped — their own face will cover it when rendered.
-      const cr = base.r * CLIFF_SHADE;
-      const cg = base.g * CLIFF_SHADE;
-      const cb = base.b * CLIFF_SHADE;
+      const cr = CLIFF_COLOR.r;
+      const cg = CLIFF_COLOR.g;
+      const cb = CLIFF_COLOR.b;
       const yW = i > 0 ? tileGrid.getElevation(i - 1, j) : 0;
       const yE = i < W - 1 ? tileGrid.getElevation(i + 1, j) : 0;
       const yN = j > 0 ? tileGrid.getElevation(i, j - 1) : 0;
