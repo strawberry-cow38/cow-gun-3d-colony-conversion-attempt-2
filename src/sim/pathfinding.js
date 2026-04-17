@@ -76,9 +76,11 @@ function ensureScratch(size) {
  * A* on a TileGrid. Returns array of {i,j} from start (inclusive) to goal
  * (inclusive), or null if no path.
  *
- * `start.z` and `goal.z` are reserved for stacked-layer pathing; today the
- * grid is a single layer so both must be 0 (or undefined). Cross-layer paths
- * will land here once ramps exist.
+ * `start.z` and `goal.z` describe the layer index; today A* is single-layer
+ * only — cross-layer pathing lands when ramps exist, so start.z must equal
+ * goal.z here. `grid` must be the TileGrid of that shared layer (use
+ * `tileWorld.getLayer(z)` to resolve). On layers above ground, every walkable
+ * neighbor additionally requires a floor — air tiles are unwalkable.
  *
  * @param {TileGrid} grid
  * @param {{ i: number, j: number, z?: number }} start
@@ -87,13 +89,21 @@ function ensureScratch(size) {
  * @returns {{ i: number, j: number }[] | null}
  */
 export function findPath(grid, start, goal, walkable = defaultWalkable) {
-  if ((start.z ?? 0) !== 0 || (goal.z ?? 0) !== 0) return null;
+  const z = start.z ?? 0;
+  if ((goal.z ?? 0) !== z) return null;
   if (!grid.inBounds(start.i, start.j) || !grid.inBounds(goal.i, goal.j)) return null;
+  // Layers above ground are walkable only where a floor is built — air is
+  // impassable. On z=0 the terrain is the floor so this check is a no-op.
+  const passable =
+    z === 0
+      ? walkable
+      : /** @param {TileGrid} g @param {number} i @param {number} j */
+        (g, i, j) => walkable(g, i, j) && g.isFloor(i, j);
   // Start-tile walkability is intentionally not gated: the cow is already
   // standing there, so refusing to find a path would leave it stranded if
   // anything ever blocks the tile under it (e.g. a sapling spawning on the
   // cow's grass). Goal still must be walkable.
-  if (!walkable(grid, goal.i, goal.j)) return null;
+  if (!passable(grid, goal.i, goal.j)) return null;
   if (start.i === goal.i && start.j === goal.j) return [{ i: start.i, j: start.j }];
 
   const W = grid.W;
@@ -145,10 +155,10 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
       if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
       const nIdx = nj * W + ni;
       if (closed[nIdx]) continue;
-      if (!walkable(grid, ni, nj)) continue;
+      if (!passable(grid, ni, nj)) continue;
       // No corner-cutting through solid diagonals.
       if (di !== 0 && dj !== 0) {
-        if (!walkable(grid, ci + di, cj) || !walkable(grid, ci, cj + dj)) continue;
+        if (!passable(grid, ci + di, cj) || !passable(grid, ci, cj + dj)) continue;
       }
       const tentative = gScore[current] + cost;
       if (tentative < gScore[nIdx]) {

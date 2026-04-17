@@ -64,6 +64,34 @@ describe('findPath', () => {
     const p = findPath(g, { i: 0, j: 0 }, { i: 1, j: 1 }, walkable);
     expect(p).toBeNull();
   });
+
+  it('rejects cross-layer paths (start.z !== goal.z)', () => {
+    const g = new TileGrid(4, 4);
+    const p = findPath(g, { i: 0, j: 0, z: 0 }, { i: 3, j: 3, z: 1 });
+    expect(p).toBeNull();
+  });
+
+  it('on z > 0, requires floors — air is unwalkable', () => {
+    // "Layer 1" represented as a bare TileGrid with no floors. Every tile is
+    // air; findPath must refuse any goal here.
+    const upper = new TileGrid(4, 4);
+    expect(findPath(upper, { i: 0, j: 0, z: 1 }, { i: 3, j: 3, z: 1 })).toBeNull();
+  });
+
+  it('on z > 0, routes along floored tiles', () => {
+    const upper = new TileGrid(4, 4);
+    // Floor the entire row 0, then the full column 3 — L-shaped path only.
+    for (let i = 0; i < 4; i++) upper.setFloor(i, 0, 1);
+    for (let j = 0; j < 4; j++) upper.setFloor(3, j, 1);
+    const p = findPath(upper, { i: 0, j: 0, z: 1 }, { i: 3, j: 3, z: 1 });
+    expect(p).not.toBeNull();
+    if (p) {
+      expect(p[0]).toEqual({ i: 0, j: 0 });
+      expect(p[p.length - 1]).toEqual({ i: 3, j: 3 });
+      // Every step sits on a floored tile.
+      for (const { i, j } of p) expect(upper.isFloor(i, j)).toBe(true);
+    }
+  });
 });
 
 describe('PathCache', () => {
