@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PathCache, defaultWalkable, findPath } from '../../src/sim/pathfinding.js';
 import { TileGrid } from '../../src/world/tileGrid.js';
+import { TileWorld } from '../../src/world/tileWorld.js';
 
 describe('findPath', () => {
   it('returns single-tile path when start equals goal', () => {
@@ -90,6 +91,82 @@ describe('findPath', () => {
       expect(p[p.length - 1]).toEqual({ i: 3, j: 3 });
       // Every step sits on a floored tile.
       for (const { i, j } of p) expect(upper.isFloor(i, j)).toBe(true);
+    }
+  });
+});
+
+describe('findPath (multi-layer via TileWorld)', () => {
+  it('climbs a ramp from z=0 to z=1', () => {
+    const world = new TileWorld(new TileGrid(5, 5));
+    world.pushEmptyLayer();
+    // Ramp at (2,2) bridges z=0 and z=1. Floor a strip on z=1 so the goal has
+    // somewhere to walk.
+    world.layers[0].setRamp(2, 2, 1);
+    for (let i = 2; i < 5; i++) world.layers[1].setFloor(i, 2, 1);
+    const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 4, j: 2, z: 1 });
+    expect(p).not.toBeNull();
+    if (p) {
+      expect(p[0]).toEqual({ i: 0, j: 0, z: 0 });
+      expect(p[p.length - 1]).toEqual({ i: 4, j: 2, z: 1 });
+      let crossed = false;
+      for (let k = 1; k < p.length; k++) {
+        if (p[k].z !== p[k - 1].z) {
+          expect(p[k].i).toBe(p[k - 1].i);
+          expect(p[k].j).toBe(p[k - 1].j);
+          expect(p[k].i).toBe(2);
+          expect(p[k].j).toBe(2);
+          crossed = true;
+        }
+      }
+      expect(crossed).toBe(true);
+    }
+  });
+
+  it('returns null when no ramp connects the layers', () => {
+    const world = new TileWorld(new TileGrid(5, 5));
+    world.pushEmptyLayer();
+    for (let i = 0; i < 5; i++) world.layers[1].setFloor(i, 2, 1);
+    const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 4, j: 2, z: 1 });
+    expect(p).toBeNull();
+  });
+
+  it('ramp footprint counts as implicit floor on the upper layer', () => {
+    const world = new TileWorld(new TileGrid(4, 4));
+    world.pushEmptyLayer();
+    // A ramp on the ground — its top tile on z=1 has NO setFloor.
+    world.layers[0].setRamp(1, 1, 1);
+    const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 1, j: 1, z: 1 });
+    expect(p).not.toBeNull();
+    if (p) expect(p[p.length - 1]).toEqual({ i: 1, j: 1, z: 1 });
+  });
+
+  it('bounds-checks z against the stack', () => {
+    const world = new TileWorld(new TileGrid(3, 3));
+    world.pushEmptyLayer();
+    expect(findPath(world, { i: 0, j: 0, z: 0 }, { i: 0, j: 0, z: 2 })).toBeNull();
+    expect(findPath(world, { i: 0, j: 0, z: -1 }, { i: 0, j: 0, z: 0 })).toBeNull();
+  });
+
+  it('single-layer TileWorld still finds flat paths', () => {
+    const world = new TileWorld(new TileGrid(5, 5));
+    const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 4, j: 4, z: 0 });
+    expect(p).not.toBeNull();
+    if (p) {
+      expect(p[0]).toEqual({ i: 0, j: 0, z: 0 });
+      expect(p[p.length - 1]).toEqual({ i: 4, j: 4, z: 0 });
+    }
+  });
+
+  it('descends from z=1 back to z=0 through the same ramp', () => {
+    const world = new TileWorld(new TileGrid(5, 5));
+    world.pushEmptyLayer();
+    world.layers[0].setRamp(2, 2, 1);
+    for (let i = 2; i < 5; i++) world.layers[1].setFloor(i, 2, 1);
+    const p = findPath(world, { i: 4, j: 2, z: 1 }, { i: 0, j: 0, z: 0 });
+    expect(p).not.toBeNull();
+    if (p) {
+      expect(p[0]).toEqual({ i: 4, j: 2, z: 1 });
+      expect(p[p.length - 1]).toEqual({ i: 0, j: 0, z: 0 });
     }
   });
 });

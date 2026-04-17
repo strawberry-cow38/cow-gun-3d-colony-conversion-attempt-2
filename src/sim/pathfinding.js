@@ -5,6 +5,13 @@
  * Diagonal moves require both adjacent cardinals to be walkable (no corner-cutting
  * through diagonal walls) — important once we add solid tiles.
  *
+ * Multi-layer: when the first arg is a `TileWorld` with stacked layers,
+ * neighbor expansion additionally follows ramps. A ramp bit on layer z at
+ * (i,j) creates a vertical edge to (i,j,z+1) (and back), and its footprint
+ * counts as an implicit floor on layer z+1 — so upper-layer tiles are
+ * walkable either via a placed floor OR a ramp poking up from below. Raw
+ * `TileGrid` callers get today's single-layer behavior unchanged.
+ *
  * `PathCache` memoizes (start,goal) → path. Prefer `invalidateTile(i, j)` on
  * localized walkability changes (a single chop/mine/wall) so we only evict
  * paths actually affected. `clear()` is still available for catastrophic
@@ -12,6 +19,7 @@
  */
 
 import { BIOME, TileGrid } from '../world/tileGrid.js';
+/** @typedef {import('../world/tileWorld.js').TileWorld} TileWorld */
 
 const SQRT2 = Math.SQRT2;
 
@@ -73,52 +81,87 @@ function ensureScratch(size) {
 }
 
 /**
- * A* on a TileGrid. Returns array of {i,j} from start (inclusive) to goal
- * (inclusive), or null if no path.
+ * A* over a TileGrid (single-layer) or a TileWorld (stacked layers, cross-
+ * layer via ramps). Returns array of `{i,j}` (grid input) or `{i,j,z}` (world
+ * input) from start (inclusive) to goal (inclusive), or null if no path.
  *
- * `start.z` and `goal.z` describe the layer index; today A* is single-layer
- * only — cross-layer pathing lands when ramps exist, so start.z must equal
- * goal.z here. `grid` must be the TileGrid of that shared layer (use
- * `tileWorld.getLayer(z)` to resolve). On layers above ground, every walkable
- * neighbor additionally requires a floor — air tiles are unwalkable.
+ * `start.z` / `goal.z` pick the layer. Single-layer: they must match; z>0 is
+ * still respected via the upper-layer floor rule (air unwalkable, placed
+ * floors walkable). Multi-layer: any in-range z is valid and ramps let the
+ * plan move between layers.
  *
- * @param {TileGrid} grid
+ * @param {TileGrid | TileWorld} gridOrWorld
  * @param {{ i: number, j: number, z?: number }} start
  * @param {{ i: number, j: number, z?: number }} goal
  * @param {(grid: TileGrid, i: number, j: number) => boolean} [walkable]
- * @returns {{ i: number, j: number }[] | null}
+ * @returns {{ i: number, j: number, z?: number }[] | null}
  */
-export function findPath(grid, start, goal, walkable = defaultWalkable) {
-  const z = start.z ?? 0;
-  if ((goal.z ?? 0) !== z) return null;
-  if (!grid.inBounds(start.i, start.j) || !grid.inBounds(goal.i, goal.j)) return null;
-  // Layers above ground are walkable only where a floor is built — air is
-  // impassable. On z=0 the terrain is the floor so this check is a no-op.
-  const passable =
-    z === 0
-      ? walkable
-      : /** @param {TileGrid} g @param {number} i @param {number} j */
-        (g, i, j) => walkable(g, i, j) && g.isFloor(i, j);
+export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
+  const world = Array.isArray(/** @type {any} */ (gridOrWorld).layers)
+    ? /** @type {TileWorld} */ (gridOrWorld)
+    : null;
+  const layer0 = /** @type {TileGrid} */ (world ? world.layers[0] : gridOrWorld);
+  const depth = world ? world.layers.length : 1;
+  const W = layer0.W;
+  const H = layer0.H;
+  const layerSize = W * H;
+
+  const sz = start.z ?? 0;
+  const gz = goal.z ?? 0;
+
+  // Single-layer input doesn't know about other layers, so cross-z goals
+  // don't make sense — reject rather than pretend. Multi-layer bounds-checks
+  // against the actual stack.
+  if (world) {
+    if (sz < 0 || sz >= depth || gz < 0 || gz >= depth) return null;
+  } else if (sz !== gz) {
+    return null;
+  }
+  if (!layer0.inBounds(start.i, start.j) || !layer0.inBounds(goal.i, goal.j)) return null;
+
+  /** @param {number} z */
+  const layerAt = (z) => (world ? world.layers[z] : layer0);
+
+  /** @param {number} i @param {number} j @param {number} z */
+  const passable = (i, j, z) => {
+    const g = layerAt(z);
+    if (!walkable(g, i, j)) return false;
+    if (z === 0) return true;
+    if (g.isFloor(i, j)) return true;
+    if (world) {
+      const below = world.layers[z - 1];
+      if (below?.isRamp(i, j)) return true;
+      return false;
+    }
+    // Raw TileGrid with z>0: no stack to ask, floor is the only lift.
+    return false;
+  };
+
   // Start-tile walkability is intentionally not gated: the cow is already
   // standing there, so refusing to find a path would leave it stranded if
   // anything ever blocks the tile under it (e.g. a sapling spawning on the
   // cow's grass). Goal still must be walkable.
-  if (!passable(grid, goal.i, goal.j)) return null;
-  if (start.i === goal.i && start.j === goal.j) return [{ i: start.i, j: start.j }];
+  if (!passable(goal.i, goal.j, gz)) return null;
+  if (start.i === goal.i && start.j === goal.j && sz === gz) {
+    return world ? [{ i: start.i, j: start.j, z: sz }] : [{ i: start.i, j: start.j }];
+  }
 
-  const W = grid.W;
-  const H = grid.H;
-  const startIdx = start.j * W + start.i;
-  const goalIdx = goal.j * W + goal.i;
+  // Single-layer callers may pass z>0 (e.g. "this is the upper floor"), but
+  // the scratch is only layerSize wide — pack everything into z=0 of the flat
+  // buffer. Multi-layer uses the real z. The logical z still flows through
+  // passable() so the upper-floor rule applies in both modes.
+  const flatCells = layerSize * depth;
+  /** @param {number} z */
+  const flatZ = (z) => (world ? z : 0);
+  const startIdx = flatZ(sz) * layerSize + start.j * W + start.i;
+  const goalIdx = flatZ(gz) * layerSize + goal.j * W + goal.i;
 
-  ensureScratch(W * H);
+  ensureScratch(flatCells);
   const gScore = /** @type {Float32Array} */ (_gScore);
   const fScore = /** @type {Float32Array} */ (_fScore);
   const cameFrom = /** @type {Int32Array} */ (_cameFrom);
   const closed = /** @type {Uint8Array} */ (_closed);
-  // Fill only the region we'll touch for this grid size.
-  const cells = W * H;
-  for (let k = 0; k < cells; k++) {
+  for (let k = 0; k < flatCells; k++) {
     gScore[k] = Number.POSITIVE_INFINITY;
     fScore[k] = Number.POSITIVE_INFINITY;
     cameFrom[k] = -1;
@@ -131,13 +174,29 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
   const open = new MinHeap();
   open.push(startIdx, fScore[startIdx]);
 
+  /** @param {number} nIdx @param {number} ni @param {number} nj @param {number} nz @param {number} currentIdx @param {number} stepCost */
+  const relax = (nIdx, ni, nj, nz, currentIdx, stepCost) => {
+    if (closed[nIdx]) return;
+    const tentative = gScore[currentIdx] + stepCost;
+    if (tentative < gScore[nIdx]) {
+      cameFrom[nIdx] = currentIdx;
+      gScore[nIdx] = tentative;
+      fScore[nIdx] = tentative + octile(ni, nj, goal.i, goal.j);
+      open.push(nIdx, fScore[nIdx]);
+    }
+  };
+
   while (open.size > 0) {
     const current = open.pop();
     if (current === goalIdx) {
       const path = [];
       let n = current;
       while (n !== -1) {
-        path.push({ i: n % W, j: Math.floor(n / W) });
+        const pzFlat = Math.floor(n / layerSize);
+        const r = n - pzFlat * layerSize;
+        const i = r % W;
+        const j = (r - i) / W;
+        path.push(world ? { i, j, z: pzFlat } : { i, j });
         n = cameFrom[n];
       }
       path.reverse();
@@ -146,26 +205,37 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
     if (closed[current]) continue;
     closed[current] = 1;
 
-    const ci = current % W;
-    const cj = Math.floor(current / W);
+    const czFlat = Math.floor(current / layerSize);
+    const cr = current - czFlat * layerSize;
+    const ci = cr % W;
+    const cj = (cr - ci) / W;
+    // Logical z drives the floor/ramp rule in passable; flat z indexes the
+    // scratch buffer. Single-layer packs everything into flat z=0 while
+    // logical z stays at sz so "above-ground" semantics still apply.
+    const cz = world ? czFlat : sz;
 
+    // 8 horizontal neighbors on the same layer.
     for (const [di, dj, cost] of NEIGHBORS) {
       const ni = ci + di;
       const nj = cj + dj;
       if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
-      const nIdx = nj * W + ni;
-      if (closed[nIdx]) continue;
-      if (!passable(grid, ni, nj)) continue;
-      // No corner-cutting through solid diagonals.
+      if (!passable(ni, nj, cz)) continue;
+      // No corner-cutting through solid diagonals (checked on the same layer).
       if (di !== 0 && dj !== 0) {
-        if (!passable(grid, ci + di, cj) || !passable(grid, ci, cj + dj)) continue;
+        if (!passable(ci + di, cj, cz) || !passable(ci, cj + dj, cz)) continue;
       }
-      const tentative = gScore[current] + cost;
-      if (tentative < gScore[nIdx]) {
-        cameFrom[nIdx] = current;
-        gScore[nIdx] = tentative;
-        fScore[nIdx] = tentative + octile(ni, nj, goal.i, goal.j);
-        open.push(nIdx, fScore[nIdx]);
+      relax(flatZ(cz) * layerSize + nj * W + ni, ni, nj, cz, current, cost);
+    }
+
+    // Vertical moves through ramps. Only meaningful on multi-layer worlds.
+    if (world) {
+      // Up: a ramp on the current layer lifts us to (ci,cj,cz+1).
+      if (cz + 1 < depth && layerAt(cz).isRamp(ci, cj) && passable(ci, cj, cz + 1)) {
+        relax((cz + 1) * layerSize + cj * W + ci, ci, cj, cz + 1, current, 1);
+      }
+      // Down: a ramp on the layer below drops us to (ci,cj,cz-1).
+      if (cz > 0 && layerAt(cz - 1).isRamp(ci, cj) && passable(ci, cj, cz - 1)) {
+        relax((cz - 1) * layerSize + cj * W + ci, ci, cj, cz - 1, current, 1);
       }
     }
   }
@@ -184,12 +254,18 @@ export function findPath(grid, start, goal, walkable = defaultWalkable) {
  */
 export class PathCache {
   /**
-   * @param {TileGrid} grid
+   * @param {TileGrid | TileWorld} gridOrWorld
    * @param {(grid: TileGrid, i: number, j: number) => boolean} [walkable]
    * @param {{ capacity?: number }} [opts]
    */
-  constructor(grid, walkable = defaultWalkable, opts = {}) {
-    this.grid = grid;
+  constructor(gridOrWorld, walkable = defaultWalkable, opts = {}) {
+    this.grid = gridOrWorld;
+    /** Ground layer — used for W/H in the 2D tile index math. */
+    this.layer0 = /** @type {TileGrid} */ (
+      Array.isArray(/** @type {any} */ (gridOrWorld).layers)
+        ? /** @type {TileWorld} */ (gridOrWorld).layers[0]
+        : gridOrWorld
+    );
     this.walkable = walkable;
     this.capacity = opts.capacity ?? 2048;
     /** @type {Map<string, { i: number, j: number }[] | null>} */
@@ -253,8 +329,8 @@ export class PathCache {
     // Only the z=0 layer holds paths today; non-zero is a no-op until
     // stacked-floor pathing lands.
     if (z !== 0) return;
-    const W = this.grid.W;
-    const H = this.grid.H;
+    const W = this.layer0.W;
+    const H = this.layer0.H;
     const minI = Math.max(0, i - 1);
     const maxI = Math.min(W - 1, i + 1);
     const minJ = Math.max(0, j - 1);
@@ -283,7 +359,7 @@ export class PathCache {
    * @param {{ i: number, j: number }} goal
    */
   #indexEntry(key, path, start, goal) {
-    const W = this.grid.W;
+    const W = this.layer0.W;
     if (path === null) {
       this.#addToIndex(start.j * W + start.i, key);
       if (goal.i !== start.i || goal.j !== start.j) {
@@ -317,7 +393,7 @@ export class PathCache {
    * @param {{ i: number, j: number }[] | null} path
    */
   #deindexEntry(key, path) {
-    const W = this.grid.W;
+    const W = this.layer0.W;
     if (path === null) {
       // Recover start/goal from the key — null-path entries never carry their
       // own path array, so the key is the only source of tile coords. Key
