@@ -15,7 +15,7 @@ const CSS = `
   pointer-events: none;
   display: none;
   z-index: 10;
-  font-family: "Courier New", monospace;
+  font-family: inherit;
   color: #fff;
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.85);
 }
