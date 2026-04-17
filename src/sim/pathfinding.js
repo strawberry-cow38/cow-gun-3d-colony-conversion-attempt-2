@@ -196,8 +196,8 @@ export class PathCache {
   }
 
   /**
-   * @param {{ i: number, j: number }} start
-   * @param {{ i: number, j: number }} goal
+   * @param {{ i: number, j: number, z?: number }} start
+   * @param {{ i: number, j: number, z?: number }} goal
    * @param {{ cache?: boolean }} [opts] pass { cache: false } for ephemeral
    *   queries (e.g. wander) that would otherwise churn the LRU.
    */
@@ -206,7 +206,9 @@ export class PathCache {
       this.misses++;
       return findPath(this.grid, start, goal, this.walkable);
     }
-    const key = `${start.i},${start.j}|${goal.i},${goal.j}`;
+    const sz = start.z ?? 0;
+    const gz = goal.z ?? 0;
+    const key = `${start.i},${start.j},${sz}|${goal.i},${goal.j},${gz}`;
     const hit = this.cache.get(key);
     if (hit !== undefined) {
       // Touch: Map preserves insertion order, so delete+set re-inserts at the
@@ -235,9 +237,12 @@ export class PathCache {
    * could invalidate the diagonal, even if the path never stepped on the
    * changed tile itself).
    *
-   * @param {number} i @param {number} j
+   * @param {number} i @param {number} j @param {number} [z]  defaults to 0
    */
-  invalidateTile(i, j) {
+  invalidateTile(i, j, z = 0) {
+    // Only the z=0 layer holds paths today; non-zero is a no-op until
+    // stacked-floor pathing lands.
+    if (z !== 0) return;
     const W = this.grid.W;
     const H = this.grid.H;
     const minI = Math.max(0, i - 1);
@@ -305,7 +310,8 @@ export class PathCache {
     const W = this.grid.W;
     if (path === null) {
       // Recover start/goal from the key — null-path entries never carry their
-      // own path array, so the key is the only source of tile coords.
+      // own path array, so the key is the only source of tile coords. Key
+      // shape: "si,sj,sz|gi,gj,gz". Layer indexing lands with stacked paths.
       const [s, g] = key.split('|');
       const [si, sj] = s.split(',');
       const [gi, gj] = g.split(',');

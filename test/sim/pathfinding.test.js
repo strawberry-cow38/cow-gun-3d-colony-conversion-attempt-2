@@ -179,7 +179,29 @@ describe('PathCache', () => {
     // tile. If deindex leaked, row-0 tiles would still hold a dangling key.
     for (let i = 0; i < 4; i++) {
       const set = cache.tileIndex.get(0 * 4 + i);
-      if (set) expect(set.has('0,0|3,0')).toBe(false);
+      if (set) expect(set.has('0,0,0|3,0,0')).toBe(false);
     }
+  });
+
+  it('threads z into cache keys — same (i,j) on a different z misses', () => {
+    const g = new TileGrid(4, 4);
+    const cache = new PathCache(g, defaultWalkable);
+    cache.find({ i: 0, j: 0 }, { i: 3, j: 3 });
+    expect(cache.misses).toBe(1);
+    // Same (i,j) pair but goal on z=1 must not hit the z=0 cache entry.
+    // findPath itself returns null for non-zero z today, so the cache stores
+    // a null — but it's stored under a distinct key.
+    cache.find({ i: 0, j: 0 }, { i: 3, j: 3, z: 1 });
+    expect(cache.misses).toBe(2);
+    expect(cache.cache.size).toBe(2);
+  });
+
+  it('invalidateTile is a no-op on non-zero z layers', () => {
+    const g = new TileGrid(4, 4);
+    const cache = new PathCache(g, defaultWalkable);
+    cache.find({ i: 0, j: 0 }, { i: 3, j: 3 });
+    const sizeBefore = cache.cache.size;
+    cache.invalidateTile(2, 2, 1);
+    expect(cache.cache.size).toBe(sizeBefore);
   });
 });
