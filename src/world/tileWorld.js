@@ -9,7 +9,7 @@
  * grid did before.
  */
 
-/** @typedef {import('./tileGrid.js').TileGrid} TileGrid */
+import { TileGrid } from './tileGrid.js';
 
 export class TileWorld {
   /**
@@ -38,5 +38,20 @@ export class TileWorld {
   /** Layer count (height of the stack). 1 until stacked floors ship. */
   get depth() {
     return this.layers.length;
+  }
+
+  /**
+   * Grow the stack by one empty layer. The new layer is a blank `TileGrid`
+   * with the same W×H as the ground — all tiles default to air (biome 0,
+   * occupancy 0, no structures) so pathing sees it as empty space. Returns
+   * the z index assigned to the new layer.
+   *
+   * Intended for future stacked-floor work; no production caller today.
+   */
+  pushEmptyLayer() {
+    const ground = this.layers[0];
+    const layer = new TileGrid(ground.W, ground.H);
+    this.layers.push(layer);
+    return this.layers.length - 1;
   }
 }
