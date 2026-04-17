@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE } from '../world/coords.js';
-import { BIOME } from '../world/tileGrid.js';
+import { BIOME, SKIRT_TILES } from '../world/tileGrid.js';
 
 const BIOME_COLORS = {
   [BIOME.GRASS]: new THREE.Color(0x3a7a3a),
@@ -43,7 +43,16 @@ const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
  */
 export function buildTileMesh(tileGrid) {
   const { W, H } = tileGrid;
-  const tileCount = W * H;
+  // When `hasSkirt` is set, the renderer walks a ring of SKIRT_TILES beyond
+  // the playable grid so lakes / hills don't terminate in a sharp line at
+  // the map edge. Picking + pathing still clamp to the inner W×H.
+  const skirted = tileGrid.hasSkirt === true;
+  const S = skirted ? SKIRT_TILES : 0;
+  const iMin = -S;
+  const iMax = W + S;
+  const jMin = -S;
+  const jMax = H + S;
+  const tileCount = (iMax - iMin) * (jMax - jMin);
   // Worst case: every tile has 4 neighbors lower than itself → 4 cliff quads.
   // Allocate the upper bound, slice at the end. Sub-typed arrays would be
   // equivalent but this keeps the hot loop branch-free on `push`.
@@ -56,6 +65,13 @@ export function buildTileMesh(tileGrid) {
 
   const halfW = (W * TILE_SIZE) / 2;
   const halfH = (H * TILE_SIZE) / 2;
+
+  const getElev = skirted
+    ? (i, j) => tileGrid.getSkirtElevation(i, j)
+    : (i, j) => tileGrid.getElevation(i, j);
+  const getBiome = skirted
+    ? (i, j) => tileGrid.getSkirtBiome(i, j)
+    : (i, j) => tileGrid.getBiome(i, j);
 
   let v = 0;
   let ix = 0;
@@ -94,13 +110,13 @@ export function buildTileMesh(tileGrid) {
     indices[ix++] = baseV + 3;
   };
 
-  for (let j = 0; j < H; j++) {
-    for (let i = 0; i < W; i++) {
+  for (let j = jMin; j < jMax; j++) {
+    for (let i = iMin; i < iMax; i++) {
       const x0 = i * TILE_SIZE - halfW;
       const x1 = x0 + TILE_SIZE;
       const z0 = j * TILE_SIZE - halfH;
       const z1 = z0 + TILE_SIZE;
-      const y = tileGrid.getElevation(i, j);
+      const y = getElev(i, j);
 
       const baseV = v / 3;
       positions[v++] = x0;
@@ -116,7 +132,7 @@ export function buildTileMesh(tileGrid) {
       positions[v++] = y;
       positions[v++] = z1;
 
-      const biome = tileGrid.getBiome(i, j);
+      const biome = getBiome(i, j);
       const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
       const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
       const tr = base.r * topShade;
@@ -144,10 +160,10 @@ export function buildTileMesh(tileGrid) {
       const cr = cliff.r;
       const cg = cliff.g;
       const cb = cliff.b;
-      const yW = i > 0 ? tileGrid.getElevation(i - 1, j) : 0;
-      const yE = i < W - 1 ? tileGrid.getElevation(i + 1, j) : 0;
-      const yN = j > 0 ? tileGrid.getElevation(i, j - 1) : 0;
-      const yS = j < H - 1 ? tileGrid.getElevation(i, j + 1) : 0;
+      const yW = i > iMin ? getElev(i - 1, j) : 0;
+      const yE = i < iMax - 1 ? getElev(i + 1, j) : 0;
+      const yN = j > jMin ? getElev(i, j - 1) : 0;
+      const yS = j < jMax - 1 ? getElev(i, j + 1) : 0;
       // West edge: outward normal is -X. Winding so the lower-corner triangle
       // pair faces outward: (x0,z1,y) → (x0,z0,y) → down, then back.
       if (yW < y) pushCliff(x0, z1, x0, z0, y, yW, cr, cg, cb);
@@ -194,10 +210,17 @@ export function buildWaterSurface(tileGrid) {
   const { W, H } = tileGrid;
   const halfW = (W * TILE_SIZE) / 2;
   const halfH = (H * TILE_SIZE) / 2;
+  const skirted = tileGrid.hasSkirt === true;
+  const S = skirted ? SKIRT_TILES : 0;
+  const iMin = -S;
+  const iMax = W + S;
+  const jMin = -S;
+  const jMax = H + S;
 
   let deepCount = 0;
-  for (let k = 0; k < tileGrid.biome.length; k++) {
-    if (tileGrid.biome[k] === BIOME.DEEP_WATER) deepCount++;
+  const sourceBiome = skirted ? tileGrid.skirtBiome : tileGrid.biome;
+  for (let k = 0; k < sourceBiome.length; k++) {
+    if (sourceBiome[k] === BIOME.DEEP_WATER) deepCount++;
   }
   if (deepCount === 0) return null;
 
@@ -205,9 +228,12 @@ export function buildWaterSurface(tileGrid) {
   const indices = new Uint32Array(deepCount * 6);
   let v = 0;
   let ix = 0;
-  for (let j = 0; j < H; j++) {
-    for (let i = 0; i < W; i++) {
-      if (tileGrid.getBiome(i, j) !== BIOME.DEEP_WATER) continue;
+  const getBiomeAt = skirted
+    ? (i, j) => tileGrid.getSkirtBiome(i, j)
+    : (i, j) => tileGrid.getBiome(i, j);
+  for (let j = jMin; j < jMax; j++) {
+    for (let i = iMin; i < iMax; i++) {
+      if (getBiomeAt(i, j) !== BIOME.DEEP_WATER) continue;
       const x0 = i * TILE_SIZE - halfW;
       const x1 = x0 + TILE_SIZE;
       const z0 = j * TILE_SIZE - halfH;
