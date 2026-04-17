@@ -30,6 +30,7 @@ import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { stairFootprintTiles } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { createBedGhost } from './bedInstancer.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
@@ -191,6 +192,7 @@ export class BuildDesignator {
    *   camera: THREE.PerspectiveCamera,
    *   tileMesh: () => THREE.Mesh,
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
+   *   tileWorld?: import('../world/tileWorld.js').TileWorld,
    *   world: import('../ecs/world.js').World,
    *   jobBoard: import('../jobs/board.js').JobBoard,
    *   buildSiteInstancer: { markDirty: () => void },
@@ -206,6 +208,7 @@ export class BuildDesignator {
     camera,
     tileMesh,
     tileGrid,
+    tileWorld,
     world,
     jobBoard,
     buildSiteInstancer,
@@ -219,6 +222,7 @@ export class BuildDesignator {
     this.camera = camera;
     this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
+    this.tileWorld = tileWorld;
     this.world = world;
     this.board = jobBoard;
     this.buildSites = buildSiteInstancer;
@@ -545,38 +549,39 @@ export class BuildDesignator {
       });
       return true;
     }
+    // Walls are the only kind that honors the layer switcher — a wall placed
+    // while the player is viewing Z1 gets stamped at z=1 and spawns on the
+    // upper-layer TileGrid (blank until things land there). Doors / torches /
+    // roofs / floors still spawn on the ground plane; z-aware variants are a
+    // follow-up.
+    const placeZ = kind === 'wall' ? (this.tileWorld?.activeZ ?? 0) : 0;
+    const layer = placeZ === 0 ? this.tileGrid : (this.tileWorld?.layers[placeZ] ?? this.tileGrid);
     if (isRoof) {
-      if (this.tileGrid.isRoof(i, j)) return false;
-      if (!hasRoofSupport(this.tileGrid, this.world, i, j)) return false;
+      if (layer.isRoof(i, j)) return false;
+      if (!hasRoofSupport(layer, this.world, i, j)) return false;
     } else if (isFloor) {
       // Floors sit on the ground plane but don't block anything. Skip tiles
       // already floored, walled (wall replaces the ground), or occupied by
       // natural blockers (tree/rock). Doors, torches, stockpiles, and roofs
       // are fine overhead or co-located — they don't hide the floor.
-      if (this.tileGrid.isFloor(i, j)) return false;
-      if (this.tileGrid.isBlocked(i, j)) return false;
+      if (layer.isFloor(i, j)) return false;
+      if (layer.isBlocked(i, j)) return false;
     } else {
       // Doors can be placed on built walls — queued as "deconstruct wall,
       // then build door on the cleared tile" below. Everything else keeps
       // the hard blocked check.
-      if (this.tileGrid.isBlocked(i, j) && !(isDoor && this.tileGrid.isWall(i, j))) return false;
-      if (this.tileGrid.isDoor(i, j)) return false;
-      if (this.tileGrid.isTorch(i, j)) return false;
+      if (layer.isBlocked(i, j) && !(isDoor && layer.isWall(i, j))) return false;
+      if (layer.isDoor(i, j)) return false;
+      if (layer.isTorch(i, j)) return false;
     }
     // Wall torches need an orthogonal wall to mount on — they hang off its
     // face and would be visually orphaned floating in an open tile.
-    if (isWallTorch && !hasOrthoStructure(this.tileGrid, i, j)) return false;
+    if (isWallTorch && !hasOrthoStructure(layer, i, j)) return false;
     // Torches + floors are decorative and non-blocking; letting them sit on
     // stockpile tiles means players can floor/light a storage area without
     // having to redraw the stockpile around them. Roofs don't touch the
     // ground plane so stockpiles underneath them are fine too.
-    if (
-      !isRoof &&
-      !isFloor &&
-      kind !== 'torch' &&
-      !isWallTorch &&
-      this.tileGrid.isStockpile(i, j)
-    ) {
+    if (!isRoof && !isFloor && kind !== 'torch' && !isWallTorch && layer.isStockpile(i, j)) {
       return false;
     }
     // Roofs sit above, floors below, and everything else shares the ground
@@ -586,7 +591,7 @@ export class BuildDesignator {
       : isFloor
         ? /** @param {string} k */ (k) => k === 'floor'
         : /** @param {string} k */ (k) => k !== 'roof' && k !== 'floor';
-    const existingSiteId = this.#findSiteAt(i, j, samePlane);
+    const existingSiteId = this.#findSiteAt(i, j, samePlane, placeZ);
     if (existingSiteId !== null) {
       // Door over wall blueprint: upgrade the plan in-place — cancel the
       // wall blueprint (refunds delivered resources) and drop through to
@@ -611,7 +616,9 @@ export class BuildDesignator {
     // A finished wall covers the floor entirely, so a pending floor blueprint
     // under the wall is wasted work — cancel it (refunds delivered materials).
     // Doors don't trigger this: they're walkable + floor stays visible/usable.
-    if (kind === 'wall') {
+    // Only a ground-floor wall (z=0) shadows the ground-plane floor; z>0 walls
+    // float above the floor and leave it intact.
+    if (kind === 'wall' && placeZ === 0) {
       const floorSiteId = this.#findSiteAt(i, j, (k) => k === 'floor');
       if (floorSiteId !== null) {
         const floorSite = this.world.get(floorSiteId, 'BuildSite');
@@ -624,6 +631,7 @@ export class BuildDesignator {
     const stuff = this.config.stuffed ? this.currentStuff : null;
     const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
+    const y = this.tileGrid.getElevation(i, j) + placeZ * LAYER_HEIGHT;
     this.world.spawn({
       BuildSite: {
         kind,
@@ -636,8 +644,8 @@ export class BuildDesignator {
         facing: FACING_KINDS.has(kind) ? this.currentFacing : 0,
       },
       BuildSiteViz: {},
-      TileAnchor: { i, j },
-      Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+      TileAnchor: { i, j, z: placeZ },
+      Position: { x: w.x, y, z: w.z },
     });
     return true;
   }
@@ -665,8 +673,10 @@ export class BuildDesignator {
   /** @param {number} i @param {number} j */
   #cancelTile(i, j) {
     // Only cancel blueprints of our own kind so wall/door modes don't step on
-    // each other's pending work on shared tiles.
+    // each other's pending work on shared tiles. For walls, match the player's
+    // current layer so cancelling on Z1 doesn't nuke a Z0 wall blueprint.
     const kind = this.config.kind;
+    const cancelZ = kind === 'wall' ? (this.tileWorld?.activeZ ?? 0) : 0;
     const id =
       kind === 'stove'
         ? this.#findStoveSiteCovering(i, j)
@@ -674,7 +684,7 @@ export class BuildDesignator {
           ? this.#findBedSiteCovering(i, j)
           : kind === 'stair'
             ? this.#findStairSiteCovering(i, j)
-            : this.#findSiteAt(i, j, (k) => k === kind);
+            : this.#findSiteAt(i, j, (k) => k === kind, cancelZ);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
@@ -686,10 +696,14 @@ export class BuildDesignator {
   /**
    * @param {number} i @param {number} j
    * @param {(kind: string) => boolean} [matchKind]
+   * @param {number} [z]  layer to match (default 0). TileAnchor.z is treated
+   *   as 0 when absent so pre-z-aware callers keep working.
    */
-  #findSiteAt(i, j, matchKind) {
+  #findSiteAt(i, j, matchKind, z = 0) {
     for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
-      if (components.TileAnchor.i !== i || components.TileAnchor.j !== j) continue;
+      const a = components.TileAnchor;
+      if (a.i !== i || a.j !== j) continue;
+      if ((a.z | 0) !== z) continue;
       if (matchKind && !matchKind(components.BuildSite.kind)) continue;
       return id;
     }
@@ -779,7 +793,11 @@ export class BuildDesignator {
     const x1 = se.x + TILE_SIZE * 0.5;
     const z0 = nw.z - TILE_SIZE * 0.5;
     const z1 = se.z + TILE_SIZE * 0.5;
-    const y = grid.getElevation(i0, j0) + PREVIEW_CLEARANCE;
+    // Walls follow the layer switcher — raise the hover outline by z*LAYER_HEIGHT
+    // so the player sees the preview hovering at the target floor, not on the
+    // ground under a Z1 placement.
+    const previewZ = this.config.kind === 'wall' ? (this.tileWorld?.activeZ ?? 0) : 0;
+    const y = grid.getElevation(i0, j0) + previewZ * LAYER_HEIGHT + PREVIEW_CLEARANCE;
     const p = this.preview.positions;
     p[0] = x0;
     p[1] = y;

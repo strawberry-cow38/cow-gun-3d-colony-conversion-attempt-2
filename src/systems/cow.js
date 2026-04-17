@@ -1311,11 +1311,16 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
       Position: position,
     });
   } else {
-    grid.setWall(anchor.i, anchor.j, 1);
+    // Wall lives on its anchor's z-layer so upper-floor walls write to the
+    // right occupancy bitmap. Fallback to `grid` if tileWorld or the layer is
+    // missing (keeps legacy z=0-only callers intact).
+    const wallZ = anchor.z | 0;
+    const wallLayer = tileWorld?.layers[wallZ] ?? grid;
+    wallLayer.setWall(anchor.i, anchor.j, 1);
     world.spawn({
       Wall: { stuff },
       WallViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
       Position: position,
     });
   }

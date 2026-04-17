@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { getStuff } from '../world/stuff.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const HALF = TILE_SIZE * 0.5;
@@ -66,15 +67,20 @@ export function createWallInstancer(scene, capacity = 2048) {
     _quat.identity();
     _scale.set(1, 1, 1);
 
-    /** @type {{ i: number, j: number, y: number, cx: number, cz: number, color: number }[]} */
+    /** @type {{ i: number, j: number, z: number, y: number, cx: number, cz: number, color: number }[]} */
     const walls = [];
+    // Neighbor-occlusion set is keyed by (z, j, i) so a ground-floor wall
+    // doesn't pretend an empty z=1 neighbor is solid (and vice versa).
     const wallSet = new Set();
+    const stride = grid.W * grid.H;
     for (const { components } of world.query(['Wall', 'TileAnchor', 'WallViz'])) {
       const a = components.TileAnchor;
+      const z = a.z | 0;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const color = getStuff(components.Wall.stuff).wallColor;
-      walls.push({ i: a.i, j: a.j, y: grid.getElevation(a.i, a.j), cx: w.x, cz: w.z, color });
-      wallSet.add(a.j * grid.W + a.i);
+      const y = grid.getElevation(a.i, a.j) + z * LAYER_HEIGHT;
+      walls.push({ i: a.i, j: a.j, z, y, cx: w.x, cz: w.z, color });
+      wallSet.add(z * stride + a.j * grid.W + a.i);
     }
 
     let ct = 0;
@@ -83,9 +89,10 @@ export function createWallInstancer(scene, capacity = 2048) {
     let cpz = 0;
     let cnz = 0;
     for (const wall of walls) {
-      const { i, j, y, cx, cz, color } = wall;
+      const { i, j, z, y, cx, cz, color } = wall;
       const yMid = y + WALL_HEIGHT * 0.5;
       const yTop = y + WALL_HEIGHT;
+      const base = z * stride;
       _color.setHex(color);
 
       if (ct < capacity) {
@@ -95,28 +102,28 @@ export function createWallInstancer(scene, capacity = 2048) {
         top.setColorAt(ct, _color);
         ct++;
       }
-      if (!wallSet.has(j * grid.W + (i + 1)) && cpx < capacity) {
+      if (!wallSet.has(base + j * grid.W + (i + 1)) && cpx < capacity) {
         _position.set(cx + HALF, yMid, cz);
         _matrix.compose(_position, _quat, _scale);
         px.setMatrixAt(cpx, _matrix);
         px.setColorAt(cpx, _color);
         cpx++;
       }
-      if (!wallSet.has(j * grid.W + (i - 1)) && cnx < capacity) {
+      if (!wallSet.has(base + j * grid.W + (i - 1)) && cnx < capacity) {
         _position.set(cx - HALF, yMid, cz);
         _matrix.compose(_position, _quat, _scale);
         nx.setMatrixAt(cnx, _matrix);
         nx.setColorAt(cnx, _color);
         cnx++;
       }
-      if (!wallSet.has((j + 1) * grid.W + i) && cpz < capacity) {
+      if (!wallSet.has(base + (j + 1) * grid.W + i) && cpz < capacity) {
         _position.set(cx, yMid, cz + HALF);
         _matrix.compose(_position, _quat, _scale);
         pz.setMatrixAt(cpz, _matrix);
         pz.setColorAt(cpz, _color);
         cpz++;
       }
-      if (!wallSet.has((j - 1) * grid.W + i) && cnz < capacity) {
+      if (!wallSet.has(base + (j - 1) * grid.W + i) && cnz < capacity) {
         _position.set(cx, yMid, cz - HALF);
         _matrix.compose(_position, _quat, _scale);
         nz.setMatrixAt(cnz, _matrix);

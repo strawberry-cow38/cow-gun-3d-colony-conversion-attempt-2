@@ -23,6 +23,7 @@ import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { doorOrientationAt } from '../world/doorOrientation.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { getStuff } from '../world/stuff.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { BED_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { BASE_LIFT as FLOOR_LIFT } from './floorInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
@@ -105,7 +106,9 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
       const site = components.BuildSite;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j);
+      // Wall blueprints float at their anchor's z-layer; every other kind
+      // still sits on the ground for now.
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT;
       const empty = site.delivered <= 0;
       const baseHex = site.forbidden
         ? COLOR_FORBIDDEN

@@ -45,6 +45,7 @@ import { UninstallDesignator } from '../render/uninstallDesignator.js';
  *   scene: import('three').Scene,
  *   audio: ReturnType<typeof import('../audio/audio.js').createAudio>,
  *   tileGrid: import('../world/tileGrid.js').TileGrid,
+ *   tileWorld: import('../world/tileWorld.js').TileWorld,
  *   world: import('../ecs/world.js').World,
  *   jobBoard: import('../jobs/board.js').JobBoard,
  *   state: import('./input.js').BootState,
@@ -58,6 +59,7 @@ export function setupDesignators({
   scene,
   audio,
   tileGrid,
+  tileWorld,
   world,
   jobBoard,
   state,
@@ -102,7 +104,7 @@ export function setupDesignators({
   // scene+audio; job-posting designators additionally need world+jobBoard.
   // Spreading these at each call site keeps the noise down without hiding
   // which extra dependencies a given designator pulls in.
-  const baseArgs = { canvas, camera, tileMesh, tileGrid, scene, audio };
+  const baseArgs = { canvas, camera, tileMesh, tileGrid, tileWorld, scene, audio };
   const jobArgs = { ...baseArgs, world, jobBoard };
 
   const chopDesignator = new ChopDesignator({

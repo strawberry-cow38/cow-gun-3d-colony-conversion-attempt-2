@@ -810,6 +810,7 @@ const {
   scene,
   audio,
   tileGrid,
+  tileWorld,
   world,
   jobBoard,
   state,
