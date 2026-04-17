@@ -22,6 +22,8 @@ import { dispatch } from './hotkeys.js';
  * @property {number|null} primaryStove
  * @property {Set<number>} selectedBeds
  * @property {number|null} primaryBed
+ * @property {Set<number>} selectedStairs
+ * @property {number|null} primaryStair
  * @property {Set<number>} selectedObjects
  * @property {number|null} primaryObject
  * @property {{ i: number, j: number } | null} lastPick

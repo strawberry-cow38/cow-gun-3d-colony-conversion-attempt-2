@@ -819,7 +819,10 @@ new CowMoveCommand(
   scene,
   prioritizeMenu,
   audio,
-  { isDesignatorActive: isDesignatorArmed },
+  {
+    isDesignatorActive: isDesignatorArmed,
+    getHitboxMesh: () => objectHitboxes.mesh,
+  },
 );
 
 const {

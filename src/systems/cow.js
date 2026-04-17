@@ -1961,13 +1961,15 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
 
   if (job.state === 'pathing-to-item') {
     // Pickup target: furnace work spot OR Item tile.
+    /** @type {{ i: number, j: number, z: number } | null} */
     let target = null;
     if (typeof fromFurnaceId === 'number') {
-      target = { i: fromI ?? 0, j: fromJ ?? 0 };
+      const fa = world.get(fromFurnaceId, 'TileAnchor');
+      target = { i: fromI ?? 0, j: fromJ ?? 0, z: fa?.z | 0 };
     } else if (typeof itemId === 'number') {
       const anchor = world.get(itemId, 'TileAnchor');
       const item = world.get(itemId, 'Item');
-      if (anchor && item) target = { i: anchor.i, j: anchor.j };
+      if (anchor && item) target = { i: anchor.i, j: anchor.j, z: anchor.z | 0 };
     }
     if (!target) {
       board.complete(jobId);
@@ -1977,7 +1979,8 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
       return;
     }
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    const route = paths.find(start, target);
+    const cowZ = world.get(haulerId, 'Brain')?.layerZ | 0;
+    const route = paths.find({ ...start, z: cowZ }, target);
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
@@ -3269,7 +3272,8 @@ export function makeCowFollowPathSystem(deps) {
         const curLayer = tileWorld?.layers[curStep.z | 0] ?? grid;
         const nextLayer = nextStep ? (tileWorld?.layers[nextStep.z | 0] ?? grid) : null;
         const curBlocked = !deps.walkable(curLayer, curStep.i, curStep.j);
-        const nextBlocked = nextStep && !deps.walkable(nextLayer, nextStep.i, nextStep.j);
+        const nextBlocked =
+          nextStep && nextLayer && !deps.walkable(nextLayer, nextStep.i, nextStep.j);
         if (curBlocked || nextBlocked) {
           const job = world.get(id, 'Job');
           const brain = world.get(id, 'Brain');

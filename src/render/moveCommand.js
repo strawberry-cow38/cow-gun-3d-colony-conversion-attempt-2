@@ -30,6 +30,7 @@ import {
   worldToTile,
   worldToTileClamp,
 } from '../world/coords.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const _ndc = new THREE.Vector2();
 /** Module-level BFS scratch reused by spreadTargets + nearestWalkable. */
@@ -54,7 +55,7 @@ export class CowMoveCommand {
    * @param {THREE.Scene} scene
    * @param {{ show: (x: number, y: number, items: { label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
    * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ isDesignatorActive?: () => boolean }} [opts]
+   * @param {{ isDesignatorActive?: () => boolean, getHitboxMesh?: () => THREE.Mesh | null }} [opts]
    */
   constructor(
     dom,
@@ -74,6 +75,7 @@ export class CowMoveCommand {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
+    this.getHitboxMesh = opts.getHitboxMesh ?? (() => null);
     this.tileGrid = tileGrid;
     this.pathCache = pathCache;
     this.walkable = walkable;
@@ -87,7 +89,7 @@ export class CowMoveCommand {
 
     this.rmbDown = false;
     this.shiftAtDown = false;
-    /** @type {{ i: number, j: number } | null} */
+    /** @type {{ i: number, j: number, z: number } | null} */
     this.startTile = null;
     this.startClientX = 0;
     this.startClientY = 0;
@@ -161,6 +163,9 @@ export class CowMoveCommand {
         ? lineTargets(this.tileGrid, this.walkable, start, endTile, ids.length)
         : spreadTargets(this.tileGrid, this.walkable, endTile, ids.length);
 
+    const goalZ = endTile.z | 0;
+    for (const t of targets) t.z = goalZ;
+
     const assignment = matchCowsToTargets(this.world, ids, targets, this.tileGrid);
     let issued = 0;
     for (let k = 0; k < ids.length; k++) {
@@ -172,11 +177,6 @@ export class CowMoveCommand {
     else this.audio?.play('deny');
   }
 
-  /**
-   * @param {MouseEvent} e
-   * @param {{ i: number, j: number }} tile
-   * @param {number} cowId
-   */
   /**
    * Shift-RMB direct-prioritize shortcut. Picks the first prioritizable job
    * at `tile` (or an ad-hoc haul if the tile has a loose item) and queues it
@@ -228,6 +228,7 @@ export class CowMoveCommand {
         label: 'Move here',
         onPick: () => {
           const endTile = spreadTargets(this.tileGrid, this.walkable, tile, 1)[0] ?? tile;
+          endTile.z = tile.z | 0;
           if (this.#issue(cowId, endTile, shift)) this.audio?.play('command');
           else this.audio?.play('deny');
         },
@@ -364,25 +365,40 @@ export class CowMoveCommand {
   }
 
   /**
+   * Pick the tile the player clicked on. Raycasts the ground mesh AND (if
+   * available) the invisible object-hitbox mesh so clicks on wall-tops and
+   * other upper-layer structures resolve to their own tile instead of the
+   * ground tile behind them. `z` is inferred from the hit point's height
+   * relative to the tile's ground elevation — a click near the top of a wall
+   * at WALL_HEIGHT snaps to z=1 so the cow routes to the wall-top, not the
+   * tile underneath.
+   *
    * @param {MouseEvent} e
-   * @returns {{ i: number, j: number } | null}
+   * @returns {{ i: number, j: number, z: number } | null}
    */
   #pickTile(e) {
     const rect = this.dom.getBoundingClientRect();
     _ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
-    const hits = this.raycaster.intersectObject(this.getTileMesh(), false);
-    if (hits.length === 0) return null;
-    const p = hits[0].point;
+    const groundHits = this.raycaster.intersectObject(this.getTileMesh(), false);
+    const hitbox = this.getHitboxMesh();
+    const boxHits = hitbox ? this.raycaster.intersectObject(hitbox, false) : [];
+    let best = null;
+    if (groundHits.length > 0) best = groundHits[0];
+    if (boxHits.length > 0 && (!best || boxHits[0].distance < best.distance)) best = boxHits[0];
+    if (!best) return null;
+    const p = best.point;
     const tile = worldToTile(p.x, p.z, this.tileGrid.W, this.tileGrid.H);
     if (tile.i < 0) return null;
-    return tile;
+    const el = this.tileGrid.getElevation(tile.i, tile.j);
+    const z = Math.max(0, Math.round((p.y - el) / LAYER_HEIGHT));
+    return { i: tile.i, j: tile.j, z };
   }
 
   /**
    * @param {number} id
-   * @param {{ i: number, j: number }} goal
+   * @param {{ i: number, j: number, z?: number }} goal
    * @param {boolean} shiftKey
    * @returns {boolean} true if a path was issued
    */
@@ -392,7 +408,11 @@ export class CowMoveCommand {
     const job = this.world.get(id, 'Job');
     if (!pos || !path || !job) return false;
 
-    const existingWaypoints = /** @type {{i:number,j:number}[]} */ (job.payload.waypoints ?? []);
+    const goalZ = goal.z ?? 0;
+    const cowZ = this.world.get(id, 'Brain')?.layerZ ?? 0;
+    const existingWaypoints = /** @type {{i:number,j:number,z?:number}[]} */ (
+      job.payload.waypoints ?? []
+    );
     const existingLegEnds = /** @type {number[]} */ (job.payload.legEnds ?? []);
     const canQueue =
       shiftKey &&
@@ -402,21 +422,27 @@ export class CowMoveCommand {
 
     if (canQueue) {
       const lastWp = existingWaypoints[existingWaypoints.length - 1];
-      const leg = this.pathCache.find(lastWp, goal);
+      const leg = this.pathCache.find(
+        { i: lastWp.i, j: lastWp.j, z: lastWp.z ?? 0 },
+        { i: goal.i, j: goal.j, z: goalZ },
+      );
       if (!leg || leg.length === 0) {
         console.log('[move] no path to new waypoint:', goal, 'for cow', id);
         return false;
       }
       for (let k = 1; k < leg.length; k++) path.steps.push(leg[k]);
       existingLegEnds.push(path.steps.length - 1);
-      existingWaypoints.push(goal);
+      existingWaypoints.push({ i: goal.i, j: goal.j, z: goalZ });
       job.payload.waypoints = existingWaypoints;
       job.payload.legEnds = existingLegEnds;
       return true;
     }
 
     const start = worldToTileClamp(pos.x, pos.z, this.tileGrid.W, this.tileGrid.H);
-    const route = this.pathCache.find(start, goal);
+    const route = this.pathCache.find(
+      { i: start.i, j: start.j, z: cowZ },
+      { i: goal.i, j: goal.j, z: goalZ },
+    );
     if (!route || route.length === 0) {
       console.log('[move] no path to', goal, 'for cow', id);
       return false;
@@ -425,7 +451,10 @@ export class CowMoveCommand {
     path.index = 0;
     job.kind = 'move';
     job.state = 'moving';
-    job.payload = { waypoints: [goal], legEnds: [route.length - 1] };
+    job.payload = {
+      waypoints: [{ i: goal.i, j: goal.j, z: goalZ }],
+      legEnds: [route.length - 1],
+    };
     return true;
   }
 }
@@ -481,10 +510,10 @@ function writeSeg(out, off, a, b) {
  * @param {(grid: import('../world/tileGrid.js').TileGrid, i: number, j: number) => boolean} walkable
  * @param {{ i: number, j: number }} goal
  * @param {number} count
- * @returns {{ i: number, j: number }[]}
+ * @returns {{ i: number, j: number, z?: number }[]}
  */
 function spreadTargets(grid, walkable, goal, count) {
-  /** @type {{ i: number, j: number }[]} */
+  /** @type {{ i: number, j: number, z?: number }[]} */
   const out = [];
   const size = grid.W * grid.H;
   if (_bfsScratch.length < size) _bfsScratch = new Uint8Array(size);
@@ -522,10 +551,10 @@ function spreadTargets(grid, walkable, goal, count) {
  * @param {{ i: number, j: number }} start
  * @param {{ i: number, j: number }} end
  * @param {number} count
- * @returns {{ i: number, j: number }[]}
+ * @returns {{ i: number, j: number, z?: number }[]}
  */
 function lineTargets(grid, walkable, start, end, count) {
-  /** @type {{ i: number, j: number }[]} */
+  /** @type {{ i: number, j: number, z?: number }[]} */
   const out = [];
   const reserved = new Uint8Array(grid.W * grid.H);
   for (let k = 0; k < count; k++) {
