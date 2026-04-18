@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { pickWanderGoal } from '../../src/jobs/wander.js';
-import { BIOME, TileGrid } from '../../src/world/tileGrid.js';
+import { PathCache, defaultWalkable } from '../../src/sim/pathfinding.js';
+import { BIOME, TileGrid, WALL_FILL_FULL } from '../../src/world/tileGrid.js';
+import { TileWorld } from '../../src/world/tileWorld.js';
 
 /**
  * Tiny seeded RNG so assertions are deterministic — our picker burns through
@@ -84,6 +86,55 @@ describe('pickWanderGoal', () => {
       if (!goal) continue;
       expect(goal.i).toBeLessThan(5);
     }
+  });
+
+  it('lets a cow already standing in water pick goals across more water', () => {
+    // Same vertical river, but the cow itself is on the river tile (5,5).
+    // Already wading → should be allowed to roam to either bank.
+    const grid = new TileGrid(11, 11);
+    for (let j = 0; j < 11; j++) grid.biome[grid.idx(5, j)] = BIOME.SHALLOW_WATER;
+    const rand = seededRand(7);
+    const from = { i: 5, j: 5 };
+    let pickedRightBank = false;
+    for (let n = 0; n < 400; n++) {
+      const goal = pickWanderGoal(grid, allWalkable, from, rand);
+      if (goal && goal.i > 5) {
+        pickedRightBank = true;
+        break;
+      }
+    }
+    expect(pickedRightBank).toBe(true);
+  });
+
+  it('allows across-river goals when a wall bridge exists', () => {
+    // Vertical shallow river at i=5. Stairsteps lead UP to a full wall on
+    // (5,5) — wall-top at z=1 is the bridge — and back DOWN on the other
+    // side. Pathfinder routes the cow over the bridge without setting feet
+    // on a water tile. Each step is 0.75m, well under CLIMB_MAX.
+    const world = new TileWorld(new TileGrid(11, 1));
+    world.pushEmptyLayer();
+    const layer0 = world.layers[0];
+    for (let i = 0; i < 11; i++) layer0.biome[layer0.idx(i, 0)] = BIOME.SHALLOW_WATER;
+    // Restore land on the banks so the picker has dry ground to target.
+    for (let i = 0; i < 5; i++) layer0.biome[layer0.idx(i, 0)] = BIOME.GRASS;
+    for (let i = 6; i < 11; i++) layer0.biome[layer0.idx(i, 0)] = BIOME.GRASS;
+    layer0.setWallFill(3, 0, 1); // 0.75m
+    layer0.setWallFill(4, 0, 2); // 1.5m
+    layer0.setWallFill(5, 0, WALL_FILL_FULL); // 3m → wall-top on z=1
+    layer0.setWallFill(6, 0, 2);
+    layer0.setWallFill(7, 0, 1);
+    const paths = new PathCache(world, defaultWalkable);
+    const rand = seededRand(9);
+    const from = { i: 1, j: 0, z: 0 };
+    let pickedRightBank = false;
+    for (let n = 0; n < 400; n++) {
+      const goal = pickWanderGoal(layer0, defaultWalkable, from, rand, undefined, paths);
+      if (goal && goal.i > 5) {
+        pickedRightBank = true;
+        break;
+      }
+    }
+    expect(pickedRightBank).toBe(true);
   });
 
   it('stays inside the map bounds', () => {

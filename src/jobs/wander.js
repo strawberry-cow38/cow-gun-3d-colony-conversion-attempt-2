@@ -28,20 +28,35 @@ const WANDER_RADIUS_TILES = 20;
  * Water tiles are rejected outright: shallow water is walkable (cows wade
  * through it) but makes a bad hang-out target, and deep water is unwalkable.
  *
- * When `from` is supplied, candidates separated from the cow by water are
- * also rejected (straight-line check) — pathfinder will happily route a
- * wandering cow through a shallow river because wade-crossing is legal, so
- * without this filter idle colonists swim back and forth across rivers.
+ * Cross-water wander rules when `from` is supplied:
+ *   - If the cow is already standing in water, all candidates pass — they're
+ *     wading anyway, no point pretending the river doesn't exist.
+ *   - Else the straight line is sampled (cheap reject). If it crosses water
+ *     AND a `paths` cache is supplied, ask the real pathfinder for a route
+ *     that doesn't step on a water tile (e.g. across a wall bridge). If
+ *     such a route exists the candidate is allowed.
+ *   - Without `paths`, the Bresenham reject is the final word — keeps the
+ *     historical behavior for tests / cheap callers.
  *
  * @param {TileGrid} grid
  * @param {(grid: TileGrid, i: number, j: number) => boolean} walkable
- * @param {{ i: number, j: number } | null} [from]
+ * @param {{ i: number, j: number, z?: number } | null} [from]
  * @param {() => number} [rand]
  * @param {number} [attempts]
+ * @param {{ find: (s: { i: number, j: number, z?: number }, g: { i: number, j: number, z?: number }, opts?: { cache?: boolean }) => { i: number, j: number, z?: number }[] | null } | null} [paths]
  */
-export function pickWanderGoal(grid, walkable, from = null, rand = Math.random, attempts = 32) {
+export function pickWanderGoal(
+  grid,
+  walkable,
+  from = null,
+  rand = Math.random,
+  attempts = 32,
+  paths = null,
+) {
   const center = pickAnchor(grid, rand);
   const radius = WANDER_RADIUS_TILES;
+  const cowWet = from ? isWaterTile(grid, from.i, from.j) : false;
+  const fromZ = from?.z ?? 0;
   for (let n = 0; n < attempts; n++) {
     const i = center.i + Math.floor(rand() * (radius * 2 + 1)) - radius;
     const j = center.j + Math.floor(rand() * (radius * 2 + 1)) - radius;
@@ -51,10 +66,38 @@ export function pickWanderGoal(grid, walkable, from = null, rand = Math.random, 
     const b = grid.biome[k];
     if (b === BIOME.SHALLOW_WATER || b === BIOME.DEEP_WATER) continue;
     if (!walkable(grid, i, j)) continue;
-    if (from && lineCrossesWater(grid, from.i, from.j, i, j)) continue;
+    if (from && !cowWet && lineCrossesWater(grid, from.i, from.j, i, j)) {
+      if (!paths) continue;
+      const route = paths.find(
+        { i: from.i, j: from.j, z: fromZ },
+        { i, j, z: 0 },
+        { cache: false },
+      );
+      if (!route || routeCrossesWater(grid, route)) continue;
+    }
     return { i, j };
   }
   return null;
+}
+
+/** @param {TileGrid} grid @param {number} i @param {number} j */
+function isWaterTile(grid, i, j) {
+  const b = grid.biome[grid.idx(i, j)];
+  return b === BIOME.SHALLOW_WATER || b === BIOME.DEEP_WATER;
+}
+
+/**
+ * @param {TileGrid} grid
+ * @param {{ i: number, j: number, z?: number }[]} route
+ */
+function routeCrossesWater(grid, route) {
+  for (const step of route) {
+    // Steps on z>0 (e.g. a wall-top bridge over a river) keep the cow's feet
+    // dry even though the underlying biome is water.
+    if ((step.z ?? 0) > 0) continue;
+    if (isWaterTile(grid, step.i, step.j)) return true;
+  }
+  return false;
 }
 
 /**
