@@ -567,8 +567,8 @@ export function buildWaterSurface(tileGrid) {
          float caustics(vec2 p, float t) {
            // Scale tuned for ~1 caustic cell per 43u tile — soft pools of
            // focused light, not high-frequency noise.
-           float a = causticNoise(p * 0.009 + vec2(t * 0.05, t * 0.04));
-           float b = causticNoise(p * 0.011 - vec2(t * 0.04, t * 0.06) + 7.0);
+           float a = causticNoise(p * 0.018 + vec2(t * 0.10, t * 0.08));
+           float b = causticNoise(p * 0.022 - vec2(t * 0.08, t * 0.12) + 7.0);
            float v = abs(a - b);
            // Wider smoothstep + softer pow so peaks bloom instead of looking
            // like cracked-mud lines.

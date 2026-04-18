@@ -35,7 +35,7 @@ export function createScene(canvas) {
   // is meant to read vivid, not cinematic.
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.LinearToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.45;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x3a2350);

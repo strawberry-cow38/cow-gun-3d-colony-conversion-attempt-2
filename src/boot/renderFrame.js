@@ -299,9 +299,10 @@ export function createRenderFrame({
       const shader = mat.userData.shader;
       if (shader) {
         shader.uniforms.uTime.value = tSec;
-        // Caustics glow at night: subtle in daylight, hot at midnight.
+        // Caustics lift slightly at night so water reads under moonlight;
+        // keep the night multiplier modest so it doesn't nuclear-glow.
         const dayFrac = timeOfDay.getSunLightPercent();
-        shader.uniforms.uCausticStrength.value = 0.5 + (1 - dayFrac) * 1.7;
+        shader.uniforms.uCausticStrength.value = 0.55 + (1 - dayFrac) * 0.35;
       }
     }
     buildSiteInstancer.update(world, tileGrid);
