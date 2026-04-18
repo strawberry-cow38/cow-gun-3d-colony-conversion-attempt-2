@@ -24,6 +24,22 @@
 import { defaultWalkable, passableAt } from '../sim/pathfinding.js';
 import { roofIsSupported } from '../systems/autoRoof.js';
 import { maxStack, stackCount } from '../world/items.js';
+import { WALL_FILL_FULL } from '../world/tileGrid.js';
+
+/** Wall-family kinds that stack via BuildSite.baseFill. Mirrors buildDesignator. */
+const WALL_FAMILY = new Set(['wall', 'halfWall', 'quarterWall']);
+
+/**
+ * Floor (z-layer bucket) a cow must stand on to work a wall-family blueprint.
+ * baseFill is the absolute quarters-from-ground, so floor(baseFill / WALL_FILL_FULL)
+ * gives the 3m-increment level whose stand-surface is within the cow's
+ * LAYER_HEIGHT build reach. Non-wall sites stay on their TileAnchor.z.
+ * @param {{ kind: string, baseFill?: number }} site @param {number} anchorZ
+ */
+function siteWorkZ(site, anchorZ) {
+  if (!WALL_FAMILY.has(site.kind)) return anchorZ | 0;
+  return Math.floor((site.baseFill ?? 0) / WALL_FILL_FULL);
+}
 
 const NBRS_8 = [
   [1, 0],
@@ -251,14 +267,15 @@ export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
  * @param {number} i @param {number} j @param {number} z
  * @returns {{ i: number, j: number, z: number }[]}
  */
-export function adjacentDeliveryTiles(grid, i, j, z) {
+export function adjacentDeliveryTiles(grid, i, j, z, tileWorld = null) {
   /** @type {{ i: number, j: number, z: number }[]} */
   const out = [];
+  const gridOrWorld = tileWorld ?? grid;
   for (const [di, dj] of NBRS_8) {
     const ni = i + di;
     const nj = j + dj;
     if (!grid.inBounds(ni, nj)) continue;
-    if (!passableAt(grid, ni, nj, z)) continue;
+    if (!passableAt(gridOrWorld, ni, nj, z)) continue;
     out.push({ i: ni, j: nj, z });
   }
   return out;
@@ -455,16 +472,22 @@ export function makeHaulPostingSystem(board, grid, paths) {
         if (site.kind === 'door' && grid.isWall(a.i, a.j)) continue;
         const pending = siteInFlight.get(siteId) ?? 0;
         let need = site.required - site.delivered - pending;
-        const siteZ = a.z | 0;
+        // Wall blueprints work off a baseFill-derived floor so a 2nd-story
+        // blueprint is only reachable once a cow is standing up there. Other
+        // kinds keep their TileAnchor.z.
+        const siteZ = siteWorkZ(site, a.z);
         // Stacked partial-wall blueprints sit on top of an existing wall whose
-        // effective elevation can exceed the cow's 1.5m climb (e.g. a 4th
-        // quarter on a three-quarter wall = 2.25m). Deliver to an adjacent
-        // walkable tile instead — cow stands next to the wall and the drop
-        // logic credits the site by siteId. baseFill === 0 keeps the legacy
-        // walk-onto-tile flow so flat-ground blueprints behave unchanged.
-        const useAdjacent = (site.baseFill ?? 0) > 0;
+        // effective elevation can exceed the cow's build reach. Deliver to an
+        // adjacent walkable tile on the work floor; baseFill === 0 & siteZ === 0
+        // keeps the legacy walk-onto-tile flow for flat-ground blueprints.
+        const useAdjacent = (site.baseFill ?? 0) > 0 || siteZ > 0;
+        const tileWorldArg = /** @type {any} */ (paths?.grid)?.layers
+          ? /** @type {any} */ (paths.grid)
+          : null;
         /** @type {{ i: number, j: number, z: number }[] | null} */
-        const adjGoals = useAdjacent ? adjacentDeliveryTiles(grid, a.i, a.j, siteZ) : null;
+        const adjGoals = useAdjacent
+          ? adjacentDeliveryTiles(grid, a.i, a.j, siteZ, tileWorldArg)
+          : null;
         if (useAdjacent && (!adjGoals || adjGoals.length === 0)) continue;
         /** @type {Set<number> | null} Sources proven unreachable to this site this tick. Allocated lazily. */
         let unreachable = null;

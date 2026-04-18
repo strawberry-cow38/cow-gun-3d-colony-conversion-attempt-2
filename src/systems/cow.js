@@ -1076,7 +1076,13 @@ function runBuildJob(world, builderId, job, path, pos, grid, paths, walkable, bo
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
     const blueprintTiles = collectBlueprintTiles(world, grid, siteId);
     const siteAnchor = world.get(siteId, 'TileAnchor');
-    const siteZ = siteAnchor ? siteAnchor.z | 0 : 0;
+    // Wall blueprints stack via absolute baseFill — their work floor is the
+    // 3m-increment level that contains their base, not the TileAnchor.z which
+    // is always 0 for walls. Non-walls keep TileAnchor.z.
+    const anchorZ = siteAnchor ? siteAnchor.z | 0 : 0;
+    const isWallFamily =
+      site.kind === 'wall' || site.kind === 'halfWall' || site.kind === 'quarterWall';
+    const siteZ = isWallFamily ? Math.floor((site.baseFill | 0) / WALL_FILL_FULL) : anchorZ;
     const cowZ = world.get(builderId, 'Brain')?.layerZ | 0;
     const adj = findBuildStandTile(
       grid,
@@ -2114,11 +2120,18 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
 
   if (job.state === 'pathing-to-drop') {
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    // BuildSites on an upper layer carry the layer z on their TileAnchor —
-    // goal z must match or haulers will path to the ground tile below the
-    // blueprint and sit there forever.
-    const dropZ =
-      toBuildSite && typeof siteId === 'number' ? world.get(siteId, 'TileAnchor')?.z | 0 : 0;
+    // BuildSites on an upper layer need the haul goal z to match the work
+    // floor, or haulers will path to the ground tile below and sit forever.
+    // Wall blueprints derive their floor from baseFill (absolute quarters);
+    // other kinds use TileAnchor.z directly.
+    let dropZ = 0;
+    if (toBuildSite && typeof siteId === 'number') {
+      const site = world.get(siteId, 'BuildSite');
+      const anchor = world.get(siteId, 'TileAnchor');
+      const isWallFamily =
+        site && (site.kind === 'wall' || site.kind === 'halfWall' || site.kind === 'quarterWall');
+      dropZ = isWallFamily ? Math.floor((site.baseFill | 0) / WALL_FILL_FULL) : anchor?.z | 0;
+    }
     const cowZ = world.get(haulerId, 'Brain')?.layerZ | 0;
     const route = paths.find({ ...start, z: cowZ }, { i: toI, j: toJ, z: dropZ });
     if (!route || route.length === 0) {
