@@ -190,11 +190,13 @@ function buildSky() {
         // luminance so they fade in/out with sunrise/sunset automatically.
         if (h > 0.02) {
           float zenithLuma = dot(zenithColor, vec3(0.299, 0.587, 0.114));
-          float nightMask = 1.0 - smoothstep(0.06, 0.28, zenithLuma);
+          // Wide luma window → stars gradually fade in at dusk and out at
+          // dawn as the zenith brightens/darkens, instead of popping on/off.
+          float nightMask = 1.0 - smoothstep(0.03, 0.16, zenithLuma);
           if (nightMask > 0.001) {
             float horizonRise = smoothstep(0.02, 0.25, h);
-            float s = starfield(d, 0.05, 0.22) * horizonRise;
-            float bigStars = starfield(d, 0.012, 0.4) * horizonRise;
+            float s = starfield(d, 0.05, 0.14) * horizonRise;
+            float bigStars = starfield(d, 0.012, 0.26) * horizonRise;
             col += vec3(0.85, 0.9, 1.0) * s * nightMask * 2.4;
             col += vec3(1.0, 0.95, 0.85) * bigStars * nightMask * 3.2;
           }
