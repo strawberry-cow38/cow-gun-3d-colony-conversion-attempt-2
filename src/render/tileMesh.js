@@ -494,11 +494,13 @@ export function buildWaterSurface(tileGrid) {
     roughness: 0.4,
     depthWrite: false,
   });
-  // Ripples: inject a tiny time-dependent Y displacement in the vertex
-  // shader so the water shimmers without us rewriting the geometry every
-  // frame. uTime is ticked by the caller via `material.userData.shader`.
-  // Displacement stays well below TERRAIN_STEP/8 so the quarter-wall-in-
-  // water silhouette doesn't wobble visibly above/below the surface.
+  // Ripples: inject a time-dependent Y displacement in the vertex shader so
+  // the water shimmers without us rewriting the geometry every frame. uTime
+  // is ticked by the caller via `material.userData.shader`. Normals are
+  // recomputed analytically from the sine derivative so the ripple picks
+  // up light/shadow variance — without this the surface reads as flat
+  // because MeshStandardMaterial would shade every vertex by the static
+  // +Y normal regardless of vertex displacement.
   const ripplesOnBeforeCompile = (
     /** @type {import('three').WebGLProgramParametersWithUniforms} */ shader,
   ) => {
@@ -507,15 +509,31 @@ export function buildWaterSurface(tileGrid) {
       .replace(
         '#include <common>',
         `#include <common>
-         uniform float uTime;`,
+         uniform float uTime;
+         float rippleY(vec2 p) {
+           return sin(p.x * 1.8 + uTime * 2.0) * 0.120
+                + sin(p.y * 2.1 - uTime * 1.6) * 0.100
+                + sin((p.x + p.y) * 1.3 + uTime * 1.1) * 0.070;
+         }
+         vec3 rippleNormal(vec2 p) {
+           float dx = cos(p.x * 1.8 + uTime * 2.0) * 1.8 * 0.120
+                    + cos((p.x + p.y) * 1.3 + uTime * 1.1) * 1.3 * 0.070;
+           float dz = -cos(p.y * 2.1 - uTime * 1.6) * 2.1 * 0.100
+                    + cos((p.x + p.y) * 1.3 + uTime * 1.1) * 1.3 * 0.070;
+           return normalize(vec3(-dx, 1.0, -dz));
+         }`,
+      )
+      .replace(
+        '#include <beginnormal_vertex>',
+        `vec3 objectNormal = rippleNormal(position.xz);
+         #ifdef USE_TANGENT
+         vec3 objectTangent = vec3(tangent.xyz);
+         #endif`,
       )
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-         float ripple = sin(transformed.x * 1.8 + uTime * 2.0) * 0.060
-                      + sin(transformed.z * 2.1 - uTime * 1.6) * 0.050
-                      + sin((transformed.x + transformed.z) * 1.3 + uTime * 1.1) * 0.035;
-         transformed.y += ripple;`,
+         transformed.y += rippleY(transformed.xz);`,
       );
     material.userData.shader = shader;
   };
