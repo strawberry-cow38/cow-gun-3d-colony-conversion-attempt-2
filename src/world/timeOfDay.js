@@ -174,11 +174,13 @@ function lerpHex(a, b, u) {
  *   sun: THREE.DirectionalLight,
  *   hemi: THREE.HemisphereLight,
  *   sky: THREE.Mesh,
+ *   sunDisc?: THREE.Mesh,
+ *   moonDisc?: THREE.Mesh,
  *   initialT?: number,
  * }} opts
  */
 export function createTimeOfDay(opts) {
-  const { sun, hemi, sky } = opts;
+  const { sun, hemi, sky, sunDisc, moonDisc } = opts;
   const skyMat = /** @type {THREE.ShaderMaterial} */ (sky.material);
   let t = opts.initialT ?? 0.7; // open in early-evening to preserve existing look
 
@@ -188,6 +190,10 @@ export function createTimeOfDay(opts) {
   let overcast = 0;
 
   const _sunVec = new THREE.Vector3();
+  // Place celestial discs near the sky shell so they read as far away. Sky
+  // sphere is 40000 — 35000 keeps them clearly inside the dome without
+  // clipping when the camera pans.
+  const SKY_RADIUS = 35000;
 
   function apply() {
     const p = sample(t);
@@ -196,6 +202,22 @@ export function createTimeOfDay(opts) {
     const sunZ = Math.cos((t - 0.25) * Math.PI * 2);
     _sunVec.set(0.35, sunY, sunZ).normalize().multiplyScalar(4000);
     sun.position.copy(_sunVec);
+
+    if (sunDisc) {
+      const dir = _sunVec.clone().normalize();
+      sunDisc.position.copy(dir).multiplyScalar(SKY_RADIUS);
+      // Sun disc tracks the directional light's color so the visible body
+      // matches the sunlight tint (warm at sunset, white at noon).
+      /** @type {THREE.MeshBasicMaterial} */ (sunDisc.material).color.setHex(p.sunColor);
+      // Hide once the sun is well below the horizon so we don't render a
+      // bright disc clipping through the night skybox.
+      sunDisc.visible = dir.y > -0.05;
+    }
+    if (moonDisc) {
+      const moonDir = _sunVec.clone().normalize().multiplyScalar(-1);
+      moonDisc.position.copy(moonDir).multiplyScalar(SKY_RADIUS);
+      moonDisc.visible = moonDir.y > -0.05;
+    }
 
     const dim = 1 - overcast * 0.45;
     sun.color.setHex(p.sunColor);

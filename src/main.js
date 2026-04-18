@@ -189,9 +189,16 @@ spawnInitialBoulders(world, tileGrid, treeCount);
 spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
-const { renderer, scene, camera, sun, hemi, sky } = createScene(canvas);
+const { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc } = createScene(canvas);
 const audio = createAudio({ camera });
-const timeOfDay = createTimeOfDay({ sun, hemi, sky, initialT: dayFractionOfTick(0) });
+const timeOfDay = createTimeOfDay({
+  sun,
+  hemi,
+  sky,
+  sunDisc,
+  moonDisc,
+  initialT: dayFractionOfTick(0),
+});
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
 const lightingSystem = makeLightingSystem({ grid: tileGrid, timeOfDay });
 scheduler.add(lightingSystem);

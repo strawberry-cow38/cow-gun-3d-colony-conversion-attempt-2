@@ -70,13 +70,34 @@ export function createScene(canvas) {
   // the camera focus; must be in the scene graph for matrixWorld to update.
   scene.add(sun.target);
 
+  // Visible celestial body in the sky. Lives just inside the sky sphere
+  // so it always renders behind in-world geometry but in front of the
+  // skybox. timeOfDay positions sunDisc/moonDisc each frame so they match
+  // the directional light's angle (sunDisc) and its astronomical opposite
+  // (moonDisc). Lit purely by emissive — they're light sources, not lit
+  // surfaces.
+  const sunDisc = new THREE.Mesh(
+    new THREE.SphereGeometry(900, 32, 16),
+    new THREE.MeshBasicMaterial({ color: 0xfff4d6 }),
+  );
+  sunDisc.frustumCulled = false;
+  sunDisc.renderOrder = -0.5;
+  scene.add(sunDisc);
+  const moonDisc = new THREE.Mesh(
+    new THREE.SphereGeometry(700, 32, 16),
+    new THREE.MeshBasicMaterial({ color: 0xe6e6f0 }),
+  );
+  moonDisc.frustumCulled = false;
+  moonDisc.renderOrder = -0.5;
+  scene.add(moonDisc);
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight, false);
   });
 
-  return { renderer, scene, camera, sun, hemi, sky };
+  return { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc };
 }
 
 function buildSky() {
