@@ -77,14 +77,14 @@ export function createScene(canvas) {
   // (moonDisc). Lit purely by emissive — they're light sources, not lit
   // surfaces.
   const sunDisc = new THREE.Mesh(
-    new THREE.SphereGeometry(900, 32, 16),
+    new THREE.SphereGeometry(4500, 32, 16),
     new THREE.MeshBasicMaterial({ color: 0xfff4d6 }),
   );
   sunDisc.frustumCulled = false;
   sunDisc.renderOrder = -0.5;
   scene.add(sunDisc);
   const moonDisc = new THREE.Mesh(
-    new THREE.SphereGeometry(700, 32, 16),
+    new THREE.SphereGeometry(3500, 32, 16),
     new THREE.MeshBasicMaterial({ color: 0xe6e6f0 }),
   );
   moonDisc.frustumCulled = false;
