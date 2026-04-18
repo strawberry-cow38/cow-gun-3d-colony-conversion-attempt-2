@@ -7,6 +7,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE } from '../world/coords.js';
+import { createComposer } from './postprocessing.js';
 
 // Sun-shadow footprint. Orthographic half-extent around the light's target —
 // renderFrame pins the target to the RTS focus point, so this is effectively
@@ -29,9 +30,18 @@ export function createScene(canvas) {
   // we'd rather spend the samples elsewhere.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  // ACES + linear → sRGB gives the postprocessing stack proper headroom for
+  // bloom and the curve-based grader. Exposure tuned slightly hot so the
+  // dreamcore highlight tint has something to bite into.
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x3a2350);
+  // Linear fog tinted by timeOfDay each frame. Range tuned for ~30 tiles
+  // start, ~80 tiles end at 43u/tile — soft horizon haze, not a wall.
+  scene.fog = new THREE.Fog(0x6a3aa0, 30 * TILE_SIZE, 80 * TILE_SIZE);
 
   // Far plane sized for a 200×200 grid at 1.5m tiles (~8570u across).
   const camera = new THREE.PerspectiveCamera(
@@ -91,13 +101,16 @@ export function createScene(canvas) {
   moonDisc.renderOrder = -0.5;
   scene.add(moonDisc);
 
+  const post = createComposer(renderer, scene, camera);
+
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight, false);
+    post.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc };
+  return { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc, post };
 }
 
 function buildSky() {
@@ -155,6 +168,24 @@ function buildSky() {
         return s;
       }
 
+      // Cellular star field: hash a coarse cell, only emit a star above a
+      // sparse threshold, attenuate by distance to a per-cell jittered point.
+      float starfield(vec3 d, float density, float bigness) {
+        // Project direction onto a "sky uv" — concentric latitude bands kept
+        // round by dividing azimuth by altitude factor so cells don't pinch
+        // toward the zenith.
+        float az = atan(d.x, d.z);
+        vec2 uv = vec2(az * 30.0, d.y * 60.0);
+        vec2 i = floor(uv);
+        vec2 f = fract(uv);
+        float seed = hash(i);
+        if (seed < 1.0 - density) return 0.0;
+        vec2 starCenter = vec2(hash(i + 13.0), hash(i + 41.0));
+        float dist = length(f - starCenter);
+        float intensity = hash(i + 71.0);
+        return smoothstep(bigness, 0.0, dist) * (0.4 + intensity * 0.6);
+      }
+
       void main() {
         vec3 d = normalize(vDir);
         float h = d.y;
@@ -169,6 +200,20 @@ function buildSky() {
           col = mix(col, zenithColor, smoothstep(0.25, 0.95, h));
         } else {
           col = mix(horizonLow, groundColor, pow(clamp(-h, 0.0, 1.0), 0.45));
+        }
+
+        // Stars: visible only when zenith is dark (night). Mask by zenith
+        // luminance so they fade in/out with sunrise/sunset automatically.
+        if (h > 0.05) {
+          float zenithLuma = dot(zenithColor, vec3(0.299, 0.587, 0.114));
+          float nightMask = 1.0 - smoothstep(0.04, 0.18, zenithLuma);
+          if (nightMask > 0.001) {
+            float horizonRise = smoothstep(0.05, 0.35, h);
+            float s = starfield(d, 0.012, 0.18) * horizonRise;
+            float bigStars = starfield(d, 0.0025, 0.34) * horizonRise;
+            col += vec3(0.85, 0.9, 1.0) * s * nightMask * 1.4;
+            col += vec3(1.0, 0.95, 0.85) * bigStars * nightMask * 2.0;
+          }
         }
 
         // Clouds: stretched streaks biased toward the sunset band. Azimuth in

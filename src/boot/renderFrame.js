@@ -44,6 +44,7 @@ function speedIcon(speed) {
  *   camera: import('three').PerspectiveCamera,
  *   sun: import('three').DirectionalLight,
  *   sky: import('three').Object3D,
+ *   post: ReturnType<typeof import('../render/postprocessing.js').createComposer>,
  *   rts: import('../render/rtsCamera.js').RtsCamera,
  *   fpCamera: import('../render/firstPersonCamera.js').FirstPersonCamera,
  *   audio: ReturnType<typeof import('../audio/audio.js').createAudio>,
@@ -81,6 +82,7 @@ export function createRenderFrame({
   camera,
   sun,
   sky,
+  post,
   rts,
   fpCamera,
   audio,
@@ -345,7 +347,11 @@ export function createRenderFrame({
     // can put the camera outside the sky — the purple scene.background stays
     // hidden regardless of camera distance from the world origin.
     sky.position.copy(camera.position);
-    renderer.render(scene, camera);
+    // More bloom at night so neon-y light sources (torches, sun-disc glow)
+    // pop the way they do in PS2 dreamcore screenshots.
+    const dayFrac = timeOfDay.getSunLightPercent();
+    post.bloomPass.strength = 0.45 + (1 - dayFrac) * 0.55;
+    post.composer.render();
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
       measuredFps = (renderFrameCount * 1000) / (now - renderFpsSampleStart);

@@ -506,11 +506,14 @@ export function buildWaterSurface(tileGrid) {
     /** @type {import('three').WebGLProgramParametersWithUniforms} */ shader,
   ) => {
     shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uCausticColor = { value: new THREE.Color(0x9be7ff) };
+    shader.uniforms.uCausticStrength = { value: 0.55 };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
         `#include <common>
          uniform float uTime;
+         varying vec2 vWaterXZ;
          float rippleY(vec2 p) {
            return sin(p.x * 1.8 + uTime * 2.0) * 0.120
                 + sin(p.y * 2.1 - uTime * 1.6) * 0.100
@@ -534,7 +537,45 @@ export function buildWaterSurface(tileGrid) {
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-         transformed.y += rippleY(transformed.xz);`,
+         transformed.y += rippleY(transformed.xz);
+         vWaterXZ = transformed.xz;`,
+      );
+    // Caustics: two animated stretched-Voronoi-ish layers crossed and squared
+    // to get pinch-y bright lines that shimmer like sunlight focused through
+    // the surface. Added as emissive — never darkens, just brightens.
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform float uTime;
+         uniform vec3 uCausticColor;
+         uniform float uCausticStrength;
+         varying vec2 vWaterXZ;
+         float causticHash(vec2 p) {
+           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+         }
+         float causticNoise(vec2 p) {
+           vec2 i = floor(p);
+           vec2 f = fract(p);
+           f = f * f * (3.0 - 2.0 * f);
+           float a = causticHash(i);
+           float b = causticHash(i + vec2(1.0, 0.0));
+           float c = causticHash(i + vec2(0.0, 1.0));
+           float d = causticHash(i + vec2(1.0, 1.0));
+           return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+         }
+         float caustics(vec2 p, float t) {
+           float a = causticNoise(p * 0.18 + vec2(t * 0.13, t * 0.09));
+           float b = causticNoise(p * 0.22 - vec2(t * 0.10, t * 0.16) + 7.0);
+           float v = abs(a - b);
+           return pow(1.0 - smoothstep(0.0, 0.18, v), 3.0);
+         }`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+         float caust = caustics(vWaterXZ, uTime);
+         totalEmissiveRadiance += uCausticColor * (caust * uCausticStrength);`,
       );
     material.userData.shader = shader;
   };

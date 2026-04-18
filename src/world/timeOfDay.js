@@ -40,64 +40,64 @@ const SKY_UNIFORM_KEYS = /** @type {const} */ ([
 /** @type {Record<'midnight'|'sunrise'|'noon'|'sunset', Palette>} */
 const PALETTES = {
   midnight: {
-    sunColor: 0x6a7ab8,
-    sunIntensity: 0.12,
-    hemiSky: 0x1a2850,
-    hemiGround: 0x05060f,
-    hemiIntensity: 0.22,
-    zenithColor: 0x05060f,
-    upperSkyColor: 0x1a1838,
-    horizonGlow: 0x2a3f78,
-    horizonLow: 0x1a2850,
-    groundColor: 0x030308,
-    cloudWarm: 0x4a5a8a,
-    cloudCool: 0x1f2a48,
-    cloudDark: 0x080818,
+    sunColor: 0x8aa4f0,
+    sunIntensity: 0.18,
+    hemiSky: 0x2a1f60,
+    hemiGround: 0x06081a,
+    hemiIntensity: 0.32,
+    zenithColor: 0x06081e,
+    upperSkyColor: 0x2a1058,
+    horizonGlow: 0x6a3aa0,
+    horizonLow: 0x4a2880,
+    groundColor: 0x040312,
+    cloudWarm: 0x8a6acc,
+    cloudCool: 0x2a1858,
+    cloudDark: 0x06061a,
   },
   sunrise: {
-    sunColor: 0xffa66a,
-    sunIntensity: 0.85,
-    hemiSky: 0xffb27a,
-    hemiGround: 0x2a1a3a,
-    hemiIntensity: 0.55,
-    zenithColor: 0x2a1838,
-    upperSkyColor: 0x4d2a58,
-    horizonGlow: 0xffa267,
-    horizonLow: 0xff7a3a,
-    groundColor: 0x1a0e26,
-    cloudWarm: 0xffd0a0,
-    cloudCool: 0x6a3a78,
-    cloudDark: 0x2c1840,
+    sunColor: 0xff9eb8,
+    sunIntensity: 0.95,
+    hemiSky: 0xff9ec0,
+    hemiGround: 0x4a1a58,
+    hemiIntensity: 0.65,
+    zenithColor: 0x3a1858,
+    upperSkyColor: 0x7a2a8a,
+    horizonGlow: 0xff7ac0,
+    horizonLow: 0xff5a90,
+    groundColor: 0x2a0e3a,
+    cloudWarm: 0xffc0e0,
+    cloudCool: 0x8a3aa8,
+    cloudDark: 0x3c1858,
   },
   noon: {
     sunColor: 0xfff4d6,
-    sunIntensity: 1.15,
-    hemiSky: 0x7fb8e8,
-    hemiGround: 0x2a3a2a,
-    hemiIntensity: 0.75,
-    zenithColor: 0x1a5a9a,
-    upperSkyColor: 0x60a0d8,
-    horizonGlow: 0xcce8ff,
-    horizonLow: 0x8fc0e8,
-    groundColor: 0x2a3a4a,
+    sunIntensity: 1.25,
+    hemiSky: 0x7ad6f0,
+    hemiGround: 0x2a4a3a,
+    hemiIntensity: 0.85,
+    zenithColor: 0x2070d8,
+    upperSkyColor: 0x6ac0f0,
+    horizonGlow: 0xd8f4ff,
+    horizonLow: 0x9ad8f8,
+    groundColor: 0x2a4a5a,
     cloudWarm: 0xffffff,
-    cloudCool: 0x9ab5cc,
-    cloudDark: 0x4a6080,
+    cloudCool: 0x9ad0e8,
+    cloudDark: 0x4a708a,
   },
   sunset: {
-    sunColor: 0xffb46b,
-    sunIntensity: 0.9,
-    hemiSky: 0xffb27a,
-    hemiGround: 0x2a1a3a,
-    hemiIntensity: 0.6,
-    zenithColor: 0x2a1838,
-    upperSkyColor: 0x4d2a58,
-    horizonGlow: 0xffa267,
-    horizonLow: 0xff7a3a,
-    groundColor: 0x1a0e26,
-    cloudWarm: 0xffd0a0,
-    cloudCool: 0x6a3a78,
-    cloudDark: 0x2c1840,
+    sunColor: 0xff7050,
+    sunIntensity: 1.0,
+    hemiSky: 0xff90a8,
+    hemiGround: 0x3a1a58,
+    hemiIntensity: 0.7,
+    zenithColor: 0x3a1858,
+    upperSkyColor: 0x6a2090,
+    horizonGlow: 0xff70a0,
+    horizonLow: 0xff5060,
+    groundColor: 0x2a0e3a,
+    cloudWarm: 0xffb070,
+    cloudCool: 0x7a3aa0,
+    cloudDark: 0x2c1850,
   },
 };
 
@@ -177,11 +177,12 @@ function lerpHex(a, b, u) {
  *   sunDisc?: THREE.Mesh,
  *   moonDisc?: THREE.Mesh,
  *   camera?: THREE.Camera,
+ *   scene?: THREE.Scene,
  *   initialT?: number,
  * }} opts
  */
 export function createTimeOfDay(opts) {
-  const { sun, hemi, sky, sunDisc, moonDisc, camera } = opts;
+  const { sun, hemi, sky, sunDisc, moonDisc, camera, scene } = opts;
   const skyMat = /** @type {THREE.ShaderMaterial} */ (sky.material);
   let t = opts.initialT ?? 0.7; // open in early-evening to preserve existing look
 
@@ -243,6 +244,14 @@ export function createTimeOfDay(opts) {
         c.g += (gg - c.g) * overcast * 0.5;
         c.b += (gb - c.b) * overcast * 0.5;
       }
+    }
+
+    if (scene?.fog && 'color' in scene.fog) {
+      // Fog tracks the horizon glow so distant geometry blends into the sky.
+      // Slightly darker mix keeps midground from looking blown out at noon.
+      const fogColor = /** @type {THREE.Color} */ (scene.fog.color);
+      fogColor.setHex(p.horizonGlow).multiplyScalar(0.85);
+      if (overcast > 0) fogColor.lerp(new THREE.Color(0x47506b), overcast * 0.5);
     }
   }
 

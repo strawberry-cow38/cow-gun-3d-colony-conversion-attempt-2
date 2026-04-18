@@ -189,7 +189,7 @@ spawnInitialBoulders(world, tileGrid, treeCount);
 spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
-const { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc } = createScene(canvas);
+const { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc, post } = createScene(canvas);
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({
   sun,
@@ -198,6 +198,7 @@ const timeOfDay = createTimeOfDay({
   sunDisc,
   moonDisc,
   camera,
+  scene,
   initialT: dayFractionOfTick(0),
 });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });
@@ -1026,6 +1027,7 @@ const { render, getFps } = createRenderFrame({
   camera,
   sun,
   sky,
+  post,
   rts,
   fpCamera,
   audio,
