@@ -32,9 +32,11 @@ const WANDER_RADIUS_TILES = 20;
  *   - If the cow is already standing in water, all candidates pass — they're
  *     wading anyway, no point pretending the river doesn't exist.
  *   - Else the straight line is sampled (cheap reject). If it crosses water
- *     AND a `paths` cache is supplied, ask the real pathfinder for a route
- *     that doesn't step on a water tile (e.g. across a wall bridge). If
- *     such a route exists the candidate is allowed.
+ *     AND a `paths` cache is supplied, ask the pathfinder for a DRY route
+ *     (wading forbidden) — a bridge or isthmus. If such a route exists the
+ *     candidate is allowed. A dry-only walkable is used here because the
+ *     default walkable lets cows wade, so the cheapest route would re-enter
+ *     the water and the probe would always reject.
  *   - Without `paths`, the Bresenham reject is the final word — keeps the
  *     historical behavior for tests / cheap callers.
  *
@@ -43,7 +45,7 @@ const WANDER_RADIUS_TILES = 20;
  * @param {{ i: number, j: number, z?: number } | null} [from]
  * @param {() => number} [rand]
  * @param {number} [attempts]
- * @param {{ find: (s: { i: number, j: number, z?: number }, g: { i: number, j: number, z?: number }, opts?: { cache?: boolean }) => { i: number, j: number, z?: number }[] | null } | null} [paths]
+ * @param {{ find: (s: { i: number, j: number, z?: number }, g: { i: number, j: number, z?: number }, opts?: { cache?: boolean, walkable?: (grid: TileGrid, i: number, j: number) => boolean }) => { i: number, j: number, z?: number }[] | null } | null} [paths]
  */
 export function pickWanderGoal(
   grid,
@@ -71,13 +73,27 @@ export function pickWanderGoal(
       const route = paths.find(
         { i: from.i, j: from.j, z: fromZ },
         { i, j, z: 0 },
-        { cache: false },
+        { cache: false, walkable: dryWalkable(walkable) },
       );
       if (!route || routeCrossesWater(grid, route)) continue;
     }
     return { i, j };
   }
   return null;
+}
+
+/**
+ * Wrap a base walkable so water tiles (shallow or deep) are treated as
+ * unwalkable. Used for the dry-only wander probe — the default walkable lets
+ * cows wade, so without this the cheapest route over a river is to splash
+ * straight across, defeating the bridge-search.
+ * @param {(grid: TileGrid, i: number, j: number) => boolean} base
+ */
+function dryWalkable(base) {
+  return (grid, i, j) => {
+    if (!base(grid, i, j)) return false;
+    return !isWaterTile(grid, i, j);
+  };
 }
 
 /** @param {TileGrid} grid @param {number} i @param {number} j */

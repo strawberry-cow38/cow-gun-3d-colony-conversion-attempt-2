@@ -25,11 +25,11 @@ import * as THREE from 'three';
 import { TILE_SIZE } from '../world/coords.js';
 import { BIOME, SKIRT_TILES, TERRAIN_STEP } from '../world/tileGrid.js';
 
-// Water surface visually sits 7/8 of a terrain step above ground level — high
-// enough that shallow-water tiles read as a wadeable sandy bed under a thin
-// layer of water, low enough that a single quarter-wall placed in shallow
+// Water surface visually sits 6/8 (= 3/4) of a terrain step above ground level
+// — high enough that shallow-water tiles read as a wadeable sandy bed under a
+// thin layer of water, low enough that a single quarter-wall placed in shallow
 // water still pokes above the surface.
-const WATER_SURFACE_Y = (TERRAIN_STEP * 7) / 8;
+const WATER_SURFACE_Y = (TERRAIN_STEP * 6) / 8;
 
 const SAND_TOP_COLOR = new THREE.Color(0xc8b27a);
 const SAND_CLIFF_COLOR = new THREE.Color(0xc8b27a);
@@ -292,7 +292,7 @@ function buildChunkMesh(
 
 /**
  * Translucent water surface plane that covers every water tile at
- * `WATER_SURFACE_Y` (7/8 of a terrain step above ground). Both DEEP_WATER
+ * `WATER_SURFACE_Y` (6/8 of a terrain step above ground). Both DEEP_WATER
  * (lakebed pushed to -TERRAIN_STEP) and SHALLOW_WATER (sandy bed at Y=0)
  * are covered, so wading reads as "feet under a thin layer of water"
  * instead of an opaque blue tile.

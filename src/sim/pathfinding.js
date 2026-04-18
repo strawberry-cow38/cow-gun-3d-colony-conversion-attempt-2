@@ -395,13 +395,18 @@ export class PathCache {
   /**
    * @param {{ i: number, j: number, z?: number }} start
    * @param {{ i: number, j: number, z?: number }} goal
-   * @param {{ cache?: boolean }} [opts] pass { cache: false } for ephemeral
-   *   queries (e.g. wander) that would otherwise churn the LRU.
+   * @param {{ cache?: boolean, walkable?: (grid: TileGrid, i: number, j: number) => boolean }} [opts]
+   *   pass { cache: false } for ephemeral queries (e.g. wander) that would
+   *   otherwise churn the LRU. An overridden `walkable` (only valid with
+   *   cache:false, since cache keys don't include the walkable identity)
+   *   lets a caller run a stricter probe — e.g. dry-only pathing to find a
+   *   bridge route when the default rules would wade through water.
    */
   find(start, goal, opts) {
     if (opts && opts.cache === false) {
       this.misses++;
-      return findPath(this.grid, start, goal, this.walkable);
+      const w = opts.walkable ?? this.walkable;
+      return findPath(this.grid, start, goal, w);
     }
     const sz = start.z ?? 0;
     const gz = goal.z ?? 0;
