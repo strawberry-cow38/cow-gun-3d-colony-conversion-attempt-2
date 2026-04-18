@@ -21,11 +21,13 @@ import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { TREE_KINDS, TREE_VISUALS, growthScale } from '../world/trees.js';
 
 const PINE_GLB_URL = 'models/pine.glb';
+const MAPLE_GLB_URL = 'models/maple.glb';
 // Authored Z of the canopy's base in the GLB. We pre-translate the canopy geo
 // down by this so its base sits at y=0 in mesh space — matches the cone canopy
 // convention, which lets update() position the canopy by the trunk top without
 // the offset getting stretched by per-instance scaleY.
 const PINE_CANOPY_BASE_Z = 1.05;
+const MAPLE_CANOPY_BASE_Z = 1.98;
 
 const TRUNK_HEIGHT = 2.2 * UNITS_PER_METER;
 const TRUNK_RADIUS = 0.18 * UNITS_PER_METER;
@@ -112,36 +114,63 @@ export function createTreeInstancer(scene, capacity = 2048) {
   canopySphereMesh.receiveShadow = true;
   scene.add(canopySphereMesh);
 
-  // Pine renders from a Blender GLB. Loaded async — until ready, pine trees fall
-  // through to the procedural path for the frame.
+  // Species-specific GLB renders. Loaded async — until ready, trees of that
+  // kind fall through to the procedural path for the frame.
   /** @type {THREE.InstancedMesh | null} */
   let pineTrunkMesh = null;
   /** @type {THREE.InstancedMesh | null} */
   let pineCanopyMesh = null;
-  new GLTFLoader().load(PINE_GLB_URL, (gltf) => {
-    const trunkNode = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName('Pine_Trunk'));
-    const canopyNode = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName('Pine_Canopy'));
-    if (!trunkNode || !canopyNode) {
-      console.warn('[treeInstancer] pine GLB missing Pine_Trunk or Pine_Canopy node');
-      return;
-    }
-    const trunkGlbGeo = trunkNode.geometry.clone();
-    const canopyGlbGeo = canopyNode.geometry.clone();
-    // GLB authored at unit metres; bake the world-units conversion in once.
-    trunkGlbGeo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
-    canopyGlbGeo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
-    canopyGlbGeo.translate(0, -PINE_CANOPY_BASE_Z * UNITS_PER_METER, 0);
-    pineTrunkMesh = new THREE.InstancedMesh(trunkGlbGeo, trunkMat, capacity);
-    pineTrunkMesh.count = 0;
-    pineTrunkMesh.castShadow = true;
-    pineTrunkMesh.receiveShadow = true;
-    scene.add(pineTrunkMesh);
-    pineCanopyMesh = new THREE.InstancedMesh(canopyGlbGeo, canopyMat, capacity);
-    pineCanopyMesh.count = 0;
-    pineCanopyMesh.castShadow = true;
-    pineCanopyMesh.receiveShadow = true;
-    scene.add(pineCanopyMesh);
-    dirty = true;
+  /** @type {THREE.InstancedMesh | null} */
+  let mapleTrunkMesh = null;
+  /** @type {THREE.InstancedMesh | null} */
+  let mapleCanopyMesh = null;
+
+  /**
+   * @param {string} url
+   * @param {string} trunkNodeName
+   * @param {string} canopyNodeName
+   * @param {number} canopyBaseZ
+   * @param {(trunk: THREE.InstancedMesh, canopy: THREE.InstancedMesh) => void} onReady
+   */
+  function loadSpeciesGlb(url, trunkNodeName, canopyNodeName, canopyBaseZ, onReady) {
+    new GLTFLoader().load(url, (gltf) => {
+      const trunkNode = /** @type {THREE.Mesh | null} */ (
+        gltf.scene.getObjectByName(trunkNodeName)
+      );
+      const canopyNode = /** @type {THREE.Mesh | null} */ (
+        gltf.scene.getObjectByName(canopyNodeName)
+      );
+      if (!trunkNode || !canopyNode) {
+        console.warn(`[treeInstancer] ${url} missing ${trunkNodeName} or ${canopyNodeName} node`);
+        return;
+      }
+      const trunkGlbGeo = trunkNode.geometry.clone();
+      const canopyGlbGeo = canopyNode.geometry.clone();
+      trunkGlbGeo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+      canopyGlbGeo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+      canopyGlbGeo.translate(0, -canopyBaseZ * UNITS_PER_METER, 0);
+      const trunkIm = new THREE.InstancedMesh(trunkGlbGeo, trunkMat, capacity);
+      trunkIm.count = 0;
+      trunkIm.castShadow = true;
+      trunkIm.receiveShadow = true;
+      scene.add(trunkIm);
+      const canopyIm = new THREE.InstancedMesh(canopyGlbGeo, canopyMat, capacity);
+      canopyIm.count = 0;
+      canopyIm.castShadow = true;
+      canopyIm.receiveShadow = true;
+      scene.add(canopyIm);
+      onReady(trunkIm, canopyIm);
+      dirty = true;
+    });
+  }
+
+  loadSpeciesGlb(PINE_GLB_URL, 'Pine_Trunk', 'Pine_Canopy', PINE_CANOPY_BASE_Z, (t, c) => {
+    pineTrunkMesh = t;
+    pineCanopyMesh = c;
+  });
+  loadSpeciesGlb(MAPLE_GLB_URL, 'Maple_Trunk', 'Maple_Canopy', MAPLE_CANOPY_BASE_Z, (t, c) => {
+    mapleTrunkMesh = t;
+    mapleCanopyMesh = c;
   });
 
   // Axe marker. Handle offset so the grip sits at y=0 and the head at the top.
@@ -174,6 +203,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
   const slotToEntity = [];
   /** @type {number[]} pineTrunkMesh slot → entity id */
   const pineSlotToEntity = [];
+  /** @type {number[]} mapleTrunkMesh slot → entity id */
+  const mapleSlotToEntity = [];
   let dirty = true;
 
   /**
@@ -199,16 +230,21 @@ export function createTreeInstancer(scene, capacity = 2048) {
     let iCone = 0;
     let iSphere = 0;
     let iPine = 0;
+    let iMaple = 0;
     slotToEntity.length = 0;
     pineSlotToEntity.length = 0;
+    mapleSlotToEntity.length = 0;
     // _quat is shared with updateMarkers which spins it — reset to identity
     // so static trees render upright regardless of frame order.
     _quat.identity();
     const pineTrunk = pineTrunkMesh;
     const pineCanopy = pineCanopyMesh;
     const pineReady = pineTrunk !== null && pineCanopy !== null;
+    const mapleTrunk = mapleTrunkMesh;
+    const mapleCanopy = mapleCanopyMesh;
+    const mapleReady = mapleTrunk !== null && mapleCanopy !== null;
     for (const { id, components } of world.query(['Tree', 'TileAnchor', 'TreeViz'])) {
-      if (iTrunk >= capacity || iPine >= capacity) break;
+      if (iTrunk >= capacity || iPine >= capacity || iMaple >= capacity) break;
       const anchor = components.TileAnchor;
       const tree = components.Tree;
       const draw = TREE_DRAW.get(tree.kind) ?? FALLBACK_DRAW;
@@ -216,12 +252,16 @@ export function createTreeInstancer(scene, capacity = 2048) {
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
       const isPine = tree.kind === 'pine' && pineReady;
+      const isMaple = tree.kind === 'maple' && mapleReady;
       _position.set(w.x, y, w.z);
       _trunkScale.set(draw.trunkScale[0] * g, draw.trunkScale[1] * g, draw.trunkScale[2] * g);
       _matrix.compose(_position, _quat, _trunkScale);
       if (isPine && pineTrunk) {
         pineTrunk.setMatrixAt(iPine, _matrix);
         pineTrunk.setColorAt(iPine, draw.trunk);
+      } else if (isMaple && mapleTrunk) {
+        mapleTrunk.setMatrixAt(iMaple, _matrix);
+        mapleTrunk.setColorAt(iMaple, draw.trunk);
       } else {
         trunkMesh.setMatrixAt(iTrunk, _matrix);
         trunkMesh.setColorAt(iTrunk, draw.trunk);
@@ -235,6 +275,11 @@ export function createTreeInstancer(scene, capacity = 2048) {
         pineCanopy.setColorAt(iPine, draw.canopy);
         pineSlotToEntity[iPine] = id;
         iPine++;
+      } else if (isMaple && mapleCanopy) {
+        mapleCanopy.setMatrixAt(iMaple, _matrix);
+        mapleCanopy.setColorAt(iMaple, draw.canopy);
+        mapleSlotToEntity[iMaple] = id;
+        iMaple++;
       } else {
         if (draw.canopyShape === 'sphere') {
           canopySphereMesh.setMatrixAt(iSphere, _matrix);
@@ -255,6 +300,10 @@ export function createTreeInstancer(scene, capacity = 2048) {
     if (pineTrunk && pineCanopy && iPine > 0) {
       commitMesh(pineTrunk, iPine);
       commitMesh(pineCanopy, iPine);
+    }
+    if (mapleTrunk && mapleCanopy && iMaple > 0) {
+      commitMesh(mapleTrunk, iMaple);
+      commitMesh(mapleCanopy, iMaple);
     }
     dirty = false;
   }
@@ -310,6 +359,9 @@ export function createTreeInstancer(scene, capacity = 2048) {
     if (mesh && pineTrunkMesh && (mesh === pineTrunkMesh || mesh === pineCanopyMesh)) {
       return pineSlotToEntity[instanceId] ?? null;
     }
+    if (mesh && mapleTrunkMesh && (mesh === mapleTrunkMesh || mesh === mapleCanopyMesh)) {
+      return mapleSlotToEntity[instanceId] ?? null;
+    }
     return slotToEntity[instanceId] ?? null;
   }
 
@@ -322,6 +374,12 @@ export function createTreeInstancer(scene, capacity = 2048) {
     },
     get pineCanopyMesh() {
       return pineCanopyMesh;
+    },
+    get mapleTrunkMesh() {
+      return mapleTrunkMesh;
+    },
+    get mapleCanopyMesh() {
+      return mapleCanopyMesh;
     },
     update,
     updateMarkers,
