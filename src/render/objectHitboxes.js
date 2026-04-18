@@ -96,6 +96,12 @@ export function createObjectHitboxes(scene, capacity) {
     _q.identity();
     mesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
+    // InstancedMesh.raycast early-outs against a cached bounding sphere it
+    // computes once on first ray. After spawning new instances (e.g. trees
+    // grown after first click), the sphere goes stale and rays miss them
+    // unless they happen to land near the original cluster — manifesting as
+    // hitboxes that only respond from certain camera angles.
+    mesh.computeBoundingSphere();
   }
 
   /** @param {number} instanceId @returns {number | null} */

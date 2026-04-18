@@ -758,7 +758,8 @@ function runChopJob(world, cowId, job, path, pos, grid, paths, walkable, board, 
       job.payload = {};
       return;
     }
-    const route = paths.find(start, adj);
+    const cowZ = world.get(cowId, 'Brain')?.layerZ | 0;
+    const route = paths.find({ ...start, z: cowZ }, adj);
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
@@ -836,7 +837,8 @@ function runMineJob(world, cowId, job, path, pos, grid, paths, walkable, board, 
       job.payload = {};
       return;
     }
-    const route = paths.find(start, adj);
+    const cowZ = world.get(cowId, 'Brain')?.layerZ | 0;
+    const route = paths.find({ ...start, z: cowZ }, adj);
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
@@ -939,7 +941,8 @@ function runCutJob(world, cowId, job, path, pos, grid, paths, walkable, board, d
       job.payload = {};
       return;
     }
-    const route = paths.find(start, adj);
+    const cowZ = world.get(cowId, 'Brain')?.layerZ | 0;
+    const route = paths.find({ ...start, z: cowZ }, adj);
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
@@ -1833,7 +1836,8 @@ function runHarvestJob(world, cowId, job, path, pos, grid, paths, board, deps) {
 
   if (job.state === 'pathing') {
     const start = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
-    const route = paths.find(start, { i, j });
+    const cowZ = world.get(cowId, 'Brain')?.layerZ | 0;
+    const route = paths.find({ ...start, z: cowZ }, { i, j });
     if (!route || route.length === 0) {
       board.release(jobId);
       job.kind = 'none';
