@@ -1908,7 +1908,9 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
   // Target tile stopped being a valid drop (stockpile undesignated, or
   // BuildSite cancelled/already built, or station gone) → complete + bail.
   const targetGone = toBuildSite
-    ? findBuildSiteAt(world, toI, toJ) === null
+    ? typeof siteId === 'number'
+      ? world.get(siteId, 'BuildSite') == null
+      : findBuildSiteAt(world, toI, toJ) === null
     : toSupply
       ? !stationWorkSpotMatches(world, furnaceId, easelId, stoveId, toI, toJ)
       : !toRelocation && !grid.isStockpile(toI, toJ);
