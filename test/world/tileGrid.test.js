@@ -77,7 +77,7 @@ describe('TileGrid', () => {
     expect(maxStep).toBeGreaterThan(0);
   });
 
-  it('generateTerrain sinks deep water, keeps shallow water at Y=0, and steps sand by beach proximity', () => {
+  it('generateTerrain sinks deep water, keeps shallow water at Y=0, and the surviving sand bank sits one step up', () => {
     const g = new TileGrid(48, 48);
     g.generateTerrain();
     for (let j = 0; j < g.H; j++) {
@@ -89,16 +89,10 @@ describe('TileGrid', () => {
         } else if (b === BIOME.SHALLOW_WATER) {
           expect(g.elevation[k]).toBe(0);
         } else if (b === BIOME.SAND) {
-          // Adjacency uses the skirt buffer — sand at the inner map edge
-          // can be adjacent to shallow water that lives in the skirt
-          // (lakes extend past the map edge as of the decorative skirt
-          // change), and its elevation reflects that.
-          const adjacentToShallow =
-            g.getSkirtBiome(i - 1, j) === BIOME.SHALLOW_WATER ||
-            g.getSkirtBiome(i + 1, j) === BIOME.SHALLOW_WATER ||
-            g.getSkirtBiome(i, j - 1) === BIOME.SHALLOW_WATER ||
-            g.getSkirtBiome(i, j + 1) === BIOME.SHALLOW_WATER;
-          expect(g.elevation[k]).toBeCloseTo(adjacentToShallow ? 0 : TERRAIN_STEP, 3);
+          // The flat beach (sand-adjacent-to-water, elev 0) is promoted to
+          // SHALLOW_WATER during generateTerrain, so every surviving SAND
+          // tile is the raised bank one step above the waterline.
+          expect(g.elevation[k]).toBeCloseTo(TERRAIN_STEP, 3);
         }
       }
     }

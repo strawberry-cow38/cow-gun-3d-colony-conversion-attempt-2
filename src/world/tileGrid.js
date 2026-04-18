@@ -763,6 +763,18 @@ export class TileGrid {
       }
     }
 
+    // 4.5. Drop the flat sand beach (sand-adjacent-to-water, elev 0) into
+    //      shallow water. Cows now wade across the shore instead of
+    //      dry-walking on what visually reads as waterfront. The raised
+    //      bank one tile inland (sand-not-adjacent-to-water, elev
+    //      TERRAIN_STEP) keeps its biome + height, so the silhouetted
+    //      sandy bank still rims every lake and river.
+    for (let k = 0; k < this.skirtBiome.length; k++) {
+      if (this.skirtBiome[k] === BIOME.SAND && this.skirtElevation[k] === 0) {
+        this.skirtBiome[k] = BIOME.SHALLOW_WATER;
+      }
+    }
+
     // 5. Copy inner rect out of the extended buffers so W×H views stay
     //    authoritative. Flowers are rolled here (inner only) since they're
     //    a cosmetic per-tile attribute, not part of the noise field.
