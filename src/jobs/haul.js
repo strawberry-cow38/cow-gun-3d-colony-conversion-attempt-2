@@ -21,9 +21,20 @@
  * motion reads as a real action instead of a teleport.
  */
 
-import { defaultWalkable } from '../sim/pathfinding.js';
+import { defaultWalkable, passableAt } from '../sim/pathfinding.js';
 import { roofIsSupported } from '../systems/autoRoof.js';
 import { maxStack, stackCount } from '../world/items.js';
+
+const NBRS_8 = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
 
 export const PICKUP_TICKS = 12;
 export const DROP_TICKS = 9;
@@ -233,6 +244,27 @@ export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
 }
 
 /**
+ * 8-neighbour walkable tiles around (i, j, z) for adjacent-drop delivery to a
+ * stacked partial-wall blueprint. Cow stands here and the drop credits the
+ * BuildSite by siteId (see runHaulJob in cow.js).
+ * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {number} i @param {number} j @param {number} z
+ * @returns {{ i: number, j: number, z: number }[]}
+ */
+export function adjacentDeliveryTiles(grid, i, j, z) {
+  /** @type {{ i: number, j: number, z: number }[]} */
+  const out = [];
+  for (const [di, dj] of NBRS_8) {
+    const ni = i + di;
+    const nj = j + dj;
+    if (!grid.inBounds(ni, nj)) continue;
+    if (!passableAt(grid, ni, nj, z)) continue;
+    out.push({ i: ni, j: nj, z });
+  }
+  return out;
+}
+
+/**
  * Count material in-flight to every BuildSite — both open deliver jobs (the
  * cow hasn't picked up yet) and cows already carrying their load. Keyed by
  * BuildSite entity id so stacked blueprints on one tile (partial walls) each
@@ -424,6 +456,16 @@ export function makeHaulPostingSystem(board, grid, paths) {
         const pending = siteInFlight.get(siteId) ?? 0;
         let need = site.required - site.delivered - pending;
         const siteZ = a.z | 0;
+        // Stacked partial-wall blueprints sit on top of an existing wall whose
+        // effective elevation can exceed the cow's 1.5m climb (e.g. a 4th
+        // quarter on a three-quarter wall = 2.25m). Deliver to an adjacent
+        // walkable tile instead — cow stands next to the wall and the drop
+        // logic credits the site by siteId. baseFill === 0 keeps the legacy
+        // walk-onto-tile flow so flat-ground blueprints behave unchanged.
+        const useAdjacent = (site.baseFill ?? 0) > 0;
+        /** @type {{ i: number, j: number, z: number }[] | null} */
+        const adjGoals = useAdjacent ? adjacentDeliveryTiles(grid, a.i, a.j, siteZ) : null;
+        if (useAdjacent && (!adjGoals || adjGoals.length === 0)) continue;
         /** @type {Set<number> | null} Sources proven unreachable to this site this tick. Allocated lazily. */
         let unreachable = null;
         while (need > 0) {
@@ -437,16 +479,37 @@ export function makeHaulPostingSystem(board, grid, paths) {
             unreachable,
           );
           if (!src) break;
+          /** @type {{ i: number, j: number, z: number }} */
+          let dropAt = { i: a.i, j: a.j, z: siteZ };
           if (paths) {
-            const route = paths.find(
-              { i: src.i, j: src.j, z: src.z },
-              { i: a.i, j: a.j, z: siteZ },
-            );
-            if (!route) {
-              if (!unreachable) unreachable = new Set();
-              unreachable.add(src.id);
-              continue;
+            if (adjGoals) {
+              let found = null;
+              for (const g of adjGoals) {
+                const route = paths.find({ i: src.i, j: src.j, z: src.z }, g);
+                if (route) {
+                  found = g;
+                  break;
+                }
+              }
+              if (!found) {
+                if (!unreachable) unreachable = new Set();
+                unreachable.add(src.id);
+                continue;
+              }
+              dropAt = found;
+            } else {
+              const route = paths.find(
+                { i: src.i, j: src.j, z: src.z },
+                { i: a.i, j: a.j, z: siteZ },
+              );
+              if (!route) {
+                if (!unreachable) unreachable = new Set();
+                unreachable.add(src.id);
+                continue;
+              }
             }
+          } else if (adjGoals) {
+            dropAt = adjGoals[0];
           }
           const bundle = Math.min(need, src.avail);
           board.post('deliver', {
@@ -455,8 +518,8 @@ export function makeHaulPostingSystem(board, grid, paths) {
             count: bundle,
             fromI: src.i,
             fromJ: src.j,
-            toI: a.i,
-            toJ: a.j,
+            toI: dropAt.i,
+            toJ: dropAt.j,
             toBuildSite: true,
             siteId,
           });

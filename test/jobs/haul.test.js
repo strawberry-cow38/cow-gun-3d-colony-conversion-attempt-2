@@ -207,6 +207,45 @@ describe('haul poster: stack consolidation', () => {
     expect(delivers).toHaveLength(0);
   });
 
+  it('routes deliveries for stacked partial-wall blueprints to an adjacent tile, not the wall tile', () => {
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(0, 0, 1);
+    // Existing 3-quarter wall on (2,2). Effective elevation 2.25m — above
+    // CLIMB_MAX, so the cow physically cannot stand on it. The 4th-quarter
+    // blueprint must therefore route delivery to an adjacent tile.
+    grid.setWallFill(2, 2, 3);
+    const world = makeWorld();
+    spawnItem(world, 0, 0, 'wood', 1, 50);
+    world.spawn({
+      BuildSite: {
+        kind: 'quarterWall',
+        stuff: 'wood',
+        requiredKind: 'wood',
+        required: 1,
+        delivered: 0,
+        buildJobId: 0,
+        progress: 0,
+        baseFill: 3,
+      },
+      BuildSiteViz: {},
+      TileAnchor: { i: 2, j: 2 },
+      Position: { x: 0, y: 0, z: 0 },
+    });
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    const delivers = board.jobs.filter((j) => j.kind === 'deliver');
+    expect(delivers).toHaveLength(1);
+    const d = delivers[0];
+    expect(d.payload.toBuildSite).toBe(true);
+    // Drop tile is adjacent to (2,2), not (2,2) itself.
+    expect(d.payload.toI === 2 && d.payload.toJ === 2).toBe(false);
+    const di = Math.abs(d.payload.toI - 2);
+    const dj = Math.abs(d.payload.toJ - 2);
+    expect(di <= 1 && dj <= 1 && di + dj > 0).toBe(true);
+  });
+
   it('does not merge across different kinds', () => {
     const grid = new TileGrid(4, 4);
     grid.setStockpile(0, 0, 1);
