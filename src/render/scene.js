@@ -7,7 +7,6 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE } from '../world/coords.js';
-import { createComposer } from './postprocessing.js';
 
 // Sun-shadow footprint. Orthographic half-extent around the light's target —
 // renderFrame pins the target to the RTS focus point, so this is effectively
@@ -30,12 +29,6 @@ export function createScene(canvas) {
   // we'd rather spend the samples elsewhere.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  // sRGB output for the postprocessing stack. Linear tonemap (not ACES) so
-  // mid-saturation LDR colors don't get crushed dark — the dreamcore palette
-  // is meant to read vivid, not cinematic.
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.LinearToneMapping;
-  renderer.toneMappingExposure = 1.45;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x3a2350);
@@ -98,16 +91,13 @@ export function createScene(canvas) {
   moonDisc.renderOrder = -0.5;
   scene.add(moonDisc);
 
-  const post = createComposer(renderer, scene, camera);
-
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight, false);
-    post.setSize(window.innerWidth, window.innerHeight);
   });
 
-  return { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc, post };
+  return { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc };
 }
 
 function buildSky() {
@@ -168,9 +158,6 @@ function buildSky() {
       // Cellular star field: hash a coarse cell, only emit a star above a
       // sparse threshold, attenuate by distance to a per-cell jittered point.
       float starfield(vec3 d, float density, float bigness) {
-        // Project direction onto a "sky uv" — concentric latitude bands kept
-        // round by dividing azimuth by altitude factor so cells don't pinch
-        // toward the zenith.
         float az = atan(d.x, d.z);
         vec2 uv = vec2(az * 30.0, d.y * 60.0);
         vec2 i = floor(uv);

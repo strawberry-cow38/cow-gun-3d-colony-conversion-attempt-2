@@ -44,7 +44,6 @@ function speedIcon(speed) {
  *   camera: import('three').PerspectiveCamera,
  *   sun: import('three').DirectionalLight,
  *   sky: import('three').Object3D,
- *   post: ReturnType<typeof import('../render/postprocessing.js').createComposer>,
  *   rts: import('../render/rtsCamera.js').RtsCamera,
  *   fpCamera: import('../render/firstPersonCamera.js').FirstPersonCamera,
  *   audio: ReturnType<typeof import('../audio/audio.js').createAudio>,
@@ -82,7 +81,6 @@ export function createRenderFrame({
   camera,
   sun,
   sky,
-  post,
   rts,
   fpCamera,
   audio,
@@ -293,17 +291,11 @@ export function createRenderFrame({
     wakeParticles.update(rdt);
     if (state.waterMesh) {
       const mat =
-        /** @type {THREE.Material & { userData: { shader?: { uniforms: { uTime: { value: number }, uCausticStrength: { value: number } } } } }} */ (
+        /** @type {THREE.Material & { userData: { shader?: { uniforms: { uTime: { value: number } } } } }} */ (
           state.waterMesh.material
         );
       const shader = mat.userData.shader;
-      if (shader) {
-        shader.uniforms.uTime.value = tSec;
-        // Caustics lift slightly at night so water reads under moonlight;
-        // keep the night multiplier modest so it doesn't nuclear-glow.
-        const dayFrac = timeOfDay.getSunLightPercent();
-        shader.uniforms.uCausticStrength.value = 0.55 + (1 - dayFrac) * 0.35;
-      }
+      if (shader) shader.uniforms.uTime.value = tSec;
     }
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);
@@ -353,11 +345,7 @@ export function createRenderFrame({
     // can put the camera outside the sky — the purple scene.background stays
     // hidden regardless of camera distance from the world origin.
     sky.position.copy(camera.position);
-    // More bloom at night so neon-y light sources (torches, sun-disc glow)
-    // pop the way they do in PS2 dreamcore screenshots.
-    const dayFrac = timeOfDay.getSunLightPercent();
-    post.bloomPass.strength = 0.45 + (1 - dayFrac) * 0.55;
-    post.composer.render();
+    renderer.render(scene, camera);
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
       measuredFps = (renderFrameCount * 1000) / (now - renderFpsSampleStart);
