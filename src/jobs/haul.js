@@ -438,13 +438,29 @@ function findRelocationTile(grid, blueprintTiles, reservedDropTiles, i, j) {
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
 export function makeHaulPostingSystem(board, grid, paths) {
+  // Cool-down for sites the poster has already proved have no adjacent
+  // walkable delivery tile this run. Until the cooldown tick expires we skip
+  // the site entirely — re-running adjacentDeliveryTiles + re-logging the
+  // failure every 8 ticks for the same unreachable bridge blueprint tanked
+  // FPS and spammed the haul log. Tick-keyed so speed multipliers don't
+  // stretch the wait in sim time.
+  /** @type {Map<number, number>} siteId → tick when re-check is allowed */
+  const noAdjCooldown = new Map();
+  // 45 ticks ≈ 1.5 sim-seconds at 30 Hz.
+  const NO_ADJ_COOLDOWN_TICKS = 45;
   return {
     name: 'haulPoster',
     tier: 'rare',
-    run(world) {
+    run(world, ctx) {
       const slots = computeStockpileSlots(world, grid, board);
       const targetedCounts = buildHaulTargetedCounts(world, board);
       const siteInFlight = buildSiteInFlight(world, board);
+      const tick = ctx?.tick ?? 0;
+      // Sweep expired entries so the Map doesn't grow unbounded as cancelled
+      // / completed blueprints disappear without ever passing the success path.
+      for (const [id, exp] of noAdjCooldown) {
+        if (tick >= exp) noAdjCooldown.delete(id);
+      }
 
       /** Tiles hosting any pending BuildSite — reused by the blueprint-clear pass. */
       /** @type {Set<number>} */
@@ -485,11 +501,15 @@ export function makeHaulPostingSystem(board, grid, paths) {
         const tileWorldArg = /** @type {any} */ (paths?.grid)?.layers
           ? /** @type {any} */ (paths.grid)
           : null;
+        if (useAdjacent && noAdjCooldown.has(siteId)) {
+          continue;
+        }
         /** @type {{ i: number, j: number, z: number }[] | null} */
         const adjGoals = useAdjacent
           ? adjacentDeliveryTiles(grid, a.i, a.j, siteZ, tileWorldArg)
           : null;
         if (useAdjacent && (!adjGoals || adjGoals.length === 0)) {
+          noAdjCooldown.set(siteId, tick + NO_ADJ_COOLDOWN_TICKS);
           logHaulStuck('no-adjacent-delivery-tile', {
             siteId,
             siteKind: site.kind,
@@ -499,6 +519,7 @@ export function makeHaulPostingSystem(board, grid, paths) {
           });
           continue;
         }
+        noAdjCooldown.delete(siteId);
         /** @type {Set<number> | null} Sources proven unreachable to this site this tick. Allocated lazily. */
         let unreachable = null;
         while (need > 0) {
