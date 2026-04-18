@@ -297,9 +297,9 @@ function buildChunkMesh(
 // 1→DEEP_AT. Past DEEP_AT the color clamps to `DEEP`. RGBA so we can vary
 // opacity per tile — foam is nearly opaque whitish, shallow edges are
 // mostly clear pale teal, open water is darker and a little thicker.
-const FOAM_RGBA = [0.92, 0.94, 0.94, 0.55];
-const SHALLOW_RGBA = [0.5, 0.7, 0.78, 0.45];
-const DEEP_RGBA = [0.12, 0.26, 0.46, 0.78];
+const FOAM_RGBA = [0.72, 0.86, 0.95, 0.5];
+const SHALLOW_RGBA = [0.22, 0.52, 0.82, 0.72];
+const DEEP_RGBA = [0.04, 0.18, 0.48, 0.92];
 const DEEP_AT = 8;
 
 /** @param {number[]} a @param {number[]} b @param {number} t */
@@ -512,9 +512,9 @@ export function buildWaterSurface(tileGrid) {
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-         float ripple = sin(transformed.x * 0.9 + uTime * 1.4) * 0.018
-                      + sin(transformed.z * 1.1 - uTime * 1.0) * 0.014
-                      + sin((transformed.x + transformed.z) * 0.6 + uTime * 0.7) * 0.010;
+         float ripple = sin(transformed.x * 1.8 + uTime * 2.0) * 0.060
+                      + sin(transformed.z * 2.1 - uTime * 1.6) * 0.050
+                      + sin((transformed.x + transformed.z) * 1.3 + uTime * 1.1) * 0.035;
          transformed.y += ripple;`,
       );
     material.userData.shader = shader;
