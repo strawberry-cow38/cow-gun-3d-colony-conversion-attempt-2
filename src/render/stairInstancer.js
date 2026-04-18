@@ -15,10 +15,10 @@ import { stairFootprintTiles } from '../world/stair.js';
 import { getStuff } from '../world/stuff.js';
 import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
-const TREAD_COUNT = 3;
+export const TREAD_COUNT = 3;
 const SLABS_PER_STAIR = TREAD_COUNT + 1;
-const SLAB_THICKNESS = 2;
-const STEP_RISE = LAYER_HEIGHT / TREAD_COUNT;
+export const SLAB_THICKNESS = 2;
+export const STEP_RISE = LAYER_HEIGHT / TREAD_COUNT;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();

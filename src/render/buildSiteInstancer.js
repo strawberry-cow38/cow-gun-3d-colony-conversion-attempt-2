@@ -22,11 +22,17 @@ import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { doorOrientationAt } from '../world/doorOrientation.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { stairFootprintTiles } from '../world/stair.js';
 import { getStuff } from '../world/stuff.js';
 import { LAYER_HEIGHT } from '../world/tileGrid.js';
 import { BED_HEIGHT, BED_LENGTH, BED_WIDTH } from './bedInstancer.js';
 import { BASE_LIFT as FLOOR_LIFT } from './floorInstancer.js';
 import { FURNACE_FOOTPRINT, FURNACE_HEIGHT } from './furnaceInstancer.js';
+import {
+  SLAB_THICKNESS as STAIR_SLAB_THICKNESS,
+  STEP_RISE as STAIR_STEP_RISE,
+  TREAD_COUNT as STAIR_TREADS,
+} from './stairInstancer.js';
 import {
   STOVE_BODY_DEPTH,
   STOVE_BODY_HEIGHT,
@@ -49,9 +55,9 @@ const COLOR_EMPTY = 0x8a8a8a;
 const COLOR_TORCH_FILLED = 0xb87333;
 const COLOR_FORBIDDEN = 0x7a4a4a;
 
-// Each entity can emit up to `SLOTS_PER_SITE` instance slots (door = slab +
-// frame). Capacity is scaled accordingly at creation.
-const SLOTS_PER_SITE = 2;
+// Each entity can emit up to `SLOTS_PER_SITE` instance slots (stair = 3 treads
+// + 1 landing; door = slab + frame). Capacity is scaled accordingly at creation.
+const SLOTS_PER_SITE = 4;
 
 /**
  * Finished-product color for a blueprint once it has any delivered materials.
@@ -66,7 +72,7 @@ function filledColorFor(kind, stuff, doorPart) {
   if (kind === 'torch' || kind === 'wallTorch') return COLOR_TORCH_FILLED;
   if (kind === 'door') return doorPart === 'frame' ? s.doorFrameColor : s.doorSlabColor;
   if (kind === 'roof') return s.roofColor;
-  if (kind === 'floor') return s.floorColor;
+  if (kind === 'floor' || kind === 'stair') return s.floorColor;
   return s.wallColor;
 }
 
@@ -166,6 +172,43 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
         _color.setHex(baseHex);
         mesh.setColorAt(n, _color);
         n++;
+        continue;
+      }
+
+      if (site.kind === 'stair') {
+        // Mirrors stairInstancer's slab layout: 3 stepped treads on the ramp
+        // tiles + 1 landing slab on the top tile. Uses the anchor's facing so
+        // the ghost points the same way the finished stair will climb.
+        const facing = site.facing | 0;
+        const footprint = stairFootprintTiles({ i: a.i, j: a.j }, facing);
+        _quat.identity();
+        for (let t = 0; t < STAIR_TREADS; t++) {
+          if (n >= cap) break;
+          const tile = footprint[t + 1];
+          if (!grid.inBounds(tile.i, tile.j)) continue;
+          const tw = tileToWorld(tile.i, tile.j, grid.W, grid.H);
+          const h = STAIR_STEP_RISE * (t + 1);
+          _scale.set(TILE_SIZE, h, TILE_SIZE);
+          _position.set(tw.x, y, tw.z);
+          _matrix.compose(_position, _quat, _scale);
+          mesh.setMatrixAt(n, _matrix);
+          _color.setHex(baseHex);
+          mesh.setColorAt(n, _color);
+          n++;
+        }
+        if (n < cap) {
+          const landing = footprint[footprint.length - 1];
+          if (grid.inBounds(landing.i, landing.j)) {
+            const tw = tileToWorld(landing.i, landing.j, grid.W, grid.H);
+            _scale.set(TILE_SIZE, STAIR_SLAB_THICKNESS, TILE_SIZE);
+            _position.set(tw.x, y + LAYER_HEIGHT - STAIR_SLAB_THICKNESS, tw.z);
+            _matrix.compose(_position, _quat, _scale);
+            mesh.setMatrixAt(n, _matrix);
+            _color.setHex(baseHex);
+            mesh.setColorAt(n, _color);
+            n++;
+          }
+        }
         continue;
       }
 
