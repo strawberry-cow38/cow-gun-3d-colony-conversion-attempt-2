@@ -45,8 +45,8 @@ export const TREE_VISUALS = {
   pine: {
     trunkColor: 0x4a2f1c,
     canopyColor: 0x1d4d2a,
-    trunkScale: [1.35, 1.125, 1.35],
-    canopyScale: [0.75, 1.6, 0.75],
+    trunkScale: [1.8, 1.125, 1.8],
+    canopyScale: [1.0, 1.6, 1.0],
     canopyShape: 'cone',
   },
   oak: {
@@ -79,7 +79,7 @@ export function randomTreeKind(rng = Math.random) {
   return TREE_KINDS[Math.floor(rng() * TREE_KINDS.length)];
 }
 
-/** Saplings render at 30% size, mature at 100%. @param {number} growth 0..1 */
+/** Saplings render at 50% size, mature at 100%. @param {number} growth 0..1 */
 export function growthScale(growth) {
-  return 0.3 + 0.7 * Math.max(0, Math.min(1, growth));
+  return 0.5 + 0.5 * Math.max(0, Math.min(1, growth));
 }
