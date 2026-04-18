@@ -16,8 +16,16 @@
  */
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { TREE_KINDS, TREE_VISUALS, growthScale } from '../world/trees.js';
+
+const PINE_GLB_URL = 'models/pine.glb';
+// Authored Z of the canopy's base in the GLB. We pre-translate the canopy geo
+// down by this so its base sits at y=0 in mesh space — matches the cone canopy
+// convention, which lets update() position the canopy by the trunk top without
+// the offset getting stretched by per-instance scaleY.
+const PINE_CANOPY_BASE_Z = 1.05;
 
 const TRUNK_HEIGHT = 2.2 * UNITS_PER_METER;
 const TRUNK_RADIUS = 0.18 * UNITS_PER_METER;
@@ -104,6 +112,38 @@ export function createTreeInstancer(scene, capacity = 2048) {
   canopySphereMesh.receiveShadow = true;
   scene.add(canopySphereMesh);
 
+  // Pine renders from a Blender GLB. Loaded async — until ready, pine trees fall
+  // through to the procedural path for the frame.
+  /** @type {THREE.InstancedMesh | null} */
+  let pineTrunkMesh = null;
+  /** @type {THREE.InstancedMesh | null} */
+  let pineCanopyMesh = null;
+  new GLTFLoader().load(PINE_GLB_URL, (gltf) => {
+    const trunkNode = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName('Pine_Trunk'));
+    const canopyNode = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName('Pine_Canopy'));
+    if (!trunkNode || !canopyNode) {
+      console.warn('[treeInstancer] pine GLB missing Pine_Trunk or Pine_Canopy node');
+      return;
+    }
+    const trunkGlbGeo = trunkNode.geometry.clone();
+    const canopyGlbGeo = canopyNode.geometry.clone();
+    // GLB authored at unit metres; bake the world-units conversion in once.
+    trunkGlbGeo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+    canopyGlbGeo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+    canopyGlbGeo.translate(0, -PINE_CANOPY_BASE_Z * UNITS_PER_METER, 0);
+    pineTrunkMesh = new THREE.InstancedMesh(trunkGlbGeo, trunkMat, capacity);
+    pineTrunkMesh.count = 0;
+    pineTrunkMesh.castShadow = true;
+    pineTrunkMesh.receiveShadow = true;
+    scene.add(pineTrunkMesh);
+    pineCanopyMesh = new THREE.InstancedMesh(canopyGlbGeo, canopyMat, capacity);
+    pineCanopyMesh.count = 0;
+    pineCanopyMesh.castShadow = true;
+    pineCanopyMesh.receiveShadow = true;
+    scene.add(pineCanopyMesh);
+    dirty = true;
+  });
+
   // Axe marker. Handle offset so the grip sits at y=0 and the head at the top.
   const markerCap = Math.min(capacity, 256);
   const handleGeo = new THREE.CylinderGeometry(
@@ -130,9 +170,24 @@ export function createTreeInstancer(scene, capacity = 2048) {
   markerHeadMesh.count = 0;
   scene.add(markerHeadMesh);
 
-  /** @type {number[]} slot → entity id */
+  /** @type {number[]} trunkMesh (procedural species) slot → entity id */
   const slotToEntity = [];
+  /** @type {number[]} pineTrunkMesh slot → entity id */
+  const pineSlotToEntity = [];
   let dirty = true;
+
+  /**
+   * Flush staged instance writes: set count, mark matrix/color dirty for GPU,
+   * recompute bounding sphere for frustum culling.
+   * @param {THREE.InstancedMesh} mesh
+   * @param {number} count
+   */
+  function commitMesh(mesh, count) {
+    mesh.count = count;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }
 
   /**
    * @param {import('../ecs/world.js').World} world
@@ -143,51 +198,64 @@ export function createTreeInstancer(scene, capacity = 2048) {
     let iTrunk = 0;
     let iCone = 0;
     let iSphere = 0;
+    let iPine = 0;
     slotToEntity.length = 0;
+    pineSlotToEntity.length = 0;
     // _quat is shared with updateMarkers which spins it — reset to identity
     // so static trees render upright regardless of frame order.
     _quat.identity();
+    const pineTrunk = pineTrunkMesh;
+    const pineCanopy = pineCanopyMesh;
+    const pineReady = pineTrunk !== null && pineCanopy !== null;
     for (const { id, components } of world.query(['Tree', 'TileAnchor', 'TreeViz'])) {
-      if (iTrunk >= capacity) break;
+      if (iTrunk >= capacity || iPine >= capacity) break;
       const anchor = components.TileAnchor;
       const tree = components.Tree;
       const draw = TREE_DRAW.get(tree.kind) ?? FALLBACK_DRAW;
       const g = growthScale(tree.growth);
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
+      const isPine = tree.kind === 'pine' && pineReady;
       _position.set(w.x, y, w.z);
       _trunkScale.set(draw.trunkScale[0] * g, draw.trunkScale[1] * g, draw.trunkScale[2] * g);
       _matrix.compose(_position, _quat, _trunkScale);
-      trunkMesh.setMatrixAt(iTrunk, _matrix);
-      trunkMesh.setColorAt(iTrunk, draw.trunk);
+      if (isPine && pineTrunk) {
+        pineTrunk.setMatrixAt(iPine, _matrix);
+        pineTrunk.setColorAt(iPine, draw.trunk);
+      } else {
+        trunkMesh.setMatrixAt(iTrunk, _matrix);
+        trunkMesh.setColorAt(iTrunk, draw.trunk);
+      }
       const canopyY = y + TRUNK_HEIGHT * draw.trunkScale[1] * g;
       _position.set(w.x, canopyY, w.z);
       _canopyScale.set(draw.canopyScale[0] * g, draw.canopyScale[1] * g, draw.canopyScale[2] * g);
       _matrix.compose(_position, _quat, _canopyScale);
-      if (draw.canopyShape === 'sphere') {
-        canopySphereMesh.setMatrixAt(iSphere, _matrix);
-        canopySphereMesh.setColorAt(iSphere, draw.canopy);
-        iSphere++;
+      if (isPine && pineCanopy) {
+        pineCanopy.setMatrixAt(iPine, _matrix);
+        pineCanopy.setColorAt(iPine, draw.canopy);
+        pineSlotToEntity[iPine] = id;
+        iPine++;
       } else {
-        canopyConeMesh.setMatrixAt(iCone, _matrix);
-        canopyConeMesh.setColorAt(iCone, draw.canopy);
-        iCone++;
+        if (draw.canopyShape === 'sphere') {
+          canopySphereMesh.setMatrixAt(iSphere, _matrix);
+          canopySphereMesh.setColorAt(iSphere, draw.canopy);
+          iSphere++;
+        } else {
+          canopyConeMesh.setMatrixAt(iCone, _matrix);
+          canopyConeMesh.setColorAt(iCone, draw.canopy);
+          iCone++;
+        }
+        slotToEntity[iTrunk] = id;
+        iTrunk++;
       }
-      slotToEntity[iTrunk] = id;
-      iTrunk++;
     }
-    trunkMesh.count = iTrunk;
-    canopyConeMesh.count = iCone;
-    canopySphereMesh.count = iSphere;
-    trunkMesh.instanceMatrix.needsUpdate = true;
-    canopyConeMesh.instanceMatrix.needsUpdate = true;
-    canopySphereMesh.instanceMatrix.needsUpdate = true;
-    if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
-    if (canopyConeMesh.instanceColor) canopyConeMesh.instanceColor.needsUpdate = true;
-    if (canopySphereMesh.instanceColor) canopySphereMesh.instanceColor.needsUpdate = true;
-    trunkMesh.computeBoundingSphere();
-    canopyConeMesh.computeBoundingSphere();
-    canopySphereMesh.computeBoundingSphere();
+    commitMesh(trunkMesh, iTrunk);
+    commitMesh(canopyConeMesh, iCone);
+    commitMesh(canopySphereMesh, iSphere);
+    if (pineTrunk && pineCanopy && iPine > 0) {
+      commitMesh(pineTrunk, iPine);
+      commitMesh(pineCanopy, iPine);
+    }
     dirty = false;
   }
 
@@ -234,8 +302,14 @@ export function createTreeInstancer(scene, capacity = 2048) {
     dirty = true;
   }
 
-  /** @param {number} instanceId */
-  function entityFromInstanceId(instanceId) {
+  /**
+   * @param {number} instanceId
+   * @param {THREE.InstancedMesh | null} [mesh] which mesh the raycast hit; defaults to trunkMesh
+   */
+  function entityFromInstanceId(instanceId, mesh) {
+    if (mesh && pineTrunkMesh && (mesh === pineTrunkMesh || mesh === pineCanopyMesh)) {
+      return pineSlotToEntity[instanceId] ?? null;
+    }
     return slotToEntity[instanceId] ?? null;
   }
 
@@ -243,6 +317,12 @@ export function createTreeInstancer(scene, capacity = 2048) {
     trunkMesh,
     canopyConeMesh,
     canopySphereMesh,
+    get pineTrunkMesh() {
+      return pineTrunkMesh;
+    },
+    get pineCanopyMesh() {
+      return pineCanopyMesh;
+    },
     update,
     updateMarkers,
     markDirty,
