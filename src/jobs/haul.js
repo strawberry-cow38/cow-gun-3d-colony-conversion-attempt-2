@@ -21,6 +21,7 @@
  * motion reads as a real action instead of a teleport.
  */
 
+import { logHaulStuck } from '../debug/haulDebug.js';
 import { defaultWalkable, passableAt } from '../sim/pathfinding.js';
 import { roofIsSupported } from '../systems/autoRoof.js';
 import { maxStack, stackCount } from '../world/items.js';
@@ -488,7 +489,16 @@ export function makeHaulPostingSystem(board, grid, paths) {
         const adjGoals = useAdjacent
           ? adjacentDeliveryTiles(grid, a.i, a.j, siteZ, tileWorldArg)
           : null;
-        if (useAdjacent && (!adjGoals || adjGoals.length === 0)) continue;
+        if (useAdjacent && (!adjGoals || adjGoals.length === 0)) {
+          logHaulStuck('no-adjacent-delivery-tile', {
+            siteId,
+            siteKind: site.kind,
+            at: { i: a.i, j: a.j, z: siteZ },
+            baseFill: site.baseFill ?? 0,
+            need,
+          });
+          continue;
+        }
         /** @type {Set<number> | null} Sources proven unreachable to this site this tick. Allocated lazily. */
         let unreachable = null;
         while (need > 0) {
@@ -517,6 +527,14 @@ export function makeHaulPostingSystem(board, grid, paths) {
               if (!found) {
                 if (!unreachable) unreachable = new Set();
                 unreachable.add(src.id);
+                logHaulStuck('source-unreachable-adjacent', {
+                  siteId,
+                  siteKind: site.kind,
+                  siteAt: { i: a.i, j: a.j, z: siteZ },
+                  baseFill: site.baseFill ?? 0,
+                  src: { id: src.id, i: src.i, j: src.j, z: src.z },
+                  goalsChecked: adjGoals.length,
+                });
                 continue;
               }
               dropAt = found;
@@ -528,6 +546,12 @@ export function makeHaulPostingSystem(board, grid, paths) {
               if (!route) {
                 if (!unreachable) unreachable = new Set();
                 unreachable.add(src.id);
+                logHaulStuck('source-unreachable', {
+                  siteId,
+                  siteKind: site.kind,
+                  siteAt: { i: a.i, j: a.j, z: siteZ },
+                  src: { id: src.id, i: src.i, j: src.j, z: src.z },
+                });
                 continue;
               }
             }

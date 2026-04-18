@@ -13,6 +13,7 @@
  * with an Eat job that walks to the nearest food stack and consumes one unit.
  */
 
+import { logHaulStuck } from '../debug/haulDebug.js';
 import { buildTicksForKind, findBuildStandTile } from '../jobs/build.js';
 import { CHOP_TICKS, findAdjacentWalkable } from '../jobs/chop.js';
 import { CUT_TICKS } from '../jobs/cut.js';
@@ -1933,6 +1934,16 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
       ? !stationWorkSpotMatches(world, furnaceId, easelId, stoveId, toI, toJ)
       : !toRelocation && !grid.isStockpile(toI, toJ);
   if (targetGone) {
+    if (toBuildSite) {
+      logHaulStuck('site-gone', {
+        cow: /** @type {{ name?: string } | null} */ (world.get(haulerId, 'Brain'))?.name,
+        jobKind: job.kind,
+        jobState: job.state,
+        siteId,
+        to: { i: toI, j: toJ },
+        carrying: inv.items.length > 0,
+      });
+    }
     if (inv.items.length > 0) {
       dropCarriedItem(world, grid, inv, pos);
       deps.onItemChange();
@@ -2045,6 +2056,16 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
     const cowZ = world.get(haulerId, 'Brain')?.layerZ | 0;
     const route = paths.find({ ...start, z: cowZ }, target);
     if (!route || route.length === 0) {
+      if (toBuildSite) {
+        logHaulStuck('no-route-to-item', {
+          cow: /** @type {{ name?: string } | null} */ (world.get(haulerId, 'Brain'))?.name,
+          from: { ...start, z: cowZ },
+          to: target,
+          itemId,
+          siteId,
+          kind,
+        });
+      }
       board.release(jobId);
       job.kind = 'none';
       job.state = 'idle';
@@ -2135,6 +2156,18 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
     const cowZ = world.get(haulerId, 'Brain')?.layerZ | 0;
     const route = paths.find({ ...start, z: cowZ }, { i: toI, j: toJ, z: dropZ });
     if (!route || route.length === 0) {
+      if (toBuildSite) {
+        const site = typeof siteId === 'number' ? world.get(siteId, 'BuildSite') : null;
+        logHaulStuck('no-route-to-drop', {
+          cow: /** @type {{ name?: string } | null} */ (world.get(haulerId, 'Brain'))?.name,
+          from: { ...start, z: cowZ },
+          to: { i: toI, j: toJ, z: dropZ },
+          siteId,
+          siteKind: site?.kind,
+          baseFill: site?.baseFill,
+          carrying: inv.items.map((s) => `${s.count}×${s.kind}`).join(','),
+        });
+      }
       // Can't get there; drop where we stand, let the poster re-route later.
       dropCarriedItem(world, grid, inv, pos);
       deps.onItemChange();

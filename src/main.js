@@ -16,6 +16,7 @@ import { setupInstancers } from './boot/setupInstancers.js';
 import { setupWorldCallbacks } from './boot/setupWorldCallbacks.js';
 import { spawnInitialCows } from './boot/spawn.js';
 import { registerComponents } from './components/index.js';
+import { printHaulDebugHint } from './debug/haulDebug.js';
 import { Scheduler } from './ecs/schedule.js';
 import { World } from './ecs/world.js';
 import { JobBoard } from './jobs/board.js';
@@ -1132,3 +1133,4 @@ renderer.compile(scene, camera);
 
 loop.start();
 hudApi.updateHud();
+printHaulDebugHint();
