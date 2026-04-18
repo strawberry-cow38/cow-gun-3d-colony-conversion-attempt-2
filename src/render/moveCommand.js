@@ -31,7 +31,7 @@ import {
   worldToTile,
   worldToTileClamp,
 } from '../world/coords.js';
-import { LAYER_HEIGHT } from '../world/tileGrid.js';
+import { LAYER_HEIGHT, WALL_FILL_FULL } from '../world/tileGrid.js';
 
 const _ndc = new THREE.Vector2();
 /** Module-level BFS scratch reused by spreadTargets + nearestWalkable. */
@@ -405,7 +405,15 @@ export class CowMoveCommand {
     const tile = worldToTile(p.x, p.z, this.tileGrid.W, this.tileGrid.H);
     if (tile.i < 0) return null;
     const el = this.tileGrid.getElevation(tile.i, tile.j);
-    const z = Math.max(0, Math.round((p.y - el) / LAYER_HEIGHT));
+    let z = Math.max(0, Math.round((p.y - el) / LAYER_HEIGHT));
+    // Partial walls (quarter/half) don't support a z+1 standing surface — the
+    // cow walks onto them at z=0 and the hop rule lifts y by the wall fill.
+    // Without this clamp, clicks on top of a half wall round up to z=1 and
+    // passableAt fails (no floor/ramp/full-wall below) so the cursor nopes.
+    if (z > 0) {
+      const wall = this.tileGrid.wall[this.tileGrid.idx(tile.i, tile.j)];
+      if (wall > 0 && wall < WALL_FILL_FULL) z = 0;
+    }
     return { i: tile.i, j: tile.j, z };
   }
 
