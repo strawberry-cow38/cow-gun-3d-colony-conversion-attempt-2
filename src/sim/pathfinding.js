@@ -18,7 +18,7 @@
  * invalidation (full regen, load).
  */
 
-import { BIOME, TERRAIN_STEP, TileGrid, WALL_FILL_FULL } from '../world/tileGrid.js';
+import { BIOME, LAYER_HEIGHT, TERRAIN_STEP, TileGrid, WALL_FILL_FULL } from '../world/tileGrid.js';
 /** @typedef {import('../world/tileWorld.js').TileWorld} TileWorld */
 
 const SQRT2 = Math.SQRT2;
@@ -91,15 +91,22 @@ export function defaultWalkable(grid, i, j) {
 }
 
 /**
- * Effective walking elevation = terrain elevation + wall-fill bump. Partial
- * walls sit on the tile and lift a traverser's height by 0.75m per fill unit;
- * the cliff-climb threshold then decides hop / climb / block without any new
- * primitive. Full walls are already rejected at defaultWalkable so they never
- * reach this function.
- * @param {TileGrid} g @param {number} i @param {number} j
+ * Elevation of the standing surface at (i, j, z). Terrain only lives on the
+ * ground layer — upper layers keep their own grids but share the ground's
+ * heightmap — so terrain always comes from `layer0`. Each layer owns its own
+ * wall array, and fill adds TERRAIN_STEP per quarter on top. Callers pass
+ * the resolved `layer` (world.layers[z] when multi-layer, else layer0).
+ *
+ * Used for cross-layer cliff-climb checks: stepping from a partial-wall top
+ * on z=0 onto a full wall's top surface at z=1 is physically a single hop,
+ * but the two points sit on different layer grids, so the elevation math
+ * has to reconcile the layer offset + terrain explicitly.
+ *
+ * @param {TileGrid} layer0 @param {TileGrid} layer
+ * @param {number} i @param {number} j @param {number} z
  */
-function effectiveElevation(g, i, j) {
-  return g.getElevation(i, j) + g.wall[g.idx(i, j)] * TERRAIN_STEP;
+function totalElevation(layer0, layer, i, j, z) {
+  return layer0.getElevation(i, j) + z * LAYER_HEIGHT + layer.wall[layer.idx(i, j)] * TERRAIN_STEP;
 }
 
 /**
@@ -289,44 +296,48 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
     // logical z stays at sz so "above-ground" semantics still apply.
     const cz = world ? czFlat : sz;
 
-    // 8 horizontal neighbors on the same layer.
+    // 8 horizontal neighbors. Same-layer step is the common case; when it
+    // rejects and the step is cardinal we probe z±1 so a cow can step onto a
+    // wall top or drop onto a partial wall. Diagonals stay single-layer.
     const curLayer = layerAt(cz);
-    const curEl = effectiveElevation(curLayer, ci, cj);
+    const curFullEl = totalElevation(layer0, curLayer, ci, cj, cz);
     for (const [di, dj, cost] of NEIGHBORS) {
       const ni = ci + di;
       const nj = cj + dj;
       if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
-      if (!passable(ni, nj, cz)) continue;
-      // No corner-cutting through solid diagonals (checked on the same layer).
-      if (di !== 0 && dj !== 0) {
+      const cardinal = di * dj === 0;
+      /** @type {number} */
+      let nz;
+      if (passable(ni, nj, cz)) {
+        nz = cz;
+      } else if (world && cardinal && cz + 1 < depth && passable(ni, nj, cz + 1)) {
+        nz = cz + 1;
+      } else if (world && cardinal && cz > 0 && passable(ni, nj, cz - 1)) {
+        nz = cz - 1;
+      } else {
+        continue;
+      }
+      if (!cardinal) {
         if (!passable(ci + di, cj, cz) || !passable(ci, cj + dj, cz)) continue;
       }
-      // Cliff-climb gate. One TERRAIN_STEP delta = hop (cheap), two steps =
-      // climb (much more expensive — cows move at 10% speed over it), more
-      // than two steps is rejected outright so a ramp really is required for
-      // a full Z-layer crossing. Diagonals refuse any elevation change so a
-      // cow can't hop across a corner.
-      const nEl = effectiveElevation(curLayer, ni, nj);
-      const dEl = Math.abs(nEl - curEl);
+      const nLayer = nz === cz ? curLayer : layerAt(nz);
+      const nEl = totalElevation(layer0, nLayer, ni, nj, nz);
+      const dEl = Math.abs(nEl - curFullEl);
       if (dEl >= CLIMB_MAX) continue;
       const hop = dEl > HOP_EPS && dEl < HOP_MAX;
       const climb = dEl >= HOP_MAX;
-      if ((hop || climb) && di !== 0 && dj !== 0) continue;
+      if ((hop || climb) && !cardinal) continue;
       let stepCost = cost;
       if (hop) stepCost += HOP_EXTRA_COST;
       else if (climb) stepCost *= CLIMB_COST_MULT;
-      // Shallow water is passable but slow (cows wade at 15% in cow.js), so
-      // make the planner prefer dry ground. Multiplier is tuned so a lake
-      // two tiles wide is cheaper to walk around than to ford, but a single
-      // wet tile still gets crossed rather than making a huge detour.
-      if (curLayer.biome[nj * W + ni] === BIOME.SHALLOW_WATER) stepCost *= SHALLOW_WATER_COST;
-      relax(flatZ(cz) * layerSize + nj * W + ni, ni, nj, cz, current, stepCost);
+      if (nLayer.biome[nj * W + ni] === BIOME.SHALLOW_WATER) stepCost *= SHALLOW_WATER_COST;
+      relax(flatZ(nz) * layerSize + nj * W + ni, ni, nj, nz, current, stepCost);
     }
 
     // Vertical moves through ramps. Only meaningful on multi-layer worlds.
     if (world) {
       // Up: a ramp on the current layer lifts us to (ci,cj,cz+1).
-      if (cz + 1 < depth && layerAt(cz).isRamp(ci, cj) && passable(ci, cj, cz + 1)) {
+      if (cz + 1 < depth && curLayer.isRamp(ci, cj) && passable(ci, cj, cz + 1)) {
         relax((cz + 1) * layerSize + cj * W + ci, ci, cj, cz + 1, current, 1);
       }
       // Down: a ramp on the layer below drops us to (ci,cj,cz-1).

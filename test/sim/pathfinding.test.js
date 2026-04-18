@@ -215,6 +215,32 @@ describe('findPath partial walls', () => {
     }
   });
 
+  it('custom staircase (quarter→half→3/4→full wall) is walkable end-to-end', () => {
+    // 1×5 corridor with a stepped staircase along column 0..4:
+    //   col 0: ground              (wall=0, el=0)
+    //   col 1: quarter wall        (wall=1, el=0.75m)
+    //   col 2: half wall           (wall=2, el=1.5m)
+    //   col 3: 3/4 wall            (wall=3, el=2.25m)
+    //   col 4: full wall at z=0 → cow stands atop at z=1 (el=3m)
+    // Each step is ≤ 1 TERRAIN_STEP so a cow can hop up the chain. The final
+    // step requires a same-direction z promotion since full walls reject
+    // same-layer passage but their top surface is walkable at z=1.
+    const world = new TileWorld(new TileGrid(5, 1));
+    world.pushEmptyLayer();
+    world.layers[0].setWallFill(1, 0, 1);
+    world.layers[0].setWallFill(2, 0, 2);
+    world.layers[0].setWallFill(3, 0, 3);
+    world.layers[0].setWallFill(4, 0, WALL_FILL_FULL);
+    const p = findPath(world, { i: 0, j: 0, z: 0 }, { i: 4, j: 0, z: 1 });
+    expect(p).toEqual([
+      { i: 0, j: 0, z: 0 },
+      { i: 1, j: 0, z: 0 },
+      { i: 2, j: 0, z: 0 },
+      { i: 3, j: 0, z: 0 },
+      { i: 4, j: 0, z: 1 },
+    ]);
+  });
+
   it('3-quarter walls (fill=3) block — above climb threshold', () => {
     const g = new TileGrid(4, 3);
     for (let j = 0; j < 3; j++) g.setWallFill(2, j, 3);
