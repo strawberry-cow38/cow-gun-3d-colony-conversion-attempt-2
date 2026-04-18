@@ -13,6 +13,7 @@
  * top of the prioritization.
  */
 
+import { stackKey } from '../world/items.js';
 import { JOB_KINDS_AT_TILE } from './atTile.js';
 import { buildHaulTargetedCounts, computeStockpileSlots, findAndReserveSlot } from './haul.js';
 
@@ -56,8 +57,9 @@ export function findHaulableItemAtTile(world, grid, i, j) {
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     if (a.i !== i || a.j !== j) continue;
-    if (components.Item.forbidden) continue;
-    return { id, kind: components.Item.kind, count: components.Item.count };
+    const item = components.Item;
+    if (item.forbidden) continue;
+    return { id, kind: item.kind, count: item.count, key: stackKey(item) };
   }
   return null;
 }
@@ -83,11 +85,12 @@ export function postAndPrioritizeHaul(world, grid, board, cowId, i, j, opts = {}
   const want = item.count - claimed;
   if (want <= 0) return null;
   const slots = computeStockpileSlots(world, grid, board);
-  const target = findAndReserveSlot(grid, slots, item.kind, i, j, want);
+  const target = findAndReserveSlot(grid, slots, item.kind, item.key, i, j, want);
   if (!target) return null;
   const job = board.post('haul', {
     itemId: item.id,
     kind: item.kind,
+    stackKey: item.key,
     count: target.count,
     fromI: i,
     fromJ: j,
@@ -102,19 +105,23 @@ export function postAndPrioritizeHaul(world, grid, board, cowId, i, j, opts = {}
 }
 
 /**
- * True when there's at least one stockpile slot available for `kind`.
- * Cheap pre-flight for the context menu: if false, show "No stockpile
- * available to haul to" instead of a click that would just deny.
+ * True when there's at least one stockpile slot available for the stack
+ * identified by `kind` + `key`. Cheap pre-flight for the context menu: if
+ * false, show "No stockpile available to haul to" instead of a click that
+ * would just deny. When `key` is omitted, falls back to a kind-only key —
+ * useful for callers with no item in hand (ex: recipe pre-flight).
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {string} kind
  * @param {number} i @param {number} j
+ * @param {string} [key]
  */
-export function stockpileSlotAvailable(world, grid, board, kind, i, j) {
+export function stockpileSlotAvailable(world, grid, board, kind, i, j, key) {
   const slots = computeStockpileSlots(world, grid, board);
-  return findAndReserveSlot(grid, slots, kind, i, j, 1) !== null;
+  const k = key ?? stackKey({ kind });
+  return findAndReserveSlot(grid, slots, kind, k, i, j, 1) !== null;
 }
 
 /**

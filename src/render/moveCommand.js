@@ -206,7 +206,15 @@ export class CowMoveCommand {
     const haulable = findHaulableItemAtTile(this.world, this.tileGrid, tile.i, tile.j);
     if (
       haulable &&
-      stockpileSlotAvailable(this.world, this.tileGrid, this.board, haulable.kind, tile.i, tile.j)
+      stockpileSlotAvailable(
+        this.world,
+        this.tileGrid,
+        this.board,
+        haulable.kind,
+        tile.i,
+        tile.j,
+        haulable.key,
+      )
     ) {
       const posted = postAndPrioritizeHaul(
         this.world,
@@ -279,6 +287,7 @@ export class CowMoveCommand {
               haulable.kind,
               tile.i,
               tile.j,
+              haulable.key,
             )
           ) {
             items.push({

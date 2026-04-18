@@ -11,9 +11,17 @@ function makeWorld() {
   return w;
 }
 
-function spawnItem(world, i, j, kind, count, capacity, forbidden = false) {
+function spawnItem(world, i, j, kind, count, capacity, forbidden = false, extra = {}) {
   return world.spawn({
-    Item: { kind, count, capacity, forbidden },
+    Item: {
+      kind,
+      count,
+      capacity,
+      forbidden,
+      quality: extra.quality ?? '',
+      ingredients: extra.ingredients ?? [],
+      cookedBy: extra.cookedBy ?? 0,
+    },
     ItemViz: {},
     TileAnchor: { i, j },
     Position: { x: 0, y: 0, z: 0 },
@@ -258,5 +266,81 @@ describe('haul poster: stack consolidation', () => {
     makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
 
     expect(board.jobs).toHaveLength(0);
+  });
+
+  it('does not merge meal stacks with different cookedBy', () => {
+    // Regression for the infinite haul loop: if findAndReserveMergeTarget
+    // merges by kind alone, cow A's meal(cookedBy=7) gets routed onto cow B's
+    // meal(cookedBy=9) tile — the drop can't actually merge (different keys),
+    // spawns a fresh stack, and the poster re-routes it next tick forever.
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(0, 0, 1);
+    grid.setStockpile(3, 3, 1);
+    const world = makeWorld();
+    spawnItem(world, 0, 0, 'meal', 2, 10, false, {
+      quality: 'tasty',
+      ingredients: ['corn', 'corn'],
+      cookedBy: 7,
+    });
+    spawnItem(world, 3, 3, 'meal', 5, 10, false, {
+      quality: 'tasty',
+      ingredients: ['corn', 'corn'],
+      cookedBy: 9,
+    });
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    expect(board.jobs).toHaveLength(0);
+  });
+
+  it('does not merge meal stacks with different quality', () => {
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(0, 0, 1);
+    grid.setStockpile(3, 3, 1);
+    const world = makeWorld();
+    spawnItem(world, 0, 0, 'meal', 2, 10, false, {
+      quality: 'decent',
+      ingredients: ['corn', 'corn'],
+      cookedBy: 7,
+    });
+    spawnItem(world, 3, 3, 'meal', 5, 10, false, {
+      quality: 'lavish',
+      ingredients: ['corn', 'corn'],
+      cookedBy: 7,
+    });
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    expect(board.jobs).toHaveLength(0);
+  });
+
+  it('DOES merge meal stacks when full stack key matches', () => {
+    const grid = new TileGrid(4, 4);
+    grid.setStockpile(0, 0, 1);
+    grid.setStockpile(3, 3, 1);
+    const world = makeWorld();
+    spawnItem(world, 0, 0, 'meal', 2, 10, false, {
+      quality: 'tasty',
+      ingredients: ['corn', 'corn'],
+      cookedBy: 7,
+    });
+    spawnItem(world, 3, 3, 'meal', 5, 10, false, {
+      quality: 'tasty',
+      ingredients: ['corn', 'corn'],
+      cookedBy: 7,
+    });
+    const board = new JobBoard();
+
+    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    const hauls = board.jobs.filter((j) => j.kind === 'haul');
+    expect(hauls).toHaveLength(1);
+    expect(hauls[0].payload.count).toBe(2);
+    expect(hauls[0].payload.fromI).toBe(0);
+    expect(hauls[0].payload.fromJ).toBe(0);
+    expect(hauls[0].payload.toI).toBe(3);
+    expect(hauls[0].payload.toJ).toBe(3);
   });
 });

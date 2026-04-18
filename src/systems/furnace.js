@@ -33,7 +33,7 @@ import {
   findNearestAvailableItem,
   totalAvailableByKind,
 } from '../jobs/haul.js';
-import { stackAdd, stackCount, stackRemove } from '../world/items.js';
+import { stackAdd, stackCount, stackKey, stackRemove } from '../world/items.js';
 import { RECIPES } from '../world/recipes.js';
 import { computeStockByKind } from '../world/stock.js';
 
@@ -91,12 +91,14 @@ export function makeFurnaceSystem(board, grid, opts) {
         // Pass A: drain outputs into stockpile via haul-from-furnace jobs.
         for (const out of furnace.outputs) {
           const key = `${furnaceId}:${out.kind}`;
+          const stkKey = stackKey({ kind: out.kind });
           let need = out.count - (haulFromInFlight.get(key) ?? 0);
           while (need > 0) {
             const target = findAndReserveSlot(
               grid,
               slots,
               out.kind,
+              stkKey,
               furnace.workI,
               furnace.workJ,
               need,
@@ -105,6 +107,7 @@ export function makeFurnaceSystem(board, grid, opts) {
             board.post('haul', {
               fromFurnaceId: furnaceId,
               kind: out.kind,
+              stackKey: stkKey,
               count: target.count,
               fromI: furnace.workI,
               fromJ: furnace.workJ,

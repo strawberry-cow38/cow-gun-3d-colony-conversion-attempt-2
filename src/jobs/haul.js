@@ -24,7 +24,7 @@
 import { logHaulStuck } from '../debug/haulDebug.js';
 import { defaultWalkable, passableAt } from '../sim/pathfinding.js';
 import { roofIsSupported } from '../systems/autoRoof.js';
-import { maxStack, stackCount } from '../world/items.js';
+import { maxStack, stackCount, stackKey } from '../world/items.js';
 import { WALL_FILL_FULL } from '../world/tileGrid.js';
 
 /** Wall-family kinds that stack via BuildSite.baseFill. Mirrors buildDesignator. */
@@ -57,14 +57,22 @@ export const PICKUP_TICKS = 12;
 export const DROP_TICKS = 9;
 
 /**
+ * @typedef TileStack
+ * @property {string} key    composite stack key — only stacks with the same key merge
+ * @property {string} kind
+ * @property {number} count  units on the tile + units reserved by open haul jobs
+ */
+
+/**
  * @typedef TileSlotState
- * @property {string | null} kind   the kind stacked/reserved on this tile, or null if empty
- * @property {number} count         units already on the tile + units reserved by open haul jobs
+ * @property {TileStack[]} stacks  per-tile stacks (may be >1 if mismatched keys coexist)
  */
 
 /**
  * Compute the per-tile stockpile slot state across all stockpile tiles,
- * folding in both existing Items and open haul reservations.
+ * folding in both existing Items and open haul reservations. Each tile holds
+ * one or more stacks keyed by composite stackKey — meal(cookedBy=7) and
+ * meal(cookedBy=9) count as separate stacks even on the same tile.
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
@@ -76,15 +84,15 @@ export function computeStockpileSlots(world, grid, board) {
   const out = new Map();
   for (let j = 0; j < grid.H; j++) {
     for (let i = 0; i < grid.W; i++) {
-      if (grid.isStockpile(i, j)) out.set(grid.idx(i, j), { kind: null, count: 0 });
+      if (grid.isStockpile(i, j)) out.set(grid.idx(i, j), { stacks: [] });
     }
   }
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     const s = out.get(grid.idx(a.i, a.j));
     if (!s) continue;
-    s.kind = components.Item.kind;
-    s.count = components.Item.count;
+    const item = components.Item;
+    s.stacks.push({ key: stackKey(item), kind: item.kind, count: item.count });
   }
   for (const j of board.jobs) {
     if (j.completed) continue;
@@ -92,8 +100,11 @@ export function computeStockpileSlots(world, grid, board) {
     const idx = grid.idx(j.payload.toI, j.payload.toJ);
     const s = out.get(idx);
     if (!s) continue;
-    if (s.kind === null) s.kind = j.payload.kind;
-    s.count += j.payload.count ?? 1;
+    const key = /** @type {string} */ (j.payload.stackKey ?? stackKey({ kind: j.payload.kind }));
+    const reserve = j.payload.count ?? 1;
+    const existing = s.stacks.find((st) => st.key === key);
+    if (existing) existing.count += reserve;
+    else s.stacks.push({ key, kind: j.payload.kind, count: reserve });
   }
   return out;
 }
@@ -132,51 +143,66 @@ export function buildHaulTargetedCounts(world, board) {
 }
 
 /**
- * Pick the best stockpile slot for depositing up to `want` units of `kind`,
- * starting from tile (i, j). Preference order:
- *   1. nearest tile already stacking `kind` with room,
- *   2. nearest empty stockpile tile.
+ * Pick the best stockpile slot for depositing up to `want` units matching
+ * `key` (kind+forbidden+quality+cookedBy+ingredientsSig), starting from tile
+ * (i, j). Preference order:
+ *   1. nearest tile with a matching-key stack that has room,
+ *   2. nearest empty stockpile tile (no stacks at all).
  * Distance is Chebyshev.
  *
- * Mutates `slots` to reserve the chosen tile (count += reserved, kind set).
- * Returns the picked tile and the number of units actually reserved, which is
- * `min(want, cap - slot.count)` — may be less than `want` when the slot can't
- * fit the full stack.
+ * Mutates `slots` to reserve the chosen tile (bump matching stack or push a
+ * new entry). Returns the picked tile and the number of units actually
+ * reserved, which is `min(want, cap - stack.count)` — may be less than `want`
+ * when the slot can't fit the full stack.
  *
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {Map<number, TileSlotState>} slots
  * @param {string} kind
+ * @param {string} key   composite stackKey — must match to merge
  * @param {number} i @param {number} j
  * @param {number} want  desired units to reserve (> 0)
  */
-export function findAndReserveSlot(grid, slots, kind, i, j, want) {
+export function findAndReserveSlot(grid, slots, kind, key, i, j, want) {
   const cap = maxStack(kind);
-  let bestSameKind = null;
+  let bestSame = null;
+  let bestSameStack = null;
   let bestSameD = Number.POSITIVE_INFINITY;
   let bestEmpty = null;
+  let bestEmptyState = null;
   let bestEmptyD = Number.POSITIVE_INFINITY;
   for (const [idx, s] of slots) {
     const ti = idx % grid.W;
     const tj = (idx - ti) / grid.W;
     const d = Math.max(Math.abs(ti - i), Math.abs(tj - j));
-    if (s.kind === kind && s.count < cap) {
+    const match = s.stacks.find((st) => st.key === key);
+    if (match && match.count < cap) {
       if (d < bestSameD) {
         bestSameD = d;
-        bestSameKind = idx;
+        bestSame = idx;
+        bestSameStack = match;
       }
-    } else if (s.kind === null) {
+    } else if (s.stacks.length === 0) {
       if (d < bestEmptyD) {
         bestEmptyD = d;
         bestEmpty = idx;
+        bestEmptyState = s;
       }
     }
   }
-  const pick = bestSameKind ?? bestEmpty;
-  if (pick === null) return null;
-  const s = /** @type {TileSlotState} */ (slots.get(pick));
-  if (s.kind === null) s.kind = kind;
-  const reserve = Math.min(want, cap - s.count);
-  s.count += reserve;
+  let pick;
+  let stack;
+  if (bestSame !== null) {
+    pick = bestSame;
+    stack = /** @type {TileStack} */ (bestSameStack);
+  } else if (bestEmpty !== null) {
+    pick = bestEmpty;
+    stack = { key, kind, count: 0 };
+    /** @type {TileSlotState} */ (bestEmptyState).stacks.push(stack);
+  } else {
+    return null;
+  }
+  const reserve = Math.min(want, cap - stack.count);
+  stack.count += reserve;
   const ti = pick % grid.W;
   const tj = (pick - ti) / grid.W;
   return { i: ti, j: tj, count: reserve };
@@ -187,6 +213,7 @@ export function findAndReserveSlot(grid, slots, kind, i, j, want) {
  * @property {number} itemId
  * @property {number} i @property {number} j
  * @property {string} kind
+ * @property {string} key      composite stackKey — only same-key stacks merge
  * @property {number} count    count at snapshot time (before reservations)
  */
 
@@ -205,25 +232,28 @@ export function snapshotStockpileStacks(world, grid) {
   for (const { id, components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     if (!grid.isStockpile(a.i, a.j)) continue;
-    if (components.Item.forbidden) continue;
+    const item = components.Item;
+    if (item.forbidden) continue;
     out.push({
       itemId: id,
       i: a.i,
       j: a.j,
-      kind: components.Item.kind,
-      count: components.Item.count,
+      kind: item.kind,
+      key: stackKey(item),
+      count: item.count,
     });
   }
   return out;
 }
 
 /**
- * Pick a consolidation destination for `src`: the nearest stockpile stack of
- * the same kind with strictly more units (ties broken by itemId so the pair
- * only posts one direction and never thrashes), and with room left under cap.
+ * Pick a consolidation destination for `src`: the nearest stockpile stack
+ * with the same composite key (kind+forbidden+quality+cookedBy+ingredients)
+ * and strictly more units (ties broken by itemId so the pair only posts one
+ * direction and never thrashes), with room left under cap.
  *
  * Mutates `slots` to reserve up to `want` units on the chosen tile. Returns
- * the picked tile and the number reserved (`min(want, cap - slot.count)`).
+ * the picked tile and the number reserved (`min(want, cap - stack.count)`).
  *
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {Map<number, TileSlotState>} slots
@@ -234,27 +264,30 @@ export function snapshotStockpileStacks(world, grid) {
 export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
   const cap = maxStack(src.kind);
   let bestIdx = null;
+  let bestStack = null;
   let bestD = Number.POSITIVE_INFINITY;
   for (const dst of snapshot) {
     if (dst.itemId === src.itemId) continue;
-    if (dst.kind !== src.kind) continue;
+    if (dst.key !== src.key) continue;
     // Strict (count, itemId) ordering: src merges INTO the "larger" partner,
     // and the reverse pair rejects its half, so the two cows never swap.
     if (dst.count < src.count) continue;
     if (dst.count === src.count && dst.itemId <= src.itemId) continue;
     const dstIdx = grid.idx(dst.i, dst.j);
     const slot = slots.get(dstIdx);
-    if (!slot || slot.count >= cap) continue;
+    if (!slot) continue;
+    const dstStack = slot.stacks.find((st) => st.key === src.key);
+    if (!dstStack || dstStack.count >= cap) continue;
     const d = Math.max(Math.abs(dst.i - src.i), Math.abs(dst.j - src.j));
     if (d < bestD) {
       bestD = d;
       bestIdx = dstIdx;
+      bestStack = dstStack;
     }
   }
-  if (bestIdx === null) return null;
-  const slot = /** @type {TileSlotState} */ (slots.get(bestIdx));
-  const reserve = Math.min(want, cap - slot.count);
-  slot.count += reserve;
+  if (bestIdx === null || bestStack === null) return null;
+  const reserve = Math.min(want, cap - bestStack.count);
+  bestStack.count += reserve;
   const ti = bestIdx % grid.W;
   const tj = (bestIdx - ti) / grid.W;
   return { i: ti, j: tj, count: reserve };
@@ -630,12 +663,14 @@ export function makeHaulPostingSystem(board, grid, paths) {
         if (grid.isStockpile(a.i, a.j)) continue;
         const alreadyClaimed = targetedCounts.get(id) ?? 0;
         let need = item.count - alreadyClaimed;
+        const key = stackKey(item);
         while (need > 0) {
-          const target = findAndReserveSlot(grid, slots, item.kind, a.i, a.j, need);
+          const target = findAndReserveSlot(grid, slots, item.kind, key, a.i, a.j, need);
           if (!target) break;
           board.post('haul', {
             itemId: id,
             kind: item.kind,
+            stackKey: key,
             count: target.count,
             fromI: a.i,
             fromJ: a.j,
@@ -674,8 +709,10 @@ export function makeHaulPostingSystem(board, grid, paths) {
         reservedDropTiles.add(grid.idx(drop.i, drop.j));
       }
 
-      // Pass 2: consolidate existing stockpile stacks. Same-kind partial
-      // stacks migrate one unit at a time into the "canonical" larger stack.
+      // Pass 2: consolidate existing stockpile stacks. Same-key partial
+      // stacks migrate into the "canonical" larger stack. Different metadata
+      // (two meals from different cooks) never merges — drop can't unify them
+      // and the poster would re-route the fresh split stack next tick.
       const snapshot = snapshotStockpileStacks(world, grid);
       for (const src of snapshot) {
         const alreadyClaimed = targetedCounts.get(src.itemId) ?? 0;
@@ -686,6 +723,7 @@ export function makeHaulPostingSystem(board, grid, paths) {
           board.post('haul', {
             itemId: src.itemId,
             kind: src.kind,
+            stackKey: src.key,
             count: target.count,
             fromI: src.i,
             fromJ: src.j,

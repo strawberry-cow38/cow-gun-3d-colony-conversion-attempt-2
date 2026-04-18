@@ -294,19 +294,28 @@ export function maxStack(kind) {
 }
 
 /**
- * Check two items would merge — same kind, same forbidden flag, and for
- * meal-style items, same quality + same ingredients signature. Yucky + gourmet
- * meals never pollute each other's stacks.
+ * Composite stack key — two items with the same key are mergeable. Encodes
+ * kind + forbidden + quality + cookedBy + ingredientsSig so yucky + gourmet
+ * meals never pollute each other's stacks and different cooks' work stays
+ * separate.
  *
+ * @param {{ kind: string, forbidden?: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} it
+ * @returns {string}
+ */
+export function stackKey(it) {
+  const forbidden = it.forbidden === true ? '1' : '0';
+  const quality = it.quality ?? '';
+  const cookedBy = it.cookedBy ?? 0;
+  const sig = ingredientsSig(it.ingredients ?? []);
+  return `${it.kind}|${forbidden}|${quality}|${cookedBy}|${sig}`;
+}
+
+/**
  * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} a
  * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} b
  */
 function stackKeyMatches(a, b) {
-  if (a.kind !== b.kind) return false;
-  if (a.forbidden !== b.forbidden) return false;
-  if ((a.quality ?? '') !== (b.quality ?? '')) return false;
-  if ((a.cookedBy ?? 0) !== (b.cookedBy ?? 0)) return false;
-  return ingredientsSig(a.ingredients ?? []) === ingredientsSig(b.ingredients ?? []);
+  return stackKey(a) === stackKey(b);
 }
 
 /**
