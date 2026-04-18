@@ -291,11 +291,11 @@ function buildChunkMesh(
 }
 
 /**
- * Translucent water surface plane that covers every water tile at
- * `WATER_SURFACE_Y` (6/8 of a terrain step above ground). Both DEEP_WATER
- * (lakebed pushed to -TERRAIN_STEP) and SHALLOW_WATER (sandy bed at Y=0)
- * are covered, so wading reads as "feet under a thin layer of water"
- * instead of an opaque blue tile.
+ * Translucent water surface plane at `WATER_SURFACE_Y` (6/8 of a terrain step
+ * above ground). Covers every DEEP_WATER and SHALLOW_WATER tile plus a
+ * one-tile ring of adjacent SAND — the ring hides the shoreline gap that
+ * would otherwise show the beach below the waterline where the plane ended
+ * at the water-biome boundary mid-tile.
  *
  * Returns null when the world contains no water so we don't add an empty
  * mesh to the scene.
@@ -314,25 +314,45 @@ export function buildWaterSurface(tileGrid) {
   const jMin = -S;
   const jMax = H + S;
 
-  let waterCount = 0;
-  const sourceBiome = skirted ? tileGrid.skirtBiome : tileGrid.biome;
-  for (let k = 0; k < sourceBiome.length; k++) {
-    const b = sourceBiome[k];
-    if (b === BIOME.DEEP_WATER || b === BIOME.SHALLOW_WATER) waterCount++;
-  }
-  if (waterCount === 0) return null;
-
-  const positions = new Float32Array(waterCount * 4 * 3);
-  const indices = new Uint32Array(waterCount * 6);
-  let v = 0;
-  let ix = 0;
   const getBiomeAt = skirted
     ? (i, j) => tileGrid.getSkirtBiome(i, j)
     : (i, j) => tileGrid.getBiome(i, j);
+
+  // Surface covers water tiles AND sand tiles adjacent to water — otherwise
+  // the plane ends at the water-biome boundary mid-tile, leaving a visible
+  // gap of exposed beach below the waterline between the plane's edge and
+  // the sand bank rising behind it. Extending one ring onto the sand makes
+  // the water lap onto the beach.
+  /** @param {number} i @param {number} j */
+  const isCovered = (i, j) => {
+    const b = getBiomeAt(i, j);
+    if (b === BIOME.DEEP_WATER || b === BIOME.SHALLOW_WATER) return true;
+    if (b !== BIOME.SAND) return false;
+    for (let dj = -1; dj <= 1; dj++) {
+      for (let di = -1; di <= 1; di++) {
+        if (di === 0 && dj === 0) continue;
+        const nb = getBiomeAt(i + di, j + dj);
+        if (nb === BIOME.SHALLOW_WATER || nb === BIOME.DEEP_WATER) return true;
+      }
+    }
+    return false;
+  };
+
+  let coveredCount = 0;
   for (let j = jMin; j < jMax; j++) {
     for (let i = iMin; i < iMax; i++) {
-      const b = getBiomeAt(i, j);
-      if (b !== BIOME.DEEP_WATER && b !== BIOME.SHALLOW_WATER) continue;
+      if (isCovered(i, j)) coveredCount++;
+    }
+  }
+  if (coveredCount === 0) return null;
+
+  const positions = new Float32Array(coveredCount * 4 * 3);
+  const indices = new Uint32Array(coveredCount * 6);
+  let v = 0;
+  let ix = 0;
+  for (let j = jMin; j < jMax; j++) {
+    for (let i = iMin; i < iMax; i++) {
+      if (!isCovered(i, j)) continue;
       const x0 = i * TILE_SIZE - halfW;
       const x1 = x0 + TILE_SIZE;
       const z0 = j * TILE_SIZE - halfH;
