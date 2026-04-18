@@ -3583,6 +3583,11 @@ export function makeCowWallCollisionSystem(grid) {
         // the pathfinder routes a cow over a quarter wall, but this collision
         // pass snaps them back, so they oscillate at the base never climbing.
         if (!grid.isFullWall(cur.i, cur.j)) continue;
+        // In-flight onto a wall-top: the cow is mid-hop from a 3/4 partial
+        // onto a full wall (layerZ bumps to 1 only on arrival). If feet are
+        // already ≥ 3/4-wall-height, treat the full wall as the climb surface
+        // rather than a blocker.
+        if (p.y >= LAYER_HEIGHT - TERRAIN_STEP) continue;
         // We've crossed into a wall tile. Try preserving each axis on its own
         // before falling back to a full revert — that gives the natural
         // "slide along the wall" feel when the cow walks at it diagonally.
