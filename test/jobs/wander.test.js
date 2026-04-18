@@ -25,7 +25,7 @@ describe('pickWanderGoal', () => {
     const grid = new TileGrid(60, 60);
     const rand = seededRand(1);
     for (let n = 0; n < 200; n++) {
-      const goal = pickWanderGoal(grid, allWalkable, rand);
+      const goal = pickWanderGoal(grid, allWalkable, null, rand);
       expect(goal).not.toBeNull();
       // biome: undefined in allocated buffers is 0 = GRASS, fine.
       expect(goal).toBeDefined();
@@ -42,7 +42,7 @@ describe('pickWanderGoal', () => {
     grid.setWall(5, 5, 1);
     const rand = seededRand(2);
     for (let n = 0; n < 200; n++) {
-      const goal = pickWanderGoal(grid, allWalkable, rand);
+      const goal = pickWanderGoal(grid, allWalkable, null, rand);
       expect(goal).not.toBeNull();
       if (!goal) continue;
       expect(Math.abs(goal.i - 5)).toBeLessThanOrEqual(20);
@@ -64,11 +64,25 @@ describe('pickWanderGoal', () => {
     grid.biome[grid.idx(5, 5)] = BIOME.DEEP_WATER;
     const rand = seededRand(3);
     for (let n = 0; n < 200; n++) {
-      const goal = pickWanderGoal(grid, allWalkable, rand);
+      const goal = pickWanderGoal(grid, allWalkable, null, rand);
       if (!goal) continue;
       const b = grid.biome[grid.idx(goal.i, goal.j)];
       expect(b).not.toBe(BIOME.SHALLOW_WATER);
       expect(b).not.toBe(BIOME.DEEP_WATER);
+    }
+  });
+
+  it('rejects goals on the other side of a river from the cow', () => {
+    // Vertical river at i=5 splits a 11-wide map into two land halves. Cow
+    // at (2,5) should never receive a goal on the right bank (i>=6).
+    const grid = new TileGrid(11, 11);
+    for (let j = 0; j < 11; j++) grid.biome[grid.idx(5, j)] = BIOME.SHALLOW_WATER;
+    const rand = seededRand(5);
+    const from = { i: 2, j: 5 };
+    for (let n = 0; n < 200; n++) {
+      const goal = pickWanderGoal(grid, allWalkable, from, rand);
+      if (!goal) continue;
+      expect(goal.i).toBeLessThan(5);
     }
   });
 
@@ -79,7 +93,7 @@ describe('pickWanderGoal', () => {
     grid.setWall(0, 0, 1);
     const rand = seededRand(4);
     for (let n = 0; n < 200; n++) {
-      const goal = pickWanderGoal(grid, allWalkable, rand);
+      const goal = pickWanderGoal(grid, allWalkable, null, rand);
       if (!goal) continue;
       expect(goal.i).toBeGreaterThanOrEqual(0);
       expect(goal.j).toBeGreaterThanOrEqual(0);

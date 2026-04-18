@@ -666,7 +666,7 @@ export function makeCowBrainSystem(deps) {
           if (job.state === 'planning') {
             const { i: si, j: sj } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
             const cowZ = brain.layerZ | 0;
-            const goal = pickWanderGoal(grid, walkable);
+            const goal = pickWanderGoal(grid, walkable, { i: si, j: sj });
             if (!goal) {
               job.state = 'idle';
               job.payload = { untilTick: ctx.tick + WANDER_IDLE_TICKS };
