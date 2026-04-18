@@ -341,6 +341,7 @@ export function registerComponents(world) {
     progress: 0,
     stuff: 'wood',
     fill: 4,
+    baseFill: 0,
   }));
   world.defineComponent('WallViz', () => ({}));
   world.defineComponent('Door', () => ({ deconstructJobId: 0, progress: 0, stuff: 'wood' }));
