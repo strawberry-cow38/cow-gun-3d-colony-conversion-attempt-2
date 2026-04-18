@@ -176,11 +176,12 @@ function lerpHex(a, b, u) {
  *   sky: THREE.Mesh,
  *   sunDisc?: THREE.Mesh,
  *   moonDisc?: THREE.Mesh,
+ *   camera?: THREE.Camera,
  *   initialT?: number,
  * }} opts
  */
 export function createTimeOfDay(opts) {
-  const { sun, hemi, sky, sunDisc, moonDisc } = opts;
+  const { sun, hemi, sky, sunDisc, moonDisc, camera } = opts;
   const skyMat = /** @type {THREE.ShaderMaterial} */ (sky.material);
   let t = opts.initialT ?? 0.7; // open in early-evening to preserve existing look
 
@@ -190,6 +191,7 @@ export function createTimeOfDay(opts) {
   let overcast = 0;
 
   const _sunVec = new THREE.Vector3();
+  const _origin = new THREE.Vector3();
   // Place celestial discs near the sky shell so they read as far away. Sky
   // sphere is 40000 — 35000 keeps them clearly inside the dome without
   // clipping when the camera pans.
@@ -205,18 +207,20 @@ export function createTimeOfDay(opts) {
 
     if (sunDisc) {
       const dir = _sunVec.clone().normalize();
-      sunDisc.position.copy(dir).multiplyScalar(SKY_RADIUS);
-      // Sun disc tracks the directional light's color so the visible body
-      // matches the sunlight tint (warm at sunset, white at noon).
+      // Anchor to the camera so the disc sits at a fixed sky angle from the
+      // viewer instead of parallaxing past the world-origin offset. That
+      // angle is the same one the directional light uses, so the visible
+      // sun matches the shadow direction frame-to-frame.
+      const anchor = camera ? camera.position : _origin;
+      sunDisc.position.copy(anchor).addScaledVector(dir, SKY_RADIUS);
       /** @type {THREE.MeshBasicMaterial} */ (sunDisc.material).color.setHex(p.sunColor);
-      // Hide once the sun is well below the horizon so we don't render a
-      // bright disc clipping through the night skybox.
       sunDisc.visible = dir.y > -0.05;
     }
     if (moonDisc) {
-      const moonDir = _sunVec.clone().normalize().multiplyScalar(-1);
-      moonDisc.position.copy(moonDir).multiplyScalar(SKY_RADIUS);
-      moonDisc.visible = moonDir.y > -0.05;
+      const dir = _sunVec.clone().normalize();
+      const anchor = camera ? camera.position : _origin;
+      moonDisc.position.copy(anchor).addScaledVector(dir, -SKY_RADIUS);
+      moonDisc.visible = -dir.y > -0.05;
     }
 
     const dim = 1 - overcast * 0.45;
