@@ -1342,10 +1342,9 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
   } else {
     // Wall-family blueprints (full / half / quarter) carry absolute quarter
     // offsets in `baseFill`, so a single blueprint may span multiple z-layer
-    // buckets. Walk the covered range [baseFill, baseFill+tier) and spawn a
-    // fresh Wall entity for each layer-overlap, keyed with `baseFill = withinZ`
-    // so a bigger tier placed atop a partial stacks visually above it instead
-    // of merging into (and erasing) the original partial's segment.
+    // buckets. Walk the covered range [baseFill, baseFill+tier) and drop each
+    // layer-overlap into its own bucket — merging into an existing Wall entity
+    // at that z, or spawning a fresh one if none exists yet.
     const tier = WALL_TIER_BY_KIND[site.kind] ?? WALL_FILL_FULL;
     const baseFill = site.baseFill | 0;
     const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
@@ -1358,14 +1357,22 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
       const room = WALL_FILL_FULL - withinZ;
       const layerFill = Math.min(remaining, room);
       const wallLayer = tileWorld?.layers[wallZ] ?? grid;
-      const existingFill = wallLayer.wallFill(anchor.i, anchor.j) | 0;
-      wallLayer.setWallFill(anchor.i, anchor.j, Math.min(WALL_FILL_FULL, existingFill + layerFill));
-      world.spawn({
-        Wall: { stuff, fill: layerFill, baseFill: withinZ },
-        WallViz: {},
-        TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
-        Position: { x: w.x, y: groundElev + wallZ * LAYER_HEIGHT, z: w.z },
-      });
+      const existingWallId = findWallAt(world, anchor.i, anchor.j, wallZ);
+      if (existingWallId !== null) {
+        const wall = world.get(existingWallId, 'Wall');
+        if (wall) {
+          wall.fill = Math.min(WALL_FILL_FULL, (wall.fill | 0) + layerFill);
+          wallLayer.setWallFill(anchor.i, anchor.j, wall.fill);
+        }
+      } else {
+        wallLayer.setWallFill(anchor.i, anchor.j, layerFill);
+        world.spawn({
+          Wall: { stuff, fill: layerFill },
+          WallViz: {},
+          TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
+          Position: { x: w.x, y: groundElev + wallZ * LAYER_HEIGHT, z: w.z },
+        });
+      }
       remaining -= layerFill;
       offset += layerFill;
     }
@@ -1405,6 +1412,22 @@ const WALL_TIER_BY_KIND = /** @type {Record<string, number>} */ ({
   halfWall: 2,
   quarterWall: 1,
 });
+
+/**
+ * Find an existing Wall entity at (i,j,z), or null. Used by the build-finish
+ * path to decide between spawning a new wall and bumping an existing wall's
+ * fill when a partial-wall blueprint completes atop it.
+ *
+ * @param {import('../ecs/world.js').World} world
+ * @param {number} i @param {number} j @param {number} z
+ */
+function findWallAt(world, i, j, z) {
+  for (const { id, components } of world.query(['Wall', 'TileAnchor'])) {
+    const a = components.TileAnchor;
+    if (a.i === i && a.j === j && (a.z | 0) === z) return id;
+  }
+  return null;
+}
 
 /**
  * Yaw (radians, Y-axis) a wall torch at (i,j) should face so its flame points

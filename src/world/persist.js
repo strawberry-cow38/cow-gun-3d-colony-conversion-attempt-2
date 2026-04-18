@@ -171,7 +171,6 @@ function sanitizeSkillLevels(levels) {
  * @property {boolean} decon  player marked it for demolition
  * @property {number} progress  0..1 demolition progress at save time
  * @property {number} [fill]  quarter-unit height 1..4 (missing = full 4, legacy saves)
- * @property {number} [baseFill]  quarter offset within its z-layer 0..3 (missing = 0)
  */
 
 /**
@@ -512,7 +511,6 @@ export function serializeState(tileGrid, world) {
       decon: components.Wall.deconstructJobId > 0,
       progress: components.Wall.progress ?? 0,
       fill: components.Wall.fill ?? 4,
-      baseFill: components.Wall.baseFill | 0,
     });
   }
   /** @type {SerializedDoor[]} */
@@ -971,7 +969,7 @@ export function hydrateBuildSites(world, grid, state) {
  * @param {import('../ecs/world.js').World} world
  * @param {import('./tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
- * @param {Array<{i: number, j: number, z?: number, stuff?: string, decon?: boolean, progress?: number, wallMounted?: boolean, yaw?: number, fill?: number, baseFill?: number}>} items
+ * @param {Array<{i: number, j: number, z?: number, stuff?: string, decon?: boolean, progress?: number, wallMounted?: boolean, yaw?: number, fill?: number}>} items
  * @param {'wall'|'door'|'torch'|'roof'|'floor'} kind
  */
 const STRUCT_COMP_BY_KIND = /** @type {const} */ ({
@@ -1000,8 +998,6 @@ function hydrateStructures(world, grid, board, items, kind) {
     if (kind === 'wall') {
       const rawFill = typeof s.fill === 'number' ? s.fill | 0 : 4;
       tag.fill = Math.max(1, Math.min(4, rawFill));
-      const rawBase = typeof s.baseFill === 'number' ? s.baseFill | 0 : 0;
-      tag.baseFill = Math.max(0, Math.min(3, rawBase));
     }
     const id = world.spawn({
       [compName]: tag,

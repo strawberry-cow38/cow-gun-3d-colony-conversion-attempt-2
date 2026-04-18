@@ -66,31 +66,26 @@ export function createWallInstancer(scene, capacity = 2048) {
     _quat.identity();
     _scale.set(1, 1, 1);
 
-    const quarterH = WALL_HEIGHT / WALL_FILL_FULL;
-
-    /** @type {{ i: number, j: number, z: number, fill: number, baseFill: number, y: number, cx: number, cz: number, color: number }[]} */
+    /** @type {{ i: number, j: number, z: number, fill: number, y: number, cx: number, cz: number, color: number }[]} */
     const walls = [];
-    // Per-tile top-reach keyed by (z, j, i) in quarter units. When a tile hosts
-    // multiple Wall segments (partial + bigger tier placed atop) we track the
-    // highest quarter reached so side-face occlusion compares against the full
-    // stack, not just one segment.
+    // Per-wall fill keyed by (z, j, i) — occlusion skips a side face only when
+    // the neighbor's fill is at least as tall as ours (full next to quarter
+    // still needs its upper body drawn).
     /** @type {Map<number, number>} */
-    const wallTopAt = new Map();
+    const wallFillAt = new Map();
     const stride = grid.W * grid.H;
     for (const { components } of world.query(['Wall', 'TileAnchor', 'WallViz'])) {
       const a = components.TileAnchor;
       const z = a.z | 0;
       const fill = Math.max(1, Math.min(WALL_FILL_FULL, components.Wall.fill | 0));
-      const baseFill = Math.max(0, Math.min(WALL_FILL_FULL - 1, components.Wall.baseFill | 0));
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
       const color = getStuff(components.Wall.stuff).wallColor;
-      const y = grid.getElevation(a.i, a.j) + z * LAYER_HEIGHT + baseFill * quarterH;
-      walls.push({ i: a.i, j: a.j, z, fill, baseFill, y, cx: w.x, cz: w.z, color });
-      const key = z * stride + a.j * grid.W + a.i;
-      const topQ = baseFill + fill;
-      const prev = wallTopAt.get(key) ?? 0;
-      if (topQ > prev) wallTopAt.set(key, topQ);
+      const y = grid.getElevation(a.i, a.j) + z * LAYER_HEIGHT;
+      walls.push({ i: a.i, j: a.j, z, fill, y, cx: w.x, cz: w.z, color });
+      wallFillAt.set(z * stride + a.j * grid.W + a.i, fill);
     }
+
+    const quarterH = WALL_HEIGHT / WALL_FILL_FULL;
 
     let ct = 0;
     let cpx = 0;
@@ -98,14 +93,13 @@ export function createWallInstancer(scene, capacity = 2048) {
     let cpz = 0;
     let cnz = 0;
     for (const wall of walls) {
-      const { i, j, z, fill, baseFill, y, cx, cz, color } = wall;
+      const { i, j, z, fill, y, cx, cz, color } = wall;
       const h = fill * quarterH;
       const yMid = y + h * 0.5;
       const yTop = y + h;
       const base = z * stride;
       _color.setHex(color);
       const sideScaleY = fill / WALL_FILL_FULL;
-      const segTop = baseFill + fill;
 
       if (ct < capacity) {
         _position.set(cx, yTop, cz);
@@ -116,32 +110,32 @@ export function createWallInstancer(scene, capacity = 2048) {
         ct++;
       }
       _scale.set(1, sideScaleY, 1);
-      const neighborPx = wallTopAt.get(base + j * grid.W + (i + 1)) ?? 0;
-      if (neighborPx < segTop && cpx < capacity) {
+      const neighborPx = wallFillAt.get(base + j * grid.W + (i + 1)) ?? 0;
+      if (neighborPx < fill && cpx < capacity) {
         _position.set(cx + HALF, yMid, cz);
         _matrix.compose(_position, _quat, _scale);
         px.setMatrixAt(cpx, _matrix);
         px.setColorAt(cpx, _color);
         cpx++;
       }
-      const neighborNx = wallTopAt.get(base + j * grid.W + (i - 1)) ?? 0;
-      if (neighborNx < segTop && cnx < capacity) {
+      const neighborNx = wallFillAt.get(base + j * grid.W + (i - 1)) ?? 0;
+      if (neighborNx < fill && cnx < capacity) {
         _position.set(cx - HALF, yMid, cz);
         _matrix.compose(_position, _quat, _scale);
         nx.setMatrixAt(cnx, _matrix);
         nx.setColorAt(cnx, _color);
         cnx++;
       }
-      const neighborPz = wallTopAt.get(base + (j + 1) * grid.W + i) ?? 0;
-      if (neighborPz < segTop && cpz < capacity) {
+      const neighborPz = wallFillAt.get(base + (j + 1) * grid.W + i) ?? 0;
+      if (neighborPz < fill && cpz < capacity) {
         _position.set(cx, yMid, cz + HALF);
         _matrix.compose(_position, _quat, _scale);
         pz.setMatrixAt(cpz, _matrix);
         pz.setColorAt(cpz, _color);
         cpz++;
       }
-      const neighborNz = wallTopAt.get(base + (j - 1) * grid.W + i) ?? 0;
-      if (neighborNz < segTop && cnz < capacity) {
+      const neighborNz = wallFillAt.get(base + (j - 1) * grid.W + i) ?? 0;
+      if (neighborNz < fill && cnz < capacity) {
         _position.set(cx, yMid, cz - HALF);
         _matrix.compose(_position, _quat, _scale);
         nz.setMatrixAt(cnz, _matrix);
