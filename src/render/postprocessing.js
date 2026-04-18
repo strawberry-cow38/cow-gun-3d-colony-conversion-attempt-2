@@ -26,7 +26,7 @@ const dreamcoreGradeShader = {
     uHighlightTint: { value: new THREE.Color(0xffd0a8) },
     uShadowTintAmount: { value: 0.18 },
     uHighlightTintAmount: { value: 0.08 },
-    uVignetteAmount: { value: 0.22 },
+    uVignetteAmount: { value: 0.08 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;

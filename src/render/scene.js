@@ -30,12 +30,12 @@ export function createScene(canvas) {
   // we'd rather spend the samples elsewhere.
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  // ACES + linear → sRGB gives the postprocessing stack proper headroom for
-  // bloom and the curve-based grader. Exposure tuned slightly hot so the
-  // dreamcore highlight tint has something to bite into.
+  // sRGB output for the postprocessing stack. Linear tonemap (not ACES) so
+  // mid-saturation LDR colors don't get crushed dark — the dreamcore palette
+  // is meant to read vivid, not cinematic.
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMapping = THREE.LinearToneMapping;
+  renderer.toneMappingExposure = 1.25;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x3a2350);
