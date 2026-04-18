@@ -330,7 +330,11 @@ export function findPath(gridOrWorld, start, goal, walkable = defaultWalkable) {
       let stepCost = cost;
       if (hop) stepCost += HOP_EXTRA_COST;
       else if (climb) stepCost *= CLIMB_COST_MULT;
-      if (nLayer.biome[nj * W + ni] === BIOME.SHALLOW_WATER) stepCost *= SHALLOW_WATER_COST;
+      // Wading only applies when feet are actually in water — walls over water
+      // or upper-layer floors lift the cow above the biome beneath.
+      const nIdx = nj * W + ni;
+      const aboveWater = nz > 0 || nLayer.wall[nIdx] > 0;
+      if (!aboveWater && nLayer.biome[nIdx] === BIOME.SHALLOW_WATER) stepCost *= SHALLOW_WATER_COST;
       relax(flatZ(nz) * layerSize + nj * W + ni, ni, nj, nz, current, stepCost);
     }
 

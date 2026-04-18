@@ -3499,8 +3499,12 @@ export function makeCowFollowPathSystem(deps) {
           if (!grid.isFloor(cur.i, cur.j)) speed *= 0.85;
           // Half speed on dim tiles (<40% light) — cows stumble in the dark.
           if (grid.getLight(cur.i, cur.j) < DARK_LIGHT_BYTE) speed *= 0.5;
-          // Wading through shallow water: 15% speed.
-          if (grid.biome[grid.idx(cur.i, cur.j)] === BIOME.SHALLOW_WATER) speed *= 0.15;
+          // Wading through shallow water: 15% speed. Skipped when the cow is
+          // actually walking above water (on a wall-top or upper-layer floor)
+          // — the biome is still SHALLOW_WATER beneath them, but feet aren't.
+          const curIdx = grid.idx(cur.i, cur.j);
+          const aboveWater = cowZ > 0 || grid.wall[curIdx] > 0;
+          if (!aboveWater && grid.biome[curIdx] === BIOME.SHALLOW_WATER) speed *= 0.15;
         }
         vel.x = nx * speed;
         vel.z = nz * speed;
