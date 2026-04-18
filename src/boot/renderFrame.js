@@ -289,6 +289,14 @@ export function createRenderFrame({
       wakeParticles.burst(p.x, p.z);
     }
     wakeParticles.update(rdt);
+    if (state.waterMesh) {
+      const mat =
+        /** @type {THREE.Material & { userData: { shader?: { uniforms: { uTime: { value: number } } } } }} */ (
+          state.waterMesh.material
+        );
+      const shader = mat.userData.shader;
+      if (shader) shader.uniforms.uTime.value = tSec;
+    }
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);
     cuttableMarkerInstancer.updateMarkers(world, tileGrid, tSec);

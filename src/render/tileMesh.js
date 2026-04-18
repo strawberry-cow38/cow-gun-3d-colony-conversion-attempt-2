@@ -290,12 +290,49 @@ function buildChunkMesh(
   return mesh;
 }
 
+// Depth tint palette. Tile "depth" is the Chebyshev distance from shore
+// (0 = foam ring on adjacent sand, 1 = water tile touching shore, grows
+// toward the interior). Below the palette endpoints we linearly interpolate
+// between `FOAM → SHALLOW` for depth 0→1 and `SHALLOW → DEEP` for depth
+// 1→DEEP_AT. Past DEEP_AT the color clamps to `DEEP`. RGBA so we can vary
+// opacity per tile — foam is nearly opaque whitish, shallow edges are
+// mostly clear pale teal, open water is darker and a little thicker.
+const FOAM_RGBA = [0.92, 0.94, 0.94, 0.55];
+const SHALLOW_RGBA = [0.5, 0.7, 0.78, 0.45];
+const DEEP_RGBA = [0.12, 0.26, 0.46, 0.78];
+const DEEP_AT = 8;
+
+/** @param {number[]} a @param {number[]} b @param {number} t */
+function lerpRgba(a, b, t) {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+    a[3] + (b[3] - a[3]) * t,
+  ];
+}
+
+/** @param {number} depth */
+function waterColorForDepth(depth) {
+  if (depth <= 0) return FOAM_RGBA;
+  if (depth >= DEEP_AT) return DEEP_RGBA;
+  if (depth <= 1) return lerpRgba(FOAM_RGBA, SHALLOW_RGBA, depth);
+  const t = (depth - 1) / (DEEP_AT - 1);
+  return lerpRgba(SHALLOW_RGBA, DEEP_RGBA, t);
+}
+
 /**
  * Translucent water surface plane at `WATER_SURFACE_Y` (6/8 of a terrain step
  * above ground). Covers every DEEP_WATER and SHALLOW_WATER tile plus a
  * one-tile ring of adjacent SAND — the ring hides the shoreline gap that
  * would otherwise show the beach below the waterline where the plane ended
  * at the water-biome boundary mid-tile.
+ *
+ * Per-tile RGBA vertex colors drive a shore→deep tint: foam white at the
+ * beach ring, pale teal one tile in, dark blue in the middle of a lake. An
+ * `onBeforeCompile` hook injects a small time-animated sine displacement on
+ * Y so the surface shimmers instead of reading as a flat glass pane — the
+ * caller ticks `mesh.material.userData.shader.uniforms.uTime` every frame.
  *
  * Returns null when the world contains no water so we don't add an empty
  * mesh to the scene.
@@ -313,46 +350,102 @@ export function buildWaterSurface(tileGrid) {
   const iMax = W + S;
   const jMin = -S;
   const jMax = H + S;
+  const EW = iMax - iMin;
+  const EH = jMax - jMin;
 
   const getBiomeAt = skirted
     ? (i, j) => tileGrid.getSkirtBiome(i, j)
     : (i, j) => tileGrid.getBiome(i, j);
 
-  // Surface covers water tiles AND sand tiles adjacent to water — otherwise
-  // the plane ends at the water-biome boundary mid-tile, leaving a visible
-  // gap of exposed beach below the waterline between the plane's edge and
-  // the sand bank rising behind it. Extending one ring onto the sand makes
-  // the water lap onto the beach.
-  /** @param {number} i @param {number} j */
-  const isCovered = (i, j) => {
-    const b = getBiomeAt(i, j);
-    if (b === BIOME.DEEP_WATER || b === BIOME.SHALLOW_WATER) return true;
+  // Sample biomes into a flat [0..EW)×[0..EH) buffer indexed by (ei, ej) so
+  // the BFS below doesn't pay for the getBiomeAt abstraction per lookup.
+  const biome = new Uint8Array(EW * EH);
+  for (let ej = 0; ej < EH; ej++) {
+    for (let ei = 0; ei < EW; ei++) {
+      biome[ej * EW + ei] = getBiomeAt(ei + iMin, ej + jMin);
+    }
+  }
+  /** @param {number} ei @param {number} ej */
+  const bAt = (ei, ej) => biome[ej * EW + ei];
+  /** @param {number} b */
+  const isWater = (b) => b === BIOME.SHALLOW_WATER || b === BIOME.DEEP_WATER;
+
+  // BFS of "depth from shore": every non-water tile seeds at depth 0, water
+  // tiles inherit min(neighbor depth) + 1. The result directly feeds the
+  // foam→shallow→deep color ramp. 8-directional so diagonals count the
+  // same way carveDeepWater does.
+  const depth = new Int16Array(EW * EH);
+  depth.fill(-1);
+  /** @type {number[]} */
+  const queue = [];
+  for (let ej = 0; ej < EH; ej++) {
+    for (let ei = 0; ei < EW; ei++) {
+      const k = ej * EW + ei;
+      if (!isWater(biome[k])) {
+        depth[k] = 0;
+        queue.push(k);
+      }
+    }
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const k = queue[head];
+    const ei = k % EW;
+    const ej = (k - ei) / EW;
+    const d = depth[k];
+    for (let dj = -1; dj <= 1; dj++) {
+      for (let di = -1; di <= 1; di++) {
+        if (di === 0 && dj === 0) continue;
+        const ni = ei + di;
+        const nj = ej + dj;
+        if (ni < 0 || nj < 0 || ni >= EW || nj >= EH) continue;
+        const nk = nj * EW + ni;
+        if (depth[nk] !== -1) continue;
+        if (!isWater(biome[nk])) continue;
+        depth[nk] = d + 1;
+        queue.push(nk);
+      }
+    }
+  }
+
+  /** @param {number} ei @param {number} ej */
+  const isCovered = (ei, ej) => {
+    const b = bAt(ei, ej);
+    if (isWater(b)) return true;
     if (b !== BIOME.SAND) return false;
     for (let dj = -1; dj <= 1; dj++) {
       for (let di = -1; di <= 1; di++) {
         if (di === 0 && dj === 0) continue;
-        const nb = getBiomeAt(i + di, j + dj);
-        if (nb === BIOME.SHALLOW_WATER || nb === BIOME.DEEP_WATER) return true;
+        const ni = ei + di;
+        const nj = ej + dj;
+        if (ni < 0 || nj < 0 || ni >= EW || nj >= EH) continue;
+        if (isWater(biome[nj * EW + ni])) return true;
       }
     }
     return false;
   };
 
   let coveredCount = 0;
-  for (let j = jMin; j < jMax; j++) {
-    for (let i = iMin; i < iMax; i++) {
-      if (isCovered(i, j)) coveredCount++;
+  for (let ej = 0; ej < EH; ej++) {
+    for (let ei = 0; ei < EW; ei++) {
+      if (isCovered(ei, ej)) coveredCount++;
     }
   }
   if (coveredCount === 0) return null;
 
   const positions = new Float32Array(coveredCount * 4 * 3);
+  // RGBA color attribute: three.js auto-defines USE_COLOR_ALPHA when the
+  // color attribute has itemSize 4, so the built-in MeshStandardMaterial
+  // multiplies final alpha by the per-vertex alpha without shader tweaks.
+  const colors = new Float32Array(coveredCount * 4 * 4);
   const indices = new Uint32Array(coveredCount * 6);
   let v = 0;
+  let c = 0;
   let ix = 0;
-  for (let j = jMin; j < jMax; j++) {
-    for (let i = iMin; i < iMax; i++) {
-      if (!isCovered(i, j)) continue;
+  for (let ej = 0; ej < EH; ej++) {
+    for (let ei = 0; ei < EW; ei++) {
+      if (!isCovered(ei, ej)) continue;
+      const i = ei + iMin;
+      const j = ej + jMin;
       const x0 = i * TILE_SIZE - halfW;
       const x1 = x0 + TILE_SIZE;
       const z0 = j * TILE_SIZE - halfH;
@@ -370,6 +463,14 @@ export function buildWaterSurface(tileGrid) {
       positions[v++] = x0;
       positions[v++] = WATER_SURFACE_Y;
       positions[v++] = z1;
+      const tileDepth = depth[ej * EW + ei];
+      const rgba = waterColorForDepth(tileDepth < 0 ? 0 : tileDepth);
+      for (let n = 0; n < 4; n++) {
+        colors[c++] = rgba[0];
+        colors[c++] = rgba[1];
+        colors[c++] = rgba[2];
+        colors[c++] = rgba[3];
+      }
       // CCW from above so the upward normal is +Y (sun-lit).
       indices[ix++] = baseV;
       indices[ix++] = baseV + 2;
@@ -382,17 +483,44 @@ export function buildWaterSurface(tileGrid) {
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4));
   geometry.setIndex(new THREE.BufferAttribute(indices, 1));
   geometry.computeVertexNormals();
 
   const material = new THREE.MeshStandardMaterial({
-    color: 0x3a6a9a,
     transparent: true,
-    opacity: 0.55,
+    vertexColors: true,
     metalness: 0.1,
     roughness: 0.4,
     depthWrite: false,
   });
+  // Ripples: inject a tiny time-dependent Y displacement in the vertex
+  // shader so the water shimmers without us rewriting the geometry every
+  // frame. uTime is ticked by the caller via `material.userData.shader`.
+  // Displacement stays well below TERRAIN_STEP/8 so the quarter-wall-in-
+  // water silhouette doesn't wobble visibly above/below the surface.
+  const ripplesOnBeforeCompile = (
+    /** @type {import('three').WebGLProgramParametersWithUniforms} */ shader,
+  ) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform float uTime;`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         float ripple = sin(transformed.x * 0.9 + uTime * 1.4) * 0.018
+                      + sin(transformed.z * 1.1 - uTime * 1.0) * 0.014
+                      + sin((transformed.x + transformed.z) * 0.6 + uTime * 0.7) * 0.010;
+         transformed.y += ripple;`,
+      );
+    material.userData.shader = shader;
+  };
+  material.onBeforeCompile = ripplesOnBeforeCompile;
+
   const mesh = new THREE.Mesh(geometry, material);
   mesh.receiveShadow = true;
   return mesh;
