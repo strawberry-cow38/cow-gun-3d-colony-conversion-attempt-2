@@ -213,6 +213,8 @@ export function createBuildSiteInstancer(scene, capacity = 1024) {
       } else if (site.kind === 'halfWall') {
         sy = WALL_QUARTER_H * 2;
         py = y + (site.baseFill | 0) * WALL_QUARTER_H;
+      } else if (site.kind === 'wall') {
+        py = y + (site.baseFill | 0) * WALL_QUARTER_H;
       }
       _scale.set(sx, sy, sz);
       _position.set(w.x, py, w.z);

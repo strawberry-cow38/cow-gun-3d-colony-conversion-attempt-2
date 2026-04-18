@@ -30,7 +30,7 @@ import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
 import { stairFootprintTiles } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { DEFAULT_STUFF, STUFF } from '../world/stuff.js';
-import { LAYER_HEIGHT, WALL_FILL_FULL } from '../world/tileGrid.js';
+import { LAYER_HEIGHT, TERRAIN_STEP, WALL_FILL_FULL } from '../world/tileGrid.js';
 import { createBedGhost } from './bedInstancer.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
@@ -52,27 +52,6 @@ const WALL_TIER_BY_KIND = /** @type {Record<string, number>} */ ({
   halfWall: 2,
   quarterWall: 1,
 });
-/** Inverse of WALL_TIER_BY_KIND — used when placement downgrades tier to fit. */
-const KIND_BY_WALL_TIER = /** @type {Record<number, string>} */ ({
-  4: 'wall',
-  2: 'halfWall',
-  1: 'quarterWall',
-});
-
-/**
- * Largest wall tier (4 / 2 / 1) that fits in `room` quarter-units, or 0 if
- * none. Used by placement to downgrade a wall click when the requested tier
- * would overflow the tile's remaining wall budget — clicking "full wall" on
- * a half wall places a half-wall blueprint to top it off, instead of jumping
- * to z+1 and failing the support check.
- * @param {number} room
- */
-function largestWallTierFitting(room) {
-  if (room >= 4) return 4;
-  if (room >= 2) return 2;
-  if (room >= 1) return 1;
-  return 0;
-}
 /** Facing kinds that also have a "work here" tile preview. Beds don't — cows
  * just climb onto the mattress, there's no adjacent stand tile. */
 const WORK_SPOT_KINDS = new Set(['furnace', 'easel', 'stove']);
@@ -620,12 +599,11 @@ export class BuildDesignator {
       });
       return true;
     }
-    // Wall-family (wall / halfWall / quarterWall) has its own multi-step path:
-    // a single click may spawn several blueprints in sequence to cover the
-    // requested quarter-unit tier, crossing z boundaries as needed (e.g. click
-    // "full wall" on a 1/4 wall → tops off z=0 with 3 quarters, then drops a
-    // 1/4 on z=1). Hops out of the generic flow before the non-wall guards.
-    if (WALL_FAMILY.has(kind)) return this.#designateWallStack(i, j, WALL_TIER_BY_KIND[kind]);
+    // Wall-family (wall / halfWall / quarterWall) has its own path: baseFill
+    // is absolute quarters-from-ground (not layer-local), so a single full-wall
+    // blueprint can sit atop any partial below and span z-boundaries freely.
+    // Completion distributes the tier's quarters across the z-layer buckets.
+    if (WALL_FAMILY.has(kind)) return this.#designateWallStack(i, j, kind);
     const layer = this.tileGrid;
     if (isRoof) {
       if (layer.isRoof(i, j)) return false;
@@ -709,73 +687,62 @@ export class BuildDesignator {
   }
 
   /**
-   * Spawn one or more wall-family blueprints at (i,j) to cover `requestedTier`
-   * quarter-units, advancing through z-layers as each one fills. Returns true
-   * if at least one blueprint was placed.
+   * Spawn one wall-family blueprint at (i,j) of `kind` sitting on top of any
+   * existing wall stack. `baseFill` is absolute quarters-from-ground — the
+   * new blueprint stacks on whatever's already built or pending at this tile,
+   * whether that's a quarter, half, three-quarters, a full wall, or more.
    *
-   * The click's requested tier isn't capped to one layer: clicking "full wall"
-   * (tier 4) on a tile whose z=0 already has a 1/4 wall yields a halfWall +
-   * quarterWall on z=0 (filling it) plus a quarterWall on z=1. That's what
-   * lets players mix-and-match partial walls without having to click each
-   * piece individually.
+   * The BuildSite is anchored to z=0 regardless of how high up the stack
+   * lands; the renderer and completion code read `baseFill` to place it in
+   * world-space and to distribute the tier's quarters across the right z-layer
+   * buckets when it finishes building.
    *
-   * Per-step guards mirror the non-wall flow: the layer's tile can't host a
-   * tree/rock, door, torch, or stockpile, and z>0 needs upper support (which
-   * re-queries pending fills after each spawn so a just-filled z=0 counts as
-   * support for the next z=1 step).
-   *
-   * @param {number} i @param {number} j @param {number} requestedTier
+   * @param {number} i @param {number} j @param {string} kind
    */
-  #designateWallStack(i, j, requestedTier) {
+  #designateWallStack(i, j, kind) {
+    const tier = WALL_TIER_BY_KIND[kind];
+    if (!tier) return false;
+    const baseFill = this.#totalWallFillAt(i, j);
+    const maxFill = (this.tileWorld?.layers.length ?? 1) * WALL_FILL_FULL;
+    if (baseFill + tier > maxFill) return false;
+    const ground = this.tileGrid;
+    if (ground.isOccupied(i, j)) return false;
+    if (ground.isDoor(i, j)) return false;
+    if (ground.isTorch(i, j)) return false;
+    if (ground.isStockpile(i, j)) return false;
+    // A finished full wall rooted at the ground covers the floor entirely;
+    // cancel any pending floor blueprint at this tile to refund its materials.
+    if (kind === 'wall' && baseFill === 0) {
+      const floorSiteId = this.#findSiteAt(i, j, (k) => k === 'floor');
+      if (floorSiteId !== null) {
+        const floorSite = this.world.get(floorSiteId, 'BuildSite');
+        if (floorSite) {
+          releaseBuildSite(this.world, this.board, this.tileGrid, floorSite, i, j);
+          this.world.despawn(floorSiteId);
+        }
+      }
+    }
     const stuff = this.config.stuffed ? this.currentStuff : null;
     const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
-    let remaining = requestedTier;
-    let any = false;
-    while (remaining > 0) {
-      const step = this.#resolveWallPlacement(i, j, remaining);
-      if (!step) break;
-      const layer =
-        step.z === 0 ? this.tileGrid : (this.tileWorld?.layers[step.z] ?? this.tileGrid);
-      if (step.z > 0 && !this.#hasUpperSupport(i, j, step.z)) break;
-      if (layer.isOccupied(i, j)) break;
-      if (layer.isDoor(i, j)) break;
-      if (layer.isTorch(i, j)) break;
-      if (layer.isStockpile(i, j)) break;
-      // A finished full wall covers the floor entirely, so any pending floor
-      // blueprint at z=0 under a ground-layer wall is wasted work — cancel it
-      // to refund materials. Only fires when a full-tier piece lands on z=0.
-      if (step.tier === WALL_FILL_FULL && step.z === 0) {
-        const floorSiteId = this.#findSiteAt(i, j, (k) => k === 'floor');
-        if (floorSiteId !== null) {
-          const floorSite = this.world.get(floorSiteId, 'BuildSite');
-          if (floorSite) {
-            releaseBuildSite(this.world, this.board, this.tileGrid, floorSite, i, j);
-            this.world.despawn(floorSiteId);
-          }
-        }
-      }
-      const y = this.tileGrid.getElevation(i, j) + step.z * LAYER_HEIGHT;
-      this.world.spawn({
-        BuildSite: {
-          kind: step.kind,
-          stuff: stuff ?? 'wood',
-          requiredKind,
-          required: this.config.required ?? 1,
-          delivered: 0,
-          buildJobId: 0,
-          progress: 0,
-          facing: 0,
-          baseFill: step.baseFill,
-        },
-        BuildSiteViz: {},
-        TileAnchor: { i, j, z: step.z },
-        Position: { x: w.x, y, z: w.z },
-      });
-      remaining -= step.tier;
-      any = true;
-    }
-    return any;
+    const y = this.tileGrid.getElevation(i, j);
+    this.world.spawn({
+      BuildSite: {
+        kind,
+        stuff: stuff ?? 'wood',
+        requiredKind,
+        required: this.config.required ?? 1,
+        delivered: 0,
+        buildJobId: 0,
+        progress: 0,
+        facing: 0,
+        baseFill,
+      },
+      BuildSiteViz: {},
+      TileAnchor: { i, j, z: 0 },
+      Position: { x: w.x, y, z: w.z },
+    });
+    return true;
   }
 
   /**
@@ -804,50 +771,58 @@ export class BuildDesignator {
   }
 
   /**
-   * Sum of built + pending wall-family fill at (i,j,z), in quarter units.
-   * Drives auto-stacking so two halfWall blueprints at the same tile land at
-   * baseFill 0 and baseFill 2.
+   * Built + pending wall fill at (i,j) that lands inside z-layer `z`'s bucket,
+   * clamped to 0..WALL_FILL_FULL. BuildSites live at z=0 with absolute
+   * baseFill, so per-layer fill is the overlap of each blueprint's
+   * [baseFill, baseFill+tier) quarter range with [z*4, (z+1)*4).
+   *
+   * Consumers (stair support, upper-support check) need to know "will this
+   * layer be walled up when everything finishes building" — that's what this
+   * reports.
    * @param {number} i @param {number} j @param {number} z
    */
   #pendingWallFillAt(i, j, z) {
     const layer = z === 0 ? this.tileGrid : this.tileWorld?.layers[z];
     let fill = layer ? layer.wallFill(i, j) : 0;
+    const zBase = z * WALL_FILL_FULL;
+    const zTop = zBase + WALL_FILL_FULL;
     for (const { components } of this.world.query(['BuildSite', 'TileAnchor'])) {
       const a = components.TileAnchor;
       if (a.i !== i || a.j !== j) continue;
-      if ((a.z | 0) !== z) continue;
       const tier = WALL_TIER_BY_KIND[components.BuildSite.kind];
-      if (tier) fill += tier;
+      if (!tier) continue;
+      const bpBase = components.BuildSite.baseFill | 0;
+      const bpTop = bpBase + tier;
+      const overlap = Math.max(0, Math.min(bpTop, zTop) - Math.max(bpBase, zBase));
+      fill += overlap;
+      if (fill >= WALL_FILL_FULL) return WALL_FILL_FULL;
     }
     return fill;
   }
 
   /**
-   * Pick a z, baseFill, and effective tier for a wall-family blueprint of
-   * `requestedTier` quarter-units at (i,j). Scans from activeZ upward and
-   * picks the first layer with any remaining wall budget; if the requested
-   * tier doesn't fit at that layer, downgrades to the largest tier that does
-   * (4 → 2 → 1). Returns null when no layer has any room — the caller bails.
-   *
-   * The downgrade is what makes "click full wall on a half wall" do the
-   * intuitive thing (top it off with a half-wall blueprint) instead of
-   * jumping to z+1 where there's no support.
-   *
-   * @param {number} i @param {number} j @param {number} requestedTier
-   * @returns {{ z: number, baseFill: number, tier: number, kind: string } | null}
+   * Absolute quarter-unit wall stack height at (i,j), summed over all z-layers
+   * plus every pending wall-family BuildSite's tier at this tile. A wall
+   * blueprint clicks down with `baseFill` equal to this value, so clicking
+   * "full wall" on a 3/4 wall produces a single full-wall BuildSite with
+   * baseFill 3 — the renderer lifts it off the ground by 3 × TERRAIN_STEP and
+   * completion distributes the 4 quarters across the appropriate z buckets.
+   * @param {number} i @param {number} j
    */
-  #resolveWallPlacement(i, j, requestedTier) {
-    const activeZ = this.tileWorld?.activeZ ?? 0;
+  #totalWallFillAt(i, j) {
     const depth = this.tileWorld?.layers.length ?? 1;
-    for (let z = activeZ; z < depth; z++) {
-      const fill = this.#pendingWallFillAt(i, j, z);
-      const room = WALL_FILL_FULL - fill;
-      if (room <= 0) continue;
-      const tier = Math.min(requestedTier, largestWallTierFitting(room));
-      if (tier <= 0) continue;
-      return { z, baseFill: fill, tier, kind: KIND_BY_WALL_TIER[tier] };
+    let fill = 0;
+    for (let z = 0; z < depth; z++) {
+      const layer = z === 0 ? this.tileGrid : this.tileWorld?.layers[z];
+      if (layer) fill += layer.wallFill(i, j);
     }
-    return null;
+    for (const { components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if (a.i !== i || a.j !== j) continue;
+      const tier = WALL_TIER_BY_KIND[components.BuildSite.kind];
+      if (tier) fill += tier;
+    }
+    return fill;
   }
 
   /** @param {number} i @param {number} j */
@@ -893,10 +868,9 @@ export class BuildDesignator {
   }
 
   /**
-   * Topmost wall-family blueprint at (i,j), ordered by (z, baseFill). Used by
-   * wall cancel so the player peels stacked blueprints from the top down —
-   * any wall/halfWall/quarterWall designator cancels any tier, since a single
-   * "full wall" click may have spawned a mix of tiers across layers.
+   * Topmost wall-family blueprint at (i,j), ordered by absolute baseFill. Used
+   * by wall cancel so the player peels stacked blueprints from the top down —
+   * any wall/halfWall/quarterWall designator cancels any tier.
    * @param {number} i @param {number} j
    */
   #findTopmostWallSiteAt(i, j) {
@@ -906,11 +880,9 @@ export class BuildDesignator {
       const a = components.TileAnchor;
       if (a.i !== i || a.j !== j) continue;
       if (!WALL_FAMILY.has(components.BuildSite.kind)) continue;
-      const z = a.z | 0;
       const baseFill = components.BuildSite.baseFill | 0;
-      const rank = z * (WALL_FILL_FULL + 1) + baseFill;
-      if (rank > bestRank) {
-        bestRank = rank;
+      if (baseFill > bestRank) {
+        bestRank = baseFill;
         bestId = id;
       }
     }
@@ -1017,18 +989,18 @@ export class BuildDesignator {
     const x1 = se.x + TILE_SIZE * 0.5;
     const z0 = nw.z - TILE_SIZE * 0.5;
     const z1 = se.z + TILE_SIZE * 0.5;
-    // Walls follow the layer switcher PLUS auto-stack — preview at whatever
-    // z the actual placement will pick. Stairs honor the switcher directly.
-    // Other kinds stay pinned to z=0 for now.
+    // Walls are anchored at z=0 and stack via absolute baseFill; offset the
+    // preview by the current pending stack height so it hovers at the tile's
+    // real top. Stairs still honor the layer switcher for their z anchor.
     const activeZ = this.tileWorld?.activeZ ?? 0;
-    const previewZ = this.removing
-      ? 0
-      : WALL_FAMILY.has(this.config.kind)
-        ? (this.#resolveWallPlacement(i0, j0, WALL_TIER_BY_KIND[this.config.kind])?.z ?? activeZ)
-        : this.config.kind === 'stair'
-          ? activeZ
-          : 0;
-    const y = grid.getElevation(i0, j0) + previewZ * LAYER_HEIGHT + PREVIEW_CLEARANCE;
+    const isWallFamily = WALL_FAMILY.has(this.config.kind);
+    const elev = grid.getElevation(i0, j0);
+    const y =
+      isWallFamily && !this.removing
+        ? elev + this.#totalWallFillAt(i0, j0) * TERRAIN_STEP + PREVIEW_CLEARANCE
+        : elev +
+          (this.removing ? 0 : this.config.kind === 'stair' ? activeZ : 0) * LAYER_HEIGHT +
+          PREVIEW_CLEARANCE;
     const p = this.preview.positions;
     p[0] = x0;
     p[1] = y;

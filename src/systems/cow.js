@@ -1334,29 +1334,41 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
       Position: position,
     });
   } else {
-    // Wall lives on its anchor's z-layer so upper-floor walls write to the
-    // right occupancy bitmap. Fallback to `grid` if tileWorld or the layer is
-    // missing (keeps legacy z=0-only callers intact). Wall-family blueprints
-    // (full / half / quarter) share this branch: the tier adds to an existing
-    // Wall.fill if one's already there, otherwise a fresh entity is spawned.
-    const wallZ = anchor.z | 0;
-    const wallLayer = tileWorld?.layers[wallZ] ?? grid;
+    // Wall-family blueprints (full / half / quarter) carry absolute quarter
+    // offsets in `baseFill`, so a single blueprint may span multiple z-layer
+    // buckets. Walk the covered range [baseFill, baseFill+tier) and drop each
+    // layer-overlap into its own bucket — merging into an existing Wall entity
+    // at that z, or spawning a fresh one if none exists yet.
     const tier = WALL_TIER_BY_KIND[site.kind] ?? WALL_FILL_FULL;
-    const existingWallId = findWallAt(world, anchor.i, anchor.j, wallZ);
-    if (existingWallId !== null) {
-      const wall = world.get(existingWallId, 'Wall');
-      if (wall) {
-        wall.fill = Math.min(WALL_FILL_FULL, (wall.fill | 0) + tier);
-        wallLayer.setWallFill(anchor.i, anchor.j, wall.fill);
+    const baseFill = site.baseFill | 0;
+    const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
+    const groundElev = grid.getElevation(anchor.i, anchor.j);
+    let remaining = tier;
+    let offset = baseFill;
+    while (remaining > 0) {
+      const wallZ = Math.floor(offset / WALL_FILL_FULL);
+      const withinZ = offset - wallZ * WALL_FILL_FULL;
+      const room = WALL_FILL_FULL - withinZ;
+      const layerFill = Math.min(remaining, room);
+      const wallLayer = tileWorld?.layers[wallZ] ?? grid;
+      const existingWallId = findWallAt(world, anchor.i, anchor.j, wallZ);
+      if (existingWallId !== null) {
+        const wall = world.get(existingWallId, 'Wall');
+        if (wall) {
+          wall.fill = Math.min(WALL_FILL_FULL, (wall.fill | 0) + layerFill);
+          wallLayer.setWallFill(anchor.i, anchor.j, wall.fill);
+        }
+      } else {
+        wallLayer.setWallFill(anchor.i, anchor.j, layerFill);
+        world.spawn({
+          Wall: { stuff, fill: layerFill },
+          WallViz: {},
+          TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
+          Position: { x: w.x, y: groundElev + wallZ * LAYER_HEIGHT, z: w.z },
+        });
       }
-    } else {
-      wallLayer.setWallFill(anchor.i, anchor.j, tier);
-      world.spawn({
-        Wall: { stuff, fill: tier },
-        WallViz: {},
-        TileAnchor: { i: anchor.i, j: anchor.j, z: wallZ },
-        Position: position,
-      });
+      remaining -= layerFill;
+      offset += layerFill;
     }
   }
   world.despawn(siteId);
