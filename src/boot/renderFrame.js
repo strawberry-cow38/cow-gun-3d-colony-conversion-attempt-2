@@ -293,11 +293,16 @@ export function createRenderFrame({
     wakeParticles.update(rdt);
     if (state.waterMesh) {
       const mat =
-        /** @type {THREE.Material & { userData: { shader?: { uniforms: { uTime: { value: number } } } } }} */ (
+        /** @type {THREE.Material & { userData: { shader?: { uniforms: { uTime: { value: number }, uCausticStrength: { value: number } } } } }} */ (
           state.waterMesh.material
         );
       const shader = mat.userData.shader;
-      if (shader) shader.uniforms.uTime.value = tSec;
+      if (shader) {
+        shader.uniforms.uTime.value = tSec;
+        // Caustics glow at night: subtle in daylight, hot at midnight.
+        const dayFrac = timeOfDay.getSunLightPercent();
+        shader.uniforms.uCausticStrength.value = 0.5 + (1 - dayFrac) * 1.7;
+      }
     }
     buildSiteInstancer.update(world, tileGrid);
     cropInstancer.update(world, tileGrid);

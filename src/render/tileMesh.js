@@ -506,8 +506,8 @@ export function buildWaterSurface(tileGrid) {
     /** @type {import('three').WebGLProgramParametersWithUniforms} */ shader,
   ) => {
     shader.uniforms.uTime = { value: 0 };
-    shader.uniforms.uCausticColor = { value: new THREE.Color(0xd0fcff) };
-    shader.uniforms.uCausticStrength = { value: 1.8 };
+    shader.uniforms.uCausticColor = { value: new THREE.Color(0xc8f4ff) };
+    shader.uniforms.uCausticStrength = { value: 0.85 };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -565,10 +565,14 @@ export function buildWaterSurface(tileGrid) {
            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
          }
          float caustics(vec2 p, float t) {
-           float a = causticNoise(p * 0.18 + vec2(t * 0.13, t * 0.09));
-           float b = causticNoise(p * 0.22 - vec2(t * 0.10, t * 0.16) + 7.0);
+           // Scale tuned for ~1 caustic cell per 43u tile — soft pools of
+           // focused light, not high-frequency noise.
+           float a = causticNoise(p * 0.009 + vec2(t * 0.05, t * 0.04));
+           float b = causticNoise(p * 0.011 - vec2(t * 0.04, t * 0.06) + 7.0);
            float v = abs(a - b);
-           return pow(1.0 - smoothstep(0.0, 0.18, v), 3.0);
+           // Wider smoothstep + softer pow so peaks bloom instead of looking
+           // like cracked-mud lines.
+           return pow(1.0 - smoothstep(0.0, 0.4, v), 1.4);
          }`,
       )
       .replace(
