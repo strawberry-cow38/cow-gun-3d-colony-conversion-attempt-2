@@ -23,7 +23,16 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE } from '../world/coords.js';
-import { BIOME, SKIRT_TILES } from '../world/tileGrid.js';
+import { BIOME, SKIRT_TILES, TERRAIN_STEP } from '../world/tileGrid.js';
+
+// Water surface visually sits 7/8 of a terrain step above ground level — high
+// enough that shallow-water tiles read as a wadeable sandy bed under a thin
+// layer of water, low enough that a single quarter-wall placed in shallow
+// water still pokes above the surface.
+const WATER_SURFACE_Y = (TERRAIN_STEP * 7) / 8;
+
+const SAND_TOP_COLOR = new THREE.Color(0xc8b27a);
+const SAND_CLIFF_COLOR = new THREE.Color(0xc8b27a);
 
 // 32×32 tiles per chunk → 49 chunks on a 200×200 map (plus a handful for
 // the skirt ring). Each chunk ~1k top quads + cliffs = small enough that
@@ -31,12 +40,15 @@ import { BIOME, SKIRT_TILES } from '../world/tileGrid.js';
 // blow the draw-call budget on chunk overhead.
 const CHUNK_TILES = 32;
 
+// Shallow water tiles render as their sandy bed — the actual water is the
+// translucent surface mesh built in buildWaterSurface, so the bed reads
+// through it as wet sand rather than an opaque blue tile.
 const BIOME_COLORS = {
   [BIOME.GRASS]: new THREE.Color(0x3a7a3a),
   [BIOME.DIRT]: new THREE.Color(0x6b4f2a),
   [BIOME.STONE]: new THREE.Color(0x6a6e74),
-  [BIOME.SAND]: new THREE.Color(0xc8b27a),
-  [BIOME.SHALLOW_WATER]: new THREE.Color(0x5aa0c8),
+  [BIOME.SAND]: SAND_TOP_COLOR,
+  [BIOME.SHALLOW_WATER]: SAND_TOP_COLOR,
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 
@@ -50,8 +62,8 @@ const CLIFF_COLORS = {
   [BIOME.GRASS]: new THREE.Color(0x8a6b48),
   [BIOME.DIRT]: new THREE.Color(0x8a6b48),
   [BIOME.STONE]: new THREE.Color(0x7a7e84),
-  [BIOME.SAND]: new THREE.Color(0xc8b27a),
-  [BIOME.SHALLOW_WATER]: new THREE.Color(0x5aa0c8),
+  [BIOME.SAND]: SAND_CLIFF_COLOR,
+  [BIOME.SHALLOW_WATER]: SAND_CLIFF_COLOR,
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
@@ -279,13 +291,14 @@ function buildChunkMesh(
 }
 
 /**
- * Translucent water surface plane that covers every DEEP_WATER tile at Y=0.
- * Deep water tiles have their ground pushed to Y = -TERRAIN_STEP so the
- * player sees a lakebed through this surface — shallow water already renders
- * as an opaque top face in the main tile mesh and doesn't need a plane.
+ * Translucent water surface plane that covers every water tile at
+ * `WATER_SURFACE_Y` (7/8 of a terrain step above ground). Both DEEP_WATER
+ * (lakebed pushed to -TERRAIN_STEP) and SHALLOW_WATER (sandy bed at Y=0)
+ * are covered, so wading reads as "feet under a thin layer of water"
+ * instead of an opaque blue tile.
  *
- * Returns null when the world contains no deep water so we don't add an
- * empty mesh to the scene.
+ * Returns null when the world contains no water so we don't add an empty
+ * mesh to the scene.
  *
  * @param {import('../world/tileGrid.js').TileGrid} tileGrid
  * @returns {THREE.Mesh | null}
@@ -301,15 +314,16 @@ export function buildWaterSurface(tileGrid) {
   const jMin = -S;
   const jMax = H + S;
 
-  let deepCount = 0;
+  let waterCount = 0;
   const sourceBiome = skirted ? tileGrid.skirtBiome : tileGrid.biome;
   for (let k = 0; k < sourceBiome.length; k++) {
-    if (sourceBiome[k] === BIOME.DEEP_WATER) deepCount++;
+    const b = sourceBiome[k];
+    if (b === BIOME.DEEP_WATER || b === BIOME.SHALLOW_WATER) waterCount++;
   }
-  if (deepCount === 0) return null;
+  if (waterCount === 0) return null;
 
-  const positions = new Float32Array(deepCount * 4 * 3);
-  const indices = new Uint32Array(deepCount * 6);
+  const positions = new Float32Array(waterCount * 4 * 3);
+  const indices = new Uint32Array(waterCount * 6);
   let v = 0;
   let ix = 0;
   const getBiomeAt = skirted
@@ -317,23 +331,24 @@ export function buildWaterSurface(tileGrid) {
     : (i, j) => tileGrid.getBiome(i, j);
   for (let j = jMin; j < jMax; j++) {
     for (let i = iMin; i < iMax; i++) {
-      if (getBiomeAt(i, j) !== BIOME.DEEP_WATER) continue;
+      const b = getBiomeAt(i, j);
+      if (b !== BIOME.DEEP_WATER && b !== BIOME.SHALLOW_WATER) continue;
       const x0 = i * TILE_SIZE - halfW;
       const x1 = x0 + TILE_SIZE;
       const z0 = j * TILE_SIZE - halfH;
       const z1 = z0 + TILE_SIZE;
       const baseV = v / 3;
       positions[v++] = x0;
-      positions[v++] = 0;
+      positions[v++] = WATER_SURFACE_Y;
       positions[v++] = z0;
       positions[v++] = x1;
-      positions[v++] = 0;
+      positions[v++] = WATER_SURFACE_Y;
       positions[v++] = z0;
       positions[v++] = x1;
-      positions[v++] = 0;
+      positions[v++] = WATER_SURFACE_Y;
       positions[v++] = z1;
       positions[v++] = x0;
-      positions[v++] = 0;
+      positions[v++] = WATER_SURFACE_Y;
       positions[v++] = z1;
       // CCW from above so the upward normal is +Y (sun-lit).
       indices[ix++] = baseV;
