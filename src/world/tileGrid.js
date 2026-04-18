@@ -775,6 +775,37 @@ export class TileGrid {
       }
     }
 
+    // 4.6. Floor any non-water tile sitting next to the raised sand bank up
+    //      to bank height. Without this the heightmap can drop a grass tile
+    //      to elev 0 right beside a bank at TERRAIN_STEP, which reads as a
+    //      pit rimming the shore.
+    for (let ej = 0; ej < EH; ej++) {
+      for (let ei = 0; ei < EW; ei++) {
+        const k = ej * EW + ei;
+        const b = this.skirtBiome[k];
+        if (b === BIOME.SHALLOW_WATER || b === BIOME.DEEP_WATER || b === BIOME.SAND) continue;
+        if (this.skirtElevation[k] >= TERRAIN_STEP) continue;
+        let nextToBank = false;
+        for (let dj = -1; dj <= 1 && !nextToBank; dj++) {
+          for (let di = -1; di <= 1; di++) {
+            if (di === 0 && dj === 0) continue;
+            const ni = ei + di;
+            const nj = ej + dj;
+            if (ni < 0 || nj < 0 || ni >= EW || nj >= EH) continue;
+            const nk = nj * EW + ni;
+            if (
+              this.skirtBiome[nk] === BIOME.SAND &&
+              this.skirtElevation[nk] >= TERRAIN_STEP
+            ) {
+              nextToBank = true;
+              break;
+            }
+          }
+        }
+        if (nextToBank) this.skirtElevation[k] = TERRAIN_STEP;
+      }
+    }
+
     // 5. Copy inner rect out of the extended buffers so W×H views stay
     //    authoritative. Flowers are rolled here (inner only) since they're
     //    a cosmetic per-tile attribute, not part of the noise field.
