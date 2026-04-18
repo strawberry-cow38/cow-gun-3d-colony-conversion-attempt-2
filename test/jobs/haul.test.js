@@ -170,7 +170,7 @@ describe('haul poster: stack consolidation', () => {
     // in-flight count is wrong.
     spawnItem(world, 0, 0, 'wood', 1, 50);
     spawnItem(world, 3, 3, 'wood', 1, 50);
-    world.spawn({
+    const siteId = world.spawn({
       BuildSite: {
         kind: 'wall',
         stuff: 'wood',
@@ -193,7 +193,7 @@ describe('haul poster: stack consolidation', () => {
       Position: { x: 0, y: 0, z: 0 },
       Job: {
         kind: 'deliver',
-        payload: { kind: 'wood', count: 0, toI: 2, toJ: 2, toBuildSite: true },
+        payload: { kind: 'wood', count: 0, toI: 2, toJ: 2, toBuildSite: true, siteId },
       },
       Inventory: { items: [{ kind: 'wood', count: 1 }] },
     });

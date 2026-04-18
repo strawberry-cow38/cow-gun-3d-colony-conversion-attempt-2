@@ -234,8 +234,9 @@ export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
 
 /**
  * Count material in-flight to every BuildSite — both open deliver jobs (the
- * cow hasn't picked up yet) and cows already carrying their load. Returned
- * as a map tileIdx → units so the poster knows how many more to dispatch.
+ * cow hasn't picked up yet) and cows already carrying their load. Keyed by
+ * BuildSite entity id so stacked blueprints on one tile (partial walls) each
+ * track their own pending count instead of sharing one tile-level bucket.
  *
  * Why count the already-carried portion: `releaseHaulClaim` zeroes the
  * board job's `payload.count` the moment a cow picks up, so relying on
@@ -245,25 +246,26 @@ export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('./board.js').JobBoard} board
- * @param {import('../world/tileGrid.js').TileGrid} grid
  * @returns {Map<number, number>}
  */
-export function buildSiteInFlight(world, board, grid) {
+export function buildSiteInFlight(world, board) {
   /** @type {Map<number, number>} */
   const out = new Map();
   for (const j of board.jobs) {
     if (j.completed || j.kind !== 'deliver') continue;
     if (!j.payload.toBuildSite) continue;
-    const idx = grid.idx(j.payload.toI, j.payload.toJ);
-    out.set(idx, (out.get(idx) ?? 0) + (j.payload.count ?? 1));
+    const siteId = j.payload.siteId;
+    if (typeof siteId !== 'number') continue;
+    out.set(siteId, (out.get(siteId) ?? 0) + (j.payload.count ?? 1));
   }
   for (const { components } of world.query(['Cow', 'Job', 'Inventory'])) {
     const job = components.Job;
     if (job.kind !== 'deliver' || !job.payload.toBuildSite) continue;
+    const siteId = job.payload.siteId;
+    if (typeof siteId !== 'number') continue;
     const carried = stackCount(components.Inventory.items, job.payload.kind);
     if (carried === 0) continue;
-    const idx = grid.idx(job.payload.toI, job.payload.toJ);
-    out.set(idx, (out.get(idx) ?? 0) + carried);
+    out.set(siteId, (out.get(siteId) ?? 0) + carried);
   }
   return out;
 }
@@ -392,7 +394,7 @@ export function makeHaulPostingSystem(board, grid, paths) {
     run(world) {
       const slots = computeStockpileSlots(world, grid, board);
       const targetedCounts = buildHaulTargetedCounts(world, board);
-      const siteInFlight = buildSiteInFlight(world, board, grid);
+      const siteInFlight = buildSiteInFlight(world, board);
 
       /** Tiles hosting any pending BuildSite — reused by the blueprint-clear pass. */
       /** @type {Set<number>} */
@@ -407,7 +409,9 @@ export function makeHaulPostingSystem(board, grid, paths) {
         const site = components.BuildSite;
         const a = components.TileAnchor;
         blueprintTiles.add(grid.idx(a.i, a.j));
-        if (site.kind === 'wall') wallBlueprintTiles.push({ i: a.i, j: a.j });
+        if (site.kind === 'wall' || site.kind === 'halfWall' || site.kind === 'quarterWall') {
+          wallBlueprintTiles.push({ i: a.i, j: a.j });
+        }
         // Forbidden blueprints are inert: no deliveries, no build job. Already-
         // delivered materials stay on the tile until the player un-forbids or
         // cancels. Keeping them in the wallBlueprintTiles loop above so the
@@ -417,8 +421,7 @@ export function makeHaulPostingSystem(board, grid, paths) {
         // gone. Otherwise the item would land on a blocked tile the haulers
         // can't pathfind back to.
         if (site.kind === 'door' && grid.isWall(a.i, a.j)) continue;
-        const idx = grid.idx(a.i, a.j);
-        const pending = siteInFlight.get(idx) ?? 0;
+        const pending = siteInFlight.get(siteId) ?? 0;
         let need = site.required - site.delivered - pending;
         const siteZ = a.z | 0;
         /** @type {Set<number> | null} Sources proven unreachable to this site this tick. Allocated lazily. */
@@ -458,7 +461,7 @@ export function makeHaulPostingSystem(board, grid, paths) {
             siteId,
           });
           targetedCounts.set(src.id, (targetedCounts.get(src.id) ?? 0) + bundle);
-          siteInFlight.set(idx, (siteInFlight.get(idx) ?? 0) + bundle);
+          siteInFlight.set(siteId, (siteInFlight.get(siteId) ?? 0) + bundle);
           need -= bundle;
         }
 
