@@ -52,6 +52,27 @@ const WALL_TIER_BY_KIND = /** @type {Record<string, number>} */ ({
   halfWall: 2,
   quarterWall: 1,
 });
+/** Inverse of WALL_TIER_BY_KIND — used when placement downgrades tier to fit. */
+const KIND_BY_WALL_TIER = /** @type {Record<number, string>} */ ({
+  4: 'wall',
+  2: 'halfWall',
+  1: 'quarterWall',
+});
+
+/**
+ * Largest wall tier (4 / 2 / 1) that fits in `room` quarter-units, or 0 if
+ * none. Used by placement to downgrade a wall click when the requested tier
+ * would overflow the tile's remaining wall budget — clicking "full wall" on
+ * a half wall places a half-wall blueprint to top it off, instead of jumping
+ * to z+1 and failing the support check.
+ * @param {number} room
+ */
+function largestWallTierFitting(room) {
+  if (room >= 4) return 4;
+  if (room >= 2) return 2;
+  if (room >= 1) return 1;
+  return 0;
+}
 /** Facing kinds that also have a "work here" tile preview. Beds don't — cows
  * just climb onto the mattress, there's no adjacent stand tile. */
 const WORK_SPOT_KINDS = new Set(['furnace', 'easel', 'stove']);
@@ -606,11 +627,12 @@ export class BuildDesignator {
     // right height. The Q/E switcher is the floor for the search (can't place
     // below the active layer).
     const isWallFamily = WALL_FAMILY.has(kind);
-    const tier = isWallFamily ? WALL_TIER_BY_KIND[kind] : 0;
-    const placement = isWallFamily ? this.#resolveWallPlacement(i, j, tier) : null;
+    const requestedTier = isWallFamily ? WALL_TIER_BY_KIND[kind] : 0;
+    const placement = isWallFamily ? this.#resolveWallPlacement(i, j, requestedTier) : null;
     if (isWallFamily && !placement) return false;
     const placeZ = placement ? placement.z : 0;
     const baseFill = placement ? placement.baseFill : 0;
+    const placedKind = placement ? placement.kind : kind;
     const layer = placeZ === 0 ? this.tileGrid : (this.tileWorld?.layers[placeZ] ?? this.tileGrid);
     // Walls above the ground layer need something to rest on — a stacked full
     // wall, stair ramp below, or a floor on the same layer. Without this guard
@@ -627,6 +649,13 @@ export class BuildDesignator {
       // are fine overhead or co-located — they don't hide the floor.
       if (layer.isFloor(i, j)) return false;
       if (layer.isBlocked(i, j)) return false;
+    } else if (isWallFamily) {
+      // Wall stacking is bounded by resolveWallPlacement's quarter-unit budget,
+      // so an existing partial wall here is fine (we're topping it off). Only
+      // bail on tree/rock occupancy or other structures that share the tile.
+      if (layer.isOccupied(i, j)) return false;
+      if (layer.isDoor(i, j)) return false;
+      if (layer.isTorch(i, j)) return false;
     } else {
       // Doors can be placed on full-height walls — queued as "deconstruct
       // wall, then build door on the cleared tile" below. Partial walls can't
@@ -701,14 +730,14 @@ export class BuildDesignator {
     const y = this.tileGrid.getElevation(i, j) + placeZ * LAYER_HEIGHT;
     this.world.spawn({
       BuildSite: {
-        kind,
+        kind: placedKind,
         stuff: stuff ?? 'wood',
         requiredKind,
         required: this.config.required ?? 1,
         delivered: 0,
         buildJobId: 0,
         progress: 0,
-        facing: FACING_KINDS.has(kind) ? this.currentFacing : 0,
+        facing: FACING_KINDS.has(placedKind) ? this.currentFacing : 0,
         baseFill,
       },
       BuildSiteViz: {},
@@ -763,19 +792,29 @@ export class BuildDesignator {
   }
 
   /**
-   * Pick a z and baseFill for a wall-family blueprint of `tier` quarter-units
-   * at (i,j). Scans from activeZ upward and picks the first layer where
-   * currentFill + tier fits within WALL_FILL_FULL. Returns null when nothing
-   * fits anywhere in the stack — the caller bails on placement.
-   * @param {number} i @param {number} j @param {number} tier
-   * @returns {{ z: number, baseFill: number } | null}
+   * Pick a z, baseFill, and effective tier for a wall-family blueprint of
+   * `requestedTier` quarter-units at (i,j). Scans from activeZ upward and
+   * picks the first layer with any remaining wall budget; if the requested
+   * tier doesn't fit at that layer, downgrades to the largest tier that does
+   * (4 → 2 → 1). Returns null when no layer has any room — the caller bails.
+   *
+   * The downgrade is what makes "click full wall on a half wall" do the
+   * intuitive thing (top it off with a half-wall blueprint) instead of
+   * jumping to z+1 where there's no support.
+   *
+   * @param {number} i @param {number} j @param {number} requestedTier
+   * @returns {{ z: number, baseFill: number, tier: number, kind: string } | null}
    */
-  #resolveWallPlacement(i, j, tier) {
+  #resolveWallPlacement(i, j, requestedTier) {
     const activeZ = this.tileWorld?.activeZ ?? 0;
     const depth = this.tileWorld?.layers.length ?? 1;
     for (let z = activeZ; z < depth; z++) {
       const fill = this.#pendingWallFillAt(i, j, z);
-      if (fill + tier <= WALL_FILL_FULL) return { z, baseFill: fill };
+      const room = WALL_FILL_FULL - fill;
+      if (room <= 0) continue;
+      const tier = Math.min(requestedTier, largestWallTierFitting(room));
+      if (tier <= 0) continue;
+      return { z, baseFill: fill, tier, kind: KIND_BY_WALL_TIER[tier] };
     }
     return null;
   }

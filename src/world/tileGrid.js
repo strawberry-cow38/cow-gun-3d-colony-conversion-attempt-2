@@ -352,6 +352,12 @@ export class TileGrid {
     return this.occupancy[k] !== 0 || this.wall[k] !== 0;
   }
 
+  /** True iff a tree/rock-style obstacle sits here — ignores walls. */
+  /** @param {number} i @param {number} j */
+  isOccupied(i, j) {
+    return this.occupancy[this.idx(i, j)] !== 0;
+  }
+
   /** @param {number} i @param {number} j */
   blockTile(i, j) {
     this.occupancy[this.idx(i, j)] = 1;
