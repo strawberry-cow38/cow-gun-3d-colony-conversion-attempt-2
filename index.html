@@ -99,6 +99,26 @@
       #layer-picker button:active {
         background: rgba(60, 90, 140, 0.9);
       }
+      #debug-skip {
+        position: fixed;
+        top: 8px;
+        right: 64px;
+        padding: 0 14px;
+        height: 44px;
+        background: rgba(60, 30, 90, 0.85);
+        color: #ffd0ff;
+        border: 1px solid #cc88ffaa;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        touch-action: manipulation;
+        user-select: none;
+      }
+      #debug-skip:active {
+        background: rgba(110, 60, 160, 0.95);
+      }
       #layer-label {
         color: #cfe3ff;
         font-size: 13px;
@@ -118,6 +138,7 @@
       <span id="layer-label">Z0</span>
       <button id="layer-down" type="button" aria-label="Layer down">▼</button>
     </div>
+    <button id="debug-skip" type="button" aria-label="Skip 2 hours">+2h</button>
     <div id="error-overlay" style="position:fixed;left:8px;bottom:8px;max-width:calc(100% - 16px);max-height:40vh;overflow:auto;padding:8px 10px;background:rgba(120,0,0,0.92);color:#fff;font:12px/1.35 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;z-index:9999;border-radius:6px;display:none;pointer-events:auto;"></div>
     <script>
       (function(){

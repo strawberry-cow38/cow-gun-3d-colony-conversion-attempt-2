@@ -45,7 +45,7 @@ import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh, buildWaterSurface } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
 import { createWorkTab } from './render/workTab.js';
-import { dayFractionOfTick } from './sim/calendar.js';
+import { TICKS_PER_SIM_HOUR, dayFractionOfTick } from './sim/calendar.js';
 import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
@@ -1144,3 +1144,14 @@ renderer.compile(scene, camera);
 loop.start();
 hudApi.updateHud();
 printHaulDebugHint();
+
+// Mobile-friendly debug button: jump sim clock forward 2 sim hours so the
+// time-of-day shader / lighting can be eyeballed without waiting. Bumps the
+// tick directly — sim systems skip those ticks, that's the trade for instant
+// visual verification.
+const debugSkipBtn = document.getElementById('debug-skip');
+if (debugSkipBtn) {
+  debugSkipBtn.addEventListener('click', () => {
+    loop.tick += 2 * TICKS_PER_SIM_HOUR;
+  });
+}
