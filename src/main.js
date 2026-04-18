@@ -198,7 +198,6 @@ const timeOfDay = createTimeOfDay({
   sunDisc,
   moonDisc,
   camera,
-  scene,
   initialT: dayFractionOfTick(0),
 });
 const weather = createWeather({ scene, timeOfDay, sun, hemi, audio });

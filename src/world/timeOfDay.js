@@ -177,12 +177,11 @@ function lerpHex(a, b, u) {
  *   sunDisc?: THREE.Mesh,
  *   moonDisc?: THREE.Mesh,
  *   camera?: THREE.Camera,
- *   scene?: THREE.Scene,
  *   initialT?: number,
  * }} opts
  */
 export function createTimeOfDay(opts) {
-  const { sun, hemi, sky, sunDisc, moonDisc, camera, scene } = opts;
+  const { sun, hemi, sky, sunDisc, moonDisc, camera } = opts;
   const skyMat = /** @type {THREE.ShaderMaterial} */ (sky.material);
   let t = opts.initialT ?? 0.7; // open in early-evening to preserve existing look
 
@@ -244,14 +243,6 @@ export function createTimeOfDay(opts) {
         c.g += (gg - c.g) * overcast * 0.5;
         c.b += (gb - c.b) * overcast * 0.5;
       }
-    }
-
-    if (scene?.fog && 'color' in scene.fog) {
-      // Fog tracks the horizon glow so distant geometry blends into the sky.
-      // Slightly darker mix keeps midground from looking blown out at noon.
-      const fogColor = /** @type {THREE.Color} */ (scene.fog.color);
-      fogColor.setHex(p.horizonGlow).multiplyScalar(0.85);
-      if (overcast > 0) fogColor.lerp(new THREE.Color(0x47506b), overcast * 0.5);
     }
   }
 

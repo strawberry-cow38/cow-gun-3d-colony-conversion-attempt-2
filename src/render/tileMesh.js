@@ -297,9 +297,9 @@ function buildChunkMesh(
 // 1→DEEP_AT. Past DEEP_AT the color clamps to `DEEP`. RGBA so we can vary
 // opacity per tile — foam is nearly opaque whitish, shallow edges are
 // mostly clear pale teal, open water is darker and a little thicker.
-const FOAM_RGBA = [0.72, 0.86, 0.95, 0.5];
-const SHALLOW_RGBA = [0.22, 0.52, 0.82, 0.72];
-const DEEP_RGBA = [0.04, 0.18, 0.48, 0.92];
+const FOAM_RGBA = [0.72, 0.86, 0.95, 0.32];
+const SHALLOW_RGBA = [0.32, 0.72, 0.92, 0.42];
+const DEEP_RGBA = [0.08, 0.34, 0.68, 0.62];
 const DEEP_AT = 8;
 
 /** @param {number[]} a @param {number[]} b @param {number} t */
@@ -506,8 +506,8 @@ export function buildWaterSurface(tileGrid) {
     /** @type {import('three').WebGLProgramParametersWithUniforms} */ shader,
   ) => {
     shader.uniforms.uTime = { value: 0 };
-    shader.uniforms.uCausticColor = { value: new THREE.Color(0x9be7ff) };
-    shader.uniforms.uCausticStrength = { value: 0.55 };
+    shader.uniforms.uCausticColor = { value: new THREE.Color(0xd0fcff) };
+    shader.uniforms.uCausticStrength = { value: 1.8 };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',

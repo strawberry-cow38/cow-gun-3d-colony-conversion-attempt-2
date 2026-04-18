@@ -39,9 +39,6 @@ export function createScene(canvas) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x3a2350);
-  // Linear fog tinted by timeOfDay each frame. Range tuned for ~30 tiles
-  // start, ~80 tiles end at 43u/tile — soft horizon haze, not a wall.
-  scene.fog = new THREE.Fog(0x6a3aa0, 30 * TILE_SIZE, 80 * TILE_SIZE);
 
   // Far plane sized for a 200×200 grid at 1.5m tiles (~8570u across).
   const camera = new THREE.PerspectiveCamera(
