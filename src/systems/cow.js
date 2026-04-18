@@ -3396,7 +3396,11 @@ export function makeCowFollowPathSystem(deps) {
         const step = path.steps[path.index];
         const stepZ = step.z | 0;
         const target = tileToWorld(step.i, step.j, grid.W, grid.H);
-        const targetY = grid.getElevation(step.i, step.j) + stepZ * LAYER_HEIGHT;
+        // Partial walls sit on a z=0 tile and lift whoever stands on them by
+        // TERRAIN_STEP per quarter. Matches effectiveElevation() in the
+        // pathfinder so the hop/climb triggers here line up with the plan.
+        const targetWallBump = stepZ === 0 ? grid.wall[grid.idx(step.i, step.j)] * TERRAIN_STEP : 0;
+        const targetY = grid.getElevation(step.i, step.j) + stepZ * LAYER_HEIGHT + targetWallBump;
         const dx = target.x - pos.x;
         const dz = target.z - pos.z;
         const distSq = dx * dx + dz * dz;
@@ -3473,7 +3477,8 @@ export function makeCowFollowPathSystem(deps) {
         const cur = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
         if (grid.inBounds(cur.i, cur.j)) {
           const cowZ = world.get(id, 'Brain')?.layerZ | 0;
-          const curElev = grid.getElevation(cur.i, cur.j) + cowZ * LAYER_HEIGHT;
+          const curWallBump = cowZ === 0 ? grid.wall[grid.idx(cur.i, cur.j)] * TERRAIN_STEP : 0;
+          const curElev = grid.getElevation(cur.i, cur.j) + cowZ * LAYER_HEIGHT + curWallBump;
           const dElev = targetY - curElev;
           const absD = Math.abs(dElev);
           const climbing = absD >= TERRAIN_STEP * 1.5;
@@ -3573,14 +3578,18 @@ export function makeCowWallCollisionSystem(grid) {
         const layerZ = world.get(id, 'Brain')?.layerZ | 0;
         if (layerZ > 0) continue;
         const cur = worldToTileClamp(p.x, p.z, grid.W, grid.H);
-        if (!grid.isWall(cur.i, cur.j)) continue;
+        // Partial walls (quarter/half) are hop-over terrain, not obstacles —
+        // only full-height walls repel the cow. Without this the hop rule in
+        // the pathfinder routes a cow over a quarter wall, but this collision
+        // pass snaps them back, so they oscillate at the base never climbing.
+        if (!grid.isFullWall(cur.i, cur.j)) continue;
         // We've crossed into a wall tile. Try preserving each axis on its own
         // before falling back to a full revert — that gives the natural
         // "slide along the wall" feel when the cow walks at it diagonally.
         const xOnly = worldToTileClamp(p.x, pp.z, grid.W, grid.H);
         const zOnly = worldToTileClamp(pp.x, p.z, grid.W, grid.H);
-        const xClear = !grid.isWall(xOnly.i, xOnly.j);
-        const zClear = !grid.isWall(zOnly.i, zOnly.j);
+        const xClear = !grid.isFullWall(xOnly.i, xOnly.j);
+        const zClear = !grid.isFullWall(zOnly.i, zOnly.j);
         if (xClear && !zClear) {
           p.z = pp.z;
         } else if (zClear && !xClear) {
