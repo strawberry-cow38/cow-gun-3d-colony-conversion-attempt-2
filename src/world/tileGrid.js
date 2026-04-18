@@ -222,40 +222,6 @@ export function carveRiver(biome, EW, EH, waterR = 2) {
   return { angle: angle + (flowSign < 0 ? Math.PI : 0) };
 }
 
-/**
- * One-tile expansion of SHALLOW_WATER into adjacent SAND. Any sand tile with
- * a cardinal-or-diagonal shallow-water neighbor flips to shallow water, so
- * the shoreline is actually wade-able instead of dry sand that just happens
- * to sit under the translucent water surface mesh. Two-pass via a scratch
- * copy so the expansion doesn't cascade — exactly one tile per call.
- * @param {Uint8Array | number[]} biome
- * @param {number} W
- * @param {number} H
- */
-export function expandShallowWater(biome, W, H) {
-  const src = typeof biome.slice === 'function' ? biome.slice() : Array.from(biome);
-  for (let j = 0; j < H; j++) {
-    for (let i = 0; i < W; i++) {
-      const k = j * W + i;
-      if (src[k] !== BIOME.SAND) continue;
-      let adj = false;
-      for (let dj = -1; dj <= 1 && !adj; dj++) {
-        for (let di = -1; di <= 1; di++) {
-          if (di === 0 && dj === 0) continue;
-          const ni = i + di;
-          const nj = j + dj;
-          if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
-          if (src[nj * W + ni] === BIOME.SHALLOW_WATER) {
-            adj = true;
-            break;
-          }
-        }
-      }
-      if (adj) biome[k] = BIOME.SHALLOW_WATER;
-    }
-  }
-}
-
 export function carveDeepWater(biome, W, H) {
   const out = typeof biome.slice === 'function' ? biome.slice() : Array.from(biome);
   for (let j = 6; j < H - 6; j++) {
@@ -692,11 +658,6 @@ export class TileGrid {
       this.riverFlowAngle = null;
     }
     carveDeepWater(this.skirtBiome, EW, EH);
-    // Promote the outermost sand ring into shallow water so cows wading at
-    // the shore actually slow down / get the water-movement treatment. The
-    // sand-colored bed still shows under the translucent plane (shallow
-    // water renders with SAND_TOP_COLOR) so this is a behavior-only nudge.
-    expandShallowWater(this.skirtBiome, EW, EH);
 
     // Orphan sand cleanup: sand with no water within Chebyshev distance 2
     // loses its reason to exist — it was noise-painted desert, not shore.

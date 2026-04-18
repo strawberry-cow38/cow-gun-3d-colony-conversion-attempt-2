@@ -490,8 +490,9 @@ export function buildWaterSurface(tileGrid) {
   const material = new THREE.MeshStandardMaterial({
     transparent: true,
     vertexColors: true,
-    metalness: 0.1,
-    roughness: 0.4,
+    // Avoid the specular "swimming pool" sun-glare on the water surface.
+    metalness: 0,
+    roughness: 1,
     depthWrite: false,
   });
   // Ripples: inject a time-dependent Y displacement in the vertex shader so
