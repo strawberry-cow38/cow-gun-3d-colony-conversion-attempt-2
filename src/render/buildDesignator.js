@@ -705,6 +705,12 @@ export class BuildDesignator {
     const baseFill = this.#totalWallFillAt(i, j);
     const maxFill = (this.tileWorld?.layers.length ?? 1) * WALL_FILL_FULL;
     if (baseFill + tier > maxFill) return false;
+    // Cow standing on the tile's terrain reaches LAYER_HEIGHT (3m) above her
+    // feet to place material. Reject a blueprint whose base sits higher than
+    // that — otherwise she'd happily accept orders to stack walls forever from
+    // the ground. Later, when cows can stand on wall-tops/stairs, this should
+    // check reach from the highest standable surface, not just ground.
+    if (baseFill > WALL_FILL_FULL) return false;
     const ground = this.tileGrid;
     if (ground.isOccupied(i, j)) return false;
     if (ground.isDoor(i, j)) return false;
