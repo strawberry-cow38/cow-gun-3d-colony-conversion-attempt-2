@@ -8,7 +8,7 @@
  *   cows: [ {
  *     name, drafted: boolean, position: {x,y,z}, hunger: number,
  *     job: { kind, state, payload }, path: { steps, index },
- *     inventory: { items: { kind: string, count: number }[] }
+ *     inventory: { items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }
  *   } ],
  *   trees: [ { i, j, marked: boolean, progress: number, kind: string, growth: number } ],
  *   items: [ { i, j, kind: string, count: number, capacity: number, forbidden: boolean } ],
@@ -106,7 +106,7 @@ function sanitizeSkillLevels(levels) {
  * @property {{ ticksRemaining: number }} [foodPoisoning]
  * @property {{ kind: string, state: string, payload: Record<string, any> }} job
  * @property {{ steps: { i: number, j: number }[], index: number }} path
- * @property {{ items: { kind: string, count: number }[] }} inventory
+ * @property {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inventory
  * @property {SerializedIdentity} identity
  * @property {SerializedOpinions} [opinions]
  * @property {SerializedHealth} [health]
@@ -379,7 +379,15 @@ export function serializeState(tileGrid, world) {
         index: components.Path.index,
       },
       inventory: {
-        items: components.Inventory.items.map((s) => ({ kind: s.kind, count: s.count })),
+        items: components.Inventory.items.map((s) => {
+          /** @type {{kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number}} */
+          const e = { kind: s.kind, count: s.count };
+          if (s.quality) e.quality = s.quality;
+          if (Array.isArray(s.ingredients) && s.ingredients.length > 0)
+            e.ingredients = [...s.ingredients];
+          if (s.cookedBy) e.cookedBy = s.cookedBy;
+          return e;
+        }),
       },
       identity: {
         gender: components.Identity.gender,
@@ -793,7 +801,15 @@ export function hydrateCows(world, state) {
       },
       Job: { kind: job.kind, state: job.state, payload: job.payload ?? {} },
       Path: { steps: path.steps.map((s) => ({ i: s.i, j: s.j })), index: path.index },
-      Inventory: { items: (inv.items ?? []).map((s) => ({ kind: s.kind, count: s.count })) },
+      Inventory: {
+        items: (inv.items ?? []).map((s) => ({
+          kind: s.kind,
+          count: s.count,
+          quality: s.quality ?? '',
+          ingredients: Array.isArray(s.ingredients) ? [...s.ingredients] : [],
+          cookedBy: s.cookedBy ?? 0,
+        })),
+      },
       Opinions: { scores: {}, last: {}, chats: c.opinions?.chats ?? 0 },
       Chat: { text: '', partnerId: 0, expiresAtTick: 0 },
       Health: {

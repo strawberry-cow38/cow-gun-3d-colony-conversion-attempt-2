@@ -1907,7 +1907,7 @@ function tileHasCrop(world, i, j) {
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
  * @param {{ x: number, y: number, z: number }} pos
- * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../sim/pathfinding.js').PathCache} paths
  * @param {import('../jobs/board.js').JobBoard} board
@@ -2140,7 +2140,11 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
         const site = world.get(siteId, 'BuildSite');
         if (site) requested = Math.min(requested, Math.max(0, site.required - site.delivered));
       }
-      const added = inventoryAdd(inv, item.kind, requested);
+      const added = inventoryAdd(inv, item.kind, requested, {
+        quality: item.quality,
+        ingredients: item.ingredients,
+        cookedBy: item.cookedBy,
+      });
       item.count -= added;
       if (item.count <= 0 && typeof itemId === 'number') world.despawn(itemId);
       releaseHaulClaim(job, board, jobId);
@@ -2227,9 +2231,9 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
               const deliver = Math.min(stack.count, need);
               site.delivered += deliver;
               const leftover = stack.count - deliver;
-              if (leftover > 0) addItemsToTile(world, grid, stack.kind, leftover, toI, toJ);
+              if (leftover > 0) addItemsToTile(world, grid, stack.kind, leftover, toI, toJ, stack);
             } else {
-              addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
+              addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ, stack);
             }
           }
         } else if (
@@ -2250,12 +2254,12 @@ function runHaulJob(world, haulerId, job, path, pos, inv, grid, paths, board, de
               // haul poster can't yank it back to the stockpile.
               stackAdd(station.stored, stack.kind, stack.count);
             } else {
-              addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
+              addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ, stack);
             }
           }
         } else {
           for (const stack of inv.items) {
-            addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ);
+            addItemsToTile(world, grid, stack.kind, stack.count, toI, toJ, stack);
           }
         }
         inv.items.length = 0;
@@ -2585,7 +2589,7 @@ const INSTALL_TICKS = 45;
  * @param {{ kind: string, state: string, payload: Record<string, any> }} job
  * @param {{ steps: { i: number, j: number }[], index: number }} path
  * @param {{ x: number, y: number, z: number }} pos
- * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../sim/pathfinding.js').PathCache} paths
  * @param {import('../jobs/board.js').JobBoard} board
@@ -3278,14 +3282,14 @@ function hasAnyFood(world) {
  *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
- * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv
  * @param {{ x: number, y: number, z: number }} pos
  */
 function dropCarriedItem(world, grid, inv, pos) {
   if (inv.items.length === 0) return;
   const { i, j } = worldToTileClamp(pos.x, pos.z, grid.W, grid.H);
   for (const stack of inv.items) {
-    addItemsToTile(world, grid, stack.kind, stack.count, i, j);
+    addItemsToTile(world, grid, stack.kind, stack.count, i, j, stack);
   }
   inv.items.length = 0;
 }

@@ -155,14 +155,14 @@ export function weightOf(kind) {
   return WEIGHT_PER_UNIT[kind] ?? 1;
 }
 
-/** @param {{ items: { kind: string, count: number }[] }} inv */
+/** @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv */
 export function inventoryWeight(inv) {
   let kg = 0;
   for (const s of inv.items) kg += weightOf(s.kind) * s.count;
   return kg;
 }
 
-/** @param {{ items: { kind: string, count: number }[] }} inv */
+/** @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv */
 export function inventoryFreeKg(inv) {
   return Math.max(0, COW_CARRY_KG - inventoryWeight(inv));
 }
@@ -171,7 +171,7 @@ export function inventoryFreeKg(inv) {
  * Max units of `kind` the inventory can still accept, given remaining
  * capacity. Always >= 0.
  *
- * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv
  * @param {string} kind
  */
 export function unitsThatFit(inv, kind) {
@@ -181,26 +181,45 @@ export function unitsThatFit(inv, kind) {
 }
 
 /**
- * @param {{ items: { kind: string, count: number }[] }} inv
+ * @param {{ items: { kind: string, count: number, quality?: string, ingredients?: string[], cookedBy?: number }[] }} inv
  * @param {string} kind
  * @param {number} count
+ * @param {{ quality?: string, ingredients?: string[], cookedBy?: number }} [opts]
  * @returns {number} units actually added (capped by remaining capacity)
  */
-export function inventoryAdd(inv, kind, count) {
+export function inventoryAdd(inv, kind, count, opts) {
   if (count <= 0) return 0;
-  // Single pass: find the existing same-kind stack AND tally total weight.
+  const quality = opts?.quality ?? '';
+  const ingredients = opts?.ingredients ?? [];
+  const cookedBy = opts?.cookedBy ?? 0;
+  const probe = { kind, forbidden: false, quality, ingredients, cookedBy };
+  // Single pass: find a matching stack AND tally total weight.
   let kg = 0;
   let existing = null;
   for (const s of inv.items) {
     kg += weightOf(s.kind) * s.count;
-    if (s.kind === kind) existing = s;
+    if (
+      !existing &&
+      stackKeyMatches(
+        {
+          ...s,
+          forbidden: false,
+          quality: s.quality ?? '',
+          ingredients: s.ingredients ?? [],
+          cookedBy: s.cookedBy ?? 0,
+        },
+        probe,
+      )
+    ) {
+      existing = s;
+    }
   }
   const w = weightOf(kind);
   const fit = w > 0 ? Math.max(0, Math.floor((COW_CARRY_KG - kg) / w)) : count;
   const add = Math.min(fit, count);
   if (add <= 0) return 0;
   if (existing) existing.count += add;
-  else inv.items.push({ kind, count: add });
+  else inv.items.push({ kind, count: add, quality, ingredients: ingredients.slice(), cookedBy });
   return add;
 }
 
