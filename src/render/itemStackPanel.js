@@ -11,6 +11,7 @@
  */
 
 import { toggleForbiddenOnStacks } from '../boot/utils.js';
+import { fullName } from '../world/identity.js';
 import { ITEM_INFO } from '../world/items.js';
 import {
   isQuality,
@@ -82,6 +83,14 @@ export function createItemStackPanel(opts) {
     display: 'none',
   });
 
+  const cookedByLine = document.createElement('div');
+  Object.assign(cookedByLine.style, {
+    color: '#9aa6b4',
+    fontSize: '11px',
+    marginBottom: '4px',
+    display: 'none',
+  });
+
   const desc = document.createElement('div');
   Object.assign(desc.style, {
     color: '#d8dfe6',
@@ -133,7 +142,7 @@ export function createItemStackPanel(opts) {
     onInstall(id, p.size | 0);
   });
 
-  root.append(title, meta, quality, ingredientsLine, desc, forbidBtn, installBtn);
+  root.append(title, meta, quality, ingredientsLine, cookedByLine, desc, forbidBtn, installBtn);
   document.body.appendChild(root);
 
   function toggleForbidden() {
@@ -165,6 +174,8 @@ export function createItemStackPanel(opts) {
     let singleIngredients = null;
     /** Single-stack-only: quality tier of the one selected stack. */
     let singleQuality = '';
+    /** Single-stack-only: cow id that cooked the one selected stack (0 = uncooked/unknown). */
+    let singleCookedBy = 0;
     for (const id of state.selectedItems) {
       const item = world.get(id, 'Item');
       if (!item) continue;
@@ -178,6 +189,7 @@ export function createItemStackPanel(opts) {
         if (n === 1) {
           singleIngredients = item.ingredients ?? [];
           singleQuality = item.quality;
+          singleCookedBy = item.cookedBy ?? 0;
         }
       }
     }
@@ -193,6 +205,7 @@ export function createItemStackPanel(opts) {
     let qualityText = '';
     let qualityTint = 0;
     let ingredientsText = '';
+    let cookedByText = '';
     if (showMealInfo) {
       if (n === 1 && singleQuality) {
         const q = /** @type {import('../world/quality.js').Quality} */ (singleQuality);
@@ -203,6 +216,10 @@ export function createItemStackPanel(opts) {
         qualityTint = qualityColor(q);
         if (singleIngredients && singleIngredients.length > 0) {
           ingredientsText = singleIngredients.map((k) => ITEM_INFO[k]?.label ?? k).join(' + ');
+        }
+        if (singleCookedBy > 0) {
+          const identity = world.get(singleCookedBy, 'Identity');
+          if (identity) cookedByText = fullName(identity);
         }
       } else {
         // Multi-stack meal breakdown: sort tiers high → low, join with bullets.
@@ -215,7 +232,7 @@ export function createItemStackPanel(opts) {
     }
 
     const qualitySig = [...mealsByQuality.entries()].map(([q, c]) => `${q}:${c}`).join(',');
-    const key = `${n}|${label}|${totalCount}/${totalCapacity}|${forbiddenCount}|${allForbidden ? 'F' : 'U'}|${canInstall ? 'I' : 'N'}|${qualitySig}|${ingredientsText}`;
+    const key = `${n}|${label}|${totalCount}/${totalCapacity}|${forbiddenCount}|${allForbidden ? 'F' : 'U'}|${canInstall ? 'I' : 'N'}|${qualitySig}|${ingredientsText}|${cookedByText}`;
     if (key === lastKey) return;
     lastKey = key;
 
@@ -236,6 +253,12 @@ export function createItemStackPanel(opts) {
       ingredientsLine.style.display = '';
     } else {
       ingredientsLine.style.display = 'none';
+    }
+    if (cookedByText) {
+      cookedByLine.textContent = `Cooked by ${cookedByText}`;
+      cookedByLine.style.display = '';
+    } else {
+      cookedByLine.style.display = 'none';
     }
 
     if (allForbidden) {

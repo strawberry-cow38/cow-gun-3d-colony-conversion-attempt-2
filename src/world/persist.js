@@ -145,6 +145,7 @@ function sanitizeSkillLevels(levels) {
  * @property {boolean} forbidden
  * @property {string} [quality]           meal tier (only on cooked meals)
  * @property {string[]} [ingredients]     source kinds the meal was cooked from
+ * @property {number} [cookedBy]          entity id of the cow that cooked the meal
  */
 
 /**
@@ -481,6 +482,7 @@ export function serializeState(tileGrid, world) {
     if (Array.isArray(it.ingredients) && it.ingredients.length > 0) {
       entry.ingredients = [...it.ingredients];
     }
+    if (it.cookedBy) entry.cookedBy = it.cookedBy;
     items.push(entry);
   }
   /** @type {SerializedBuildSite[]} */
@@ -915,6 +917,7 @@ export function hydrateItems(world, grid, state) {
         forbidden: it.forbidden === true,
         quality: it.quality ?? '',
         ingredients: Array.isArray(it.ingredients) ? [...it.ingredients] : [],
+        cookedBy: it.cookedBy ?? 0,
       },
       ItemViz: {},
       TileAnchor: { i: it.i, j: it.j },

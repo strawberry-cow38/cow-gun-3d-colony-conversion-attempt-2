@@ -2549,6 +2549,7 @@ function finishCook(world, grid, stoveId, stove, bills, deps) {
   const quality =
     stove.cookCowId > 0 ? rollQuality(cookingSkillFor(world, stove.cookCowId)) : stove.mealQuality;
   const ingredients = stove.mealIngredients.slice();
+  const cookedBy = stove.cookCowId;
   stove.activeBillId = 0;
   stove.cookCowId = 0;
   stove.workTicksRemaining = 0;
@@ -2563,6 +2564,7 @@ function finishCook(world, grid, stoveId, stove, bills, deps) {
   addItemsToTile(world, grid, recipe.outputKind, recipe.outputCount, anchor.i, anchor.j, {
     quality,
     ingredients,
+    cookedBy,
   });
   deps.onItemChange();
 }

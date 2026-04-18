@@ -279,13 +279,14 @@ export function maxStack(kind) {
  * meal-style items, same quality + same ingredients signature. Yucky + gourmet
  * meals never pollute each other's stacks.
  *
- * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[] }} a
- * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[] }} b
+ * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} a
+ * @param {{ kind: string, forbidden: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} b
  */
 function stackKeyMatches(a, b) {
   if (a.kind !== b.kind) return false;
   if (a.forbidden !== b.forbidden) return false;
   if ((a.quality ?? '') !== (b.quality ?? '')) return false;
+  if ((a.cookedBy ?? 0) !== (b.cookedBy ?? 0)) return false;
   return ingredientsSig(a.ingredients ?? []) === ingredientsSig(b.ingredients ?? []);
 }
 
@@ -307,15 +308,16 @@ function stackKeyMatches(a, b) {
  * @param {string} kind
  * @param {number} i
  * @param {number} j
- * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[] }} [opts]
+ * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} [opts]
  */
 export function addItemToTile(world, grid, kind, i, j, opts) {
   if (!grid.inBounds(i, j)) return;
   const forbidden = opts?.forbidden === true;
   const quality = opts?.quality ?? '';
   const ingredients = opts?.ingredients ?? [];
+  const cookedBy = opts?.cookedBy ?? 0;
   const cap = maxStack(kind);
-  const probe = { kind, forbidden, quality, ingredients };
+  const probe = { kind, forbidden, quality, ingredients, cookedBy };
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     const a = components.TileAnchor;
     const it = components.Item;
@@ -326,7 +328,15 @@ export function addItemToTile(world, grid, kind, i, j, opts) {
   }
   const w = tileToWorld(i, j, grid.W, grid.H);
   world.spawn({
-    Item: { kind, count: 1, capacity: cap, forbidden, quality, ingredients: ingredients.slice() },
+    Item: {
+      kind,
+      count: 1,
+      capacity: cap,
+      forbidden,
+      quality,
+      ingredients: ingredients.slice(),
+      cookedBy,
+    },
     ItemViz: {},
     TileAnchor: { i, j },
     Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
@@ -343,15 +353,16 @@ export function addItemToTile(world, grid, kind, i, j, opts) {
  * @param {string} kind
  * @param {number} count
  * @param {number} i @param {number} j
- * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[] }} [opts]
+ * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} [opts]
  */
 export function addItemsToTile(world, grid, kind, count, i, j, opts) {
   if (!grid.inBounds(i, j) || count <= 0) return;
   const forbidden = opts?.forbidden === true;
   const quality = opts?.quality ?? '';
   const ingredients = opts?.ingredients ?? [];
+  const cookedBy = opts?.cookedBy ?? 0;
   const cap = maxStack(kind);
-  const probe = { kind, forbidden, quality, ingredients };
+  const probe = { kind, forbidden, quality, ingredients, cookedBy };
   let remaining = count;
   for (const { components } of world.query(['Item', 'TileAnchor'])) {
     if (remaining <= 0) break;
@@ -368,7 +379,15 @@ export function addItemsToTile(world, grid, kind, count, i, j, opts) {
     const c = Math.min(remaining, cap);
     const w = tileToWorld(i, j, grid.W, grid.H);
     world.spawn({
-      Item: { kind, count: c, capacity: cap, forbidden, quality, ingredients: ingredients.slice() },
+      Item: {
+        kind,
+        count: c,
+        capacity: cap,
+        forbidden,
+        quality,
+        ingredients: ingredients.slice(),
+        cookedBy,
+      },
       ItemViz: {},
       TileAnchor: { i, j },
       Position: { x: w.x, y: grid.getElevation(i, j), z: w.z },
