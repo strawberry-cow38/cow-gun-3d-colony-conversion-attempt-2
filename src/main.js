@@ -1073,6 +1073,7 @@ hudApi = createHud({
   fpCamera,
   chopDesignator,
   stockpileDesignator,
+  cowHitboxes,
   cowThoughtBubbles,
   roomOverlay,
   ignoreRoofOverlay,

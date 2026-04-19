@@ -239,7 +239,7 @@ export function createRenderFrame({
     const tSec = (now - startClock) / 1000;
     const hiddenCowId = fpCamera.active ? fpCamera.cowId : null;
     cowInstancer.update(world, alpha, tSec, tileGrid, hiddenCowId);
-    cowHitboxes.update(world);
+    cowHitboxes.update(world, alpha, tileGrid);
     cowNameTags.update(world, camera, alpha);
     bedNameTags.update(world, tileGrid, camera);
     cowThoughtBubbles.update(world, camera, alpha);

@@ -28,8 +28,8 @@ const _unitScale = new THREE.Vector3(1, 1, 1);
 const _carryPos = new THREE.Vector3();
 const _carryMatrix = new THREE.Matrix4();
 
-const REF_HEIGHT_CM = 170;
-const REF_HEIGHT_M = REF_HEIGHT_CM / 100;
+export const REF_HEIGHT_CM = 170;
+export const REF_HEIGHT_M = REF_HEIGHT_CM / 100;
 
 // Canonical body part dimensions at 170cm. All in meters; converted to world
 // units at mesh build time. Local offsets are in the figure's local frame —
@@ -104,7 +104,7 @@ const BOB_AMPLITUDE = 0.06 * UNITS_PER_METER;
 const BOB_FREQ_HZ = 2.4;
 const CHOP_PITCH_AMP = 0.44;
 const CHOP_PITCH_FREQ_HZ = 2.5;
-const SWIM_SINK_M = 0.6;
+export const SWIM_SINK_M = 0.6;
 const SWIM_BOB_AMPLITUDE = 0.05 * UNITS_PER_METER;
 const SWIM_BOB_FREQ_HZ = 1.6;
 const SWIM_ROLL_AMP = 0.18;
@@ -112,7 +112,7 @@ const SWIM_ROLL_FREQ_HZ = 1.2;
 // Distance from ground to the spine-center of a colonist lying on their back.
 // Set from the torso half-thickness so the body rests on the floor rather
 // than clipping into it.
-const LIE_DOWN_HEIGHT_M = 0.2;
+export const LIE_DOWN_HEIGHT_M = 0.2;
 
 const CARRY_SIZE = 0.35 * UNITS_PER_METER;
 const CARRY_OFFSET_Y = 0.25 * UNITS_PER_METER;
