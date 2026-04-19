@@ -73,7 +73,17 @@ export function createItemInstancer(scene, capacity = 1024) {
         const s = UNITS_PER_METER * WOOD_EXTRA_SCALE;
         g.scale(s, s, s);
         g.translate(0, WOOD_Y_LIFT, 0);
-        const im = new THREE.InstancedMesh(g, m.material, capacity);
+        // Small emissive floor so bark reads slightly lifted in daylight
+        // without glowing at night. 0.35 was too hot; 0.1 is a gentle nudge.
+        const srcMat = /** @type {THREE.MeshStandardMaterial} */ (m.material);
+        const litMat = srcMat.clone();
+        if (litMat.map) {
+          litMat.emissiveMap = litMat.map;
+          litMat.emissive = new THREE.Color(0xffffff);
+          litMat.emissiveIntensity = 0.1;
+          litMat.needsUpdate = true;
+        }
+        const im = new THREE.InstancedMesh(g, litMat, capacity);
         im.count = 0;
         im.castShadow = false;
         im.receiveShadow = true;
