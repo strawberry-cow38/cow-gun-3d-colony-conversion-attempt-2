@@ -11,15 +11,20 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { createDropShadowInstancedMesh } from './dropShadow.js';
 
 const BUSH_GLB_URL = 'models/bush.glb';
 const BUSH_NODE_NAME = 'bush';
+const SHADOW_RADIUS = 0.55 * UNITS_PER_METER;
+const SHADOW_Y_OFFSET = 0.04 * UNITS_PER_METER;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _shadowScale = new THREE.Vector3(1, 1, 1);
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _identityQuat = new THREE.Quaternion();
 
 /**
  * @param {THREE.Scene} scene
@@ -30,6 +35,8 @@ export function createBushInstancer(scene, capacity = 2048) {
   let mesh = null;
   let dirty = true;
 
+  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.38);
+
   new GLTFLoader().load(BUSH_GLB_URL, (gltf) => {
     const node = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName(BUSH_NODE_NAME));
     if (!node) {
@@ -39,12 +46,14 @@ export function createBushInstancer(scene, capacity = 2048) {
     const geo = node.geometry.clone();
     geo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
     const mat = /** @type {THREE.MeshStandardMaterial} */ (node.material);
-    // GLB's own material carries the baked alpha texture. Force alphaTest so
-    // three treats it as alpha-cut (no sort-order ghosting) regardless of the
-    // transparent flag the exporter wrote.
-    mat.transparent = false;
-    mat.alphaTest = 0.5;
+    // GLB's baked texture has alpha capped at 0.85. Keep the material in
+    // transparent+alphaTest mode so the low-alpha silhouette edges clip (no
+    // sort ghosting) while the interior renders at the baked 0.85 so light
+    // visibly bleeds through the leaves.
+    mat.transparent = true;
+    mat.alphaTest = 0.3;
     mat.side = THREE.DoubleSide;
+    mat.depthWrite = true;
     mat.needsUpdate = true;
     const im = new THREE.InstancedMesh(geo, mat, capacity);
     im.count = 0;
@@ -62,7 +71,6 @@ export function createBushInstancer(scene, capacity = 2048) {
   function update(world, grid) {
     if (!dirty) return;
     const m = mesh;
-    if (!m) return;
     let i = 0;
     for (const { components } of world.query(['Bush', 'TileAnchor', 'BushViz'])) {
       if (i >= capacity) break;
@@ -70,18 +78,29 @@ export function createBushInstancer(scene, capacity = 2048) {
       const viz = components.BushViz;
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
-      _position.set(w.x, y, w.z);
-      _euler.set(0, viz.yaw, 0);
-      _quat.setFromEuler(_euler);
-      _scale.set(viz.scale, viz.scale, viz.scale);
-      _matrix.compose(_position, _quat, _scale);
-      m.setMatrixAt(i, _matrix);
+      if (m) {
+        _position.set(w.x, y, w.z);
+        _euler.set(0, viz.yaw, 0);
+        _quat.setFromEuler(_euler);
+        _scale.set(viz.scale, viz.scale, viz.scale);
+        _matrix.compose(_position, _quat, _scale);
+        m.setMatrixAt(i, _matrix);
+      }
+      _position.set(w.x, y + SHADOW_Y_OFFSET, w.z);
+      _shadowScale.set(viz.scale, 1, viz.scale);
+      _matrix.compose(_position, _identityQuat, _shadowScale);
+      shadowMesh.setMatrixAt(i, _matrix);
       i++;
     }
-    m.count = i;
-    m.instanceMatrix.needsUpdate = true;
-    m.computeBoundingSphere();
-    dirty = false;
+    if (m) {
+      m.count = i;
+      m.instanceMatrix.needsUpdate = true;
+      m.computeBoundingSphere();
+    }
+    shadowMesh.count = i;
+    shadowMesh.instanceMatrix.needsUpdate = true;
+    shadowMesh.computeBoundingSphere();
+    if (m) dirty = false;
   }
 
   function markDirty() {

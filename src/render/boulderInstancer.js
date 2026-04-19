@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BOULDER_KINDS, BOULDER_VISUALS } from '../world/boulders.js';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { createDropShadowInstancedMesh } from './dropShadow.js';
 
 const BOULDER_GLB_URL = 'models/boulder.glb';
 const VARIANT_NAMES = ['boulder_a', 'boulder_b', 'boulder_c'];
@@ -29,6 +30,8 @@ const WHITE_TINT = new THREE.Color(0xffffff);
 
 const FALLBACK_RADIUS = 0.55 * UNITS_PER_METER;
 const FALLBACK_HEIGHT = 0.9 * UNITS_PER_METER;
+const SHADOW_RADIUS = 0.6 * UNITS_PER_METER;
+const SHADOW_Y_OFFSET = 0.04 * UNITS_PER_METER;
 
 const MARKER_HANDLE_LENGTH = 0.55 * UNITS_PER_METER;
 const MARKER_HANDLE_RADIUS = 0.05 * UNITS_PER_METER;
@@ -55,8 +58,10 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+const _shadowScale = new THREE.Vector3(1, 1, 1);
 const _markerScale = new THREE.Vector3(1, 1, 1);
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _identityQuat = new THREE.Quaternion();
 
 /**
  * @param {THREE.Scene} scene
@@ -76,6 +81,8 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   fallbackMesh.castShadow = true;
   fallbackMesh.receiveShadow = true;
   scene.add(fallbackMesh);
+
+  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.4);
 
   /** @type {(THREE.InstancedMesh | null)[]} */
   const regularMeshes = [null, null, null];
@@ -127,6 +134,7 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       regularMeshes[0] !== null && regularMeshes[1] !== null && regularMeshes[2] !== null;
     const counts = [0, 0, 0, 0, 0, 0]; // [reg0, reg1, reg2, moss0, moss1, moss2]
     let fallbackI = 0;
+    let shadowI = 0;
     for (const { components } of world.query(['Boulder', 'TileAnchor', 'BoulderViz'])) {
       const anchor = components.TileAnchor;
       const boulder = components.Boulder;
@@ -137,6 +145,18 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       _position.set(w.x, y, w.z);
       _euler.set(0, viz.yaw, 0);
       _quat.setFromEuler(_euler);
+      _scale.set(draw.scale[0], draw.scale[1], draw.scale[2]);
+      _matrix.compose(_position, _quat, _scale);
+
+      if (shadowI < capacity) {
+        _position.set(w.x, y + SHADOW_Y_OFFSET, w.z);
+        _shadowScale.set(draw.scale[0], 1, draw.scale[2]);
+        _matrix.compose(_position, _identityQuat, _shadowScale);
+        shadowMesh.setMatrixAt(shadowI, _matrix);
+        shadowI++;
+      }
+      // recompose for the actual boulder mesh (shadow overwrote _matrix)
+      _position.set(w.x, y, w.z);
       _scale.set(draw.scale[0], draw.scale[1], draw.scale[2]);
       _matrix.compose(_position, _quat, _scale);
 
@@ -170,6 +190,9 @@ export function createBoulderInstancer(scene, capacity = 4096) {
         if (moss) commitMesh(moss, counts[3 + v]);
       }
     }
+    shadowMesh.count = shadowI;
+    shadowMesh.instanceMatrix.needsUpdate = true;
+    shadowMesh.computeBoundingSphere();
     dirty = false;
   }
 

@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { TREE_KINDS, TREE_VISUALS, growthScale } from '../world/trees.js';
+import { createDropShadowInstancedMesh } from './dropShadow.js';
 
 const PINE_GLB_URL = 'models/pine.glb';
 const MAPLE_GLB_URL = 'models/maple.glb';
@@ -44,6 +45,9 @@ const MARKER_HOVER_BASE = TRUNK_HEIGHT + CANOPY_HEIGHT + 0.3 * UNITS_PER_METER;
 const MARKER_BOB_AMP = 0.15 * UNITS_PER_METER;
 const MARKER_BOB_FREQ_HZ = 1.4;
 const MARKER_SPIN_RATE = 1.1; // rad/sec
+
+const SHADOW_RADIUS = 0.95 * UNITS_PER_METER;
+const SHADOW_Y_OFFSET = 0.04 * UNITS_PER_METER;
 
 // Pre-bake per-kind THREE.Color instances so setColorAt doesn't re-unpack a
 // hex int on every instance write. Oak doubles as the fallback for unknown
@@ -71,7 +75,9 @@ const _quat = new THREE.Quaternion();
 const _trunkScale = new THREE.Vector3(1, 1, 1);
 const _canopyScale = new THREE.Vector3(1, 1, 1);
 const _markerScale = new THREE.Vector3(1, 1, 1);
+const _shadowScale = new THREE.Vector3(1, 1, 1);
 const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _identityQuat = new THREE.Quaternion();
 
 /**
  * @param {THREE.Scene} scene
@@ -113,6 +119,8 @@ export function createTreeInstancer(scene, capacity = 2048) {
   canopySphereMesh.castShadow = true;
   canopySphereMesh.receiveShadow = true;
   scene.add(canopySphereMesh);
+
+  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.4);
 
   // Species-specific GLB renders. Loaded async — until ready, trees of that
   // kind fall through to the procedural path for the frame.
@@ -231,6 +239,7 @@ export function createTreeInstancer(scene, capacity = 2048) {
     let iSphere = 0;
     let iPine = 0;
     let iMaple = 0;
+    let iShadow = 0;
     slotToEntity.length = 0;
     pineSlotToEntity.length = 0;
     mapleSlotToEntity.length = 0;
@@ -253,6 +262,13 @@ export function createTreeInstancer(scene, capacity = 2048) {
       const y = grid.getElevation(anchor.i, anchor.j);
       const isPine = tree.kind === 'pine' && pineReady;
       const isMaple = tree.kind === 'maple' && mapleReady;
+      if (iShadow < capacity) {
+        _position.set(w.x, y + SHADOW_Y_OFFSET, w.z);
+        _shadowScale.set(g, 1, g);
+        _matrix.compose(_position, _identityQuat, _shadowScale);
+        shadowMesh.setMatrixAt(iShadow, _matrix);
+        iShadow++;
+      }
       _position.set(w.x, y, w.z);
       _trunkScale.set(draw.trunkScale[0] * g, draw.trunkScale[1] * g, draw.trunkScale[2] * g);
       _matrix.compose(_position, _quat, _trunkScale);
@@ -297,6 +313,7 @@ export function createTreeInstancer(scene, capacity = 2048) {
     commitMesh(trunkMesh, iTrunk);
     commitMesh(canopyConeMesh, iCone);
     commitMesh(canopySphereMesh, iSphere);
+    commitMesh(shadowMesh, iShadow);
     if (pineTrunk && pineCanopy && iPine > 0) {
       commitMesh(pineTrunk, iPine);
       commitMesh(pineCanopy, iPine);
