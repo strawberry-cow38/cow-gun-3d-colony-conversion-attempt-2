@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
+import { ITEM_INFO } from '../world/items.js';
 
 const TAG_OFFSET = 1.1 * UNITS_PER_METER;
 const TAG_HEIGHT_WORLD = 0.55 * UNITS_PER_METER;
@@ -45,7 +46,8 @@ export function createItemLabels(scene) {
     for (const { id, components } of world.query(['Item', 'TileAnchor', 'Position'])) {
       alive.add(id);
       const item = components.Item;
-      const text = `${item.kind} ${item.count}/${item.capacity}`;
+      const label = ITEM_INFO[item.kind]?.label ?? item.kind;
+      const text = `${label} ${item.count}/${item.capacity}`;
       let tag = tags.get(id);
       if (!tag || tag.text !== text) {
         if (tag) disposeTag(scene, tag);
