@@ -67,6 +67,7 @@ import { makeLightingSystem } from './systems/lighting.js';
 import { applyVelocity, snapshotPositions } from './systems/movement.js';
 import { createRooms, makeRoomsSystem } from './systems/rooms.js';
 import { makeSocialSystem } from './systems/social.js';
+import { createStockpileZones } from './systems/stockpileZones.js';
 import { makeStoveSystem } from './systems/stove.js';
 import {
   makeSaplingSpawnSystem,
@@ -97,6 +98,7 @@ registerComponents(world);
 const pathCache = new PathCache(tileWorld, defaultWalkable);
 const jobBoard = new JobBoard();
 const rooms = createRooms(tileGrid);
+const stockpileZones = createStockpileZones(tileGrid);
 
 // Forward-declared so the brain can poke the renderers + audio engine once
 // they're constructed below. Callbacks receive the emitter's world position
@@ -283,6 +285,10 @@ const {
   deconstructOverlay,
   pickTileOverlay,
 } = instancers;
+
+// Zone registry tips the overlay any time a zone's tiles or filter change,
+// so the flat sky-blue quads update in-place without per-frame scans.
+stockpileZones.setOnChanged(() => stockpileOverlay.markDirty());
 
 ({
   onWorldChopComplete,
@@ -1109,6 +1115,7 @@ installKeyboard({
   farmZoneOverlay,
   tilledOverlay,
   rooms,
+  stockpileZones,
   roomOverlay,
   ignoreRoofOverlay,
   roofInstancer,

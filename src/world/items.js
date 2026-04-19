@@ -106,6 +106,45 @@ export function itemHasTag(kind, tag) {
 }
 
 /**
+ * Item categories — drives the stockpile zone filter UI (collapsible tree of
+ * categories, each with a toggle + per-kind checkboxes). Every kind belongs
+ * to exactly one category. `Junk` is reserved for future tagging; new zones
+ * start with every category allowed except Junk, so unclassified-as-junk
+ * items keep getting stockpiled until the player explicitly opts in.
+ *
+ * @type {{ id: string, label: string, kinds: string[] }[]}
+ */
+export const ITEM_CATEGORIES = [
+  { id: 'materials', label: 'Materials', kinds: ['wood', 'stone', 'coal'] },
+  { id: 'metals', label: 'Metals', kinds: ['copper_ore', 'copper'] },
+  { id: 'food', label: 'Food', kinds: ['corn', 'carrot', 'potato', 'meal'] },
+  { id: 'art', label: 'Art', kinds: ['painting'] },
+  { id: 'junk', label: 'Junk', kinds: [] },
+];
+
+/** @type {Map<string, string>} kind → category id */
+const KIND_TO_CATEGORY = (() => {
+  const m = new Map();
+  for (const c of ITEM_CATEGORIES) for (const k of c.kinds) m.set(k, c.id);
+  return m;
+})();
+
+/** @param {string} kind */
+export function categoryOfKind(kind) {
+  return KIND_TO_CATEGORY.get(kind) ?? 'junk';
+}
+
+/** Kinds allowed by default on a new stockpile zone — every category except Junk. */
+export function defaultAllowedKinds() {
+  const out = new Set();
+  for (const c of ITEM_CATEGORIES) {
+    if (c.id === 'junk') continue;
+    for (const k of c.kinds) out.add(k);
+  }
+  return out;
+}
+
+/**
  * All item kinds that carry `tag`, in ITEM_KINDS declaration order so the
  * stove's supply loop is deterministic.
  *

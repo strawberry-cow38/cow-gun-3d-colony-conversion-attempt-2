@@ -61,6 +61,7 @@ import { dispatch } from './hotkeys.js';
  * @property {{ markDirty: () => void } | null} [furnaceInstancer]
  * @property {{ markDirty: () => void } | null} [wallArtInstancer]
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
+ * @property {ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>} stockpileZones
  * @property {{ markDirty: () => void }} roomOverlay
  * @property {{ markDirty: () => void }} ignoreRoofOverlay
  * @property {{ markDirty: () => void }} roofInstancer
