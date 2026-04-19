@@ -17,6 +17,9 @@ const BUSH_GLB_URL = 'models/bush.glb';
 const BUSH_NODE_NAME = 'bush';
 const SHADOW_RADIUS = 0.55 * UNITS_PER_METER;
 const SHADOW_Y_OFFSET = 0.04 * UNITS_PER_METER;
+// Sink bush mesh slightly below tile so the base reads as "planted" rather
+// than sitting on a hairline above the grass.
+const BUSH_Y_OFFSET = -2;
 
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
@@ -79,7 +82,7 @@ export function createBushInstancer(scene, capacity = 2048) {
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
       if (m) {
-        _position.set(w.x, y, w.z);
+        _position.set(w.x, y + BUSH_Y_OFFSET, w.z);
         _euler.set(0, viz.yaw, 0);
         _quat.setFromEuler(_euler);
         _scale.set(viz.scale, viz.scale, viz.scale);
