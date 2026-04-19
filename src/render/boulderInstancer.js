@@ -3,10 +3,13 @@
  * (3 shapes × {regular, mossy}) plus a pickaxe-shaped floating marker
  * (handle + head) for marked boulders.
  *
- * Regular variants are shared-tinted per-kind via setColorAt (stone/copper/
- * coal colors). Mossy only applies to kind='stone' (copper/coal with moss
- * looks wrong) and uses a mossy-green tint. Until boulder.glb loads, a
- * procedural dodecahedron fallback renders so the first frame isn't empty.
+ * Each GLB variant ships its own baked 512×512 diffuse texture (the
+ * procedural stone / moss shader rendered into UV space) so per-pixel
+ * detail survives export. Runtime uses the GLTF-provided materials as-is
+ * and tints via setColorAt: stone = white (raw texture), copper/coal =
+ * kind color multiplied over the stone texture to shift hue. Until
+ * boulder.glb resolves, a procedural dodecahedron fallback renders so
+ * the first frame isn't empty.
  *
  * Per-boulder yaw from BoulderViz.yaw so neighbours don't look like clones.
  * Static rebuild gated on `dirty`; marker rebuilt every frame (small count).
@@ -20,10 +23,8 @@ import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 const BOULDER_GLB_URL = 'models/boulder.glb';
 const VARIANT_NAMES = ['boulder_a', 'boulder_b', 'boulder_c'];
 const MOSSY_NAMES = ['boulder_a_mossy', 'boulder_b_mossy', 'boulder_c_mossy'];
-// Vertex colors are baked into boulder.glb (stone grey + moss green on mossy
-// tops). Stone boulders tint white so the paint renders raw. Copper/coal
-// multiply a kind tint over the grey paint to shift hue while preserving
-// value variation.
+// Stone textures already carry the final palette; tint white to show them
+// raw. Copper/coal tint multiplies over the stone texture to shift hue.
 const WHITE_TINT = new THREE.Color(0xffffff);
 
 const FALLBACK_RADIUS = 0.55 * UNITS_PER_METER;
@@ -62,21 +63,15 @@ const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
  * @param {number} capacity
  */
 export function createBoulderInstancer(scene, capacity = 4096) {
-  const rockMat = new THREE.MeshStandardMaterial({
+  const fallbackMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     flatShading: true,
-    vertexColors: true,
   });
 
-  // Fallback procedural mesh used until the GLB resolves. Gets hidden and left
-  // at count=0 once real variant meshes are live. Stuff a solid-white color
-  // buffer in so the shared vertexColors=true material doesn't render it black.
   const fallbackGeo = new THREE.DodecahedronGeometry(FALLBACK_RADIUS, 0);
   fallbackGeo.scale(1, FALLBACK_HEIGHT / (FALLBACK_RADIUS * 2), 1);
   fallbackGeo.translate(0, FALLBACK_HEIGHT * 0.5, 0);
-  const fallbackColors = new Float32Array(fallbackGeo.attributes.position.count * 3).fill(1);
-  fallbackGeo.setAttribute('color', new THREE.BufferAttribute(fallbackColors, 3));
-  const fallbackMesh = new THREE.InstancedMesh(fallbackGeo, rockMat, capacity);
+  const fallbackMesh = new THREE.InstancedMesh(fallbackGeo, fallbackMat, capacity);
   fallbackMesh.count = 0;
   fallbackMesh.castShadow = true;
   fallbackMesh.receiveShadow = true;
@@ -89,8 +84,8 @@ export function createBoulderInstancer(scene, capacity = 4096) {
 
   new GLTFLoader().load(BOULDER_GLB_URL, (gltf) => {
     for (let v = 0; v < 3; v++) {
-      regularMeshes[v] = makeVariantMesh(scene, gltf, VARIANT_NAMES[v], rockMat, capacity);
-      mossyMeshes[v] = makeVariantMesh(scene, gltf, MOSSY_NAMES[v], rockMat, capacity);
+      regularMeshes[v] = makeVariantMesh(scene, gltf, VARIANT_NAMES[v], capacity);
+      mossyMeshes[v] = makeVariantMesh(scene, gltf, MOSSY_NAMES[v], capacity);
     }
     dirty = true;
   });
@@ -234,13 +229,17 @@ function commitMesh(mesh, count) {
 }
 
 /**
+ * Reuse the GLB mesh's own material (which carries the baked texture) rather
+ * than a shared plain material — that's the whole point of baking. Disable
+ * flatShading on it so the UV-space noise detail doesn't fight per-face
+ * lighting breaks.
+ *
  * @param {THREE.Scene} scene
  * @param {import('three/examples/jsm/loaders/GLTFLoader.js').GLTF} gltf
  * @param {string} nodeName
- * @param {THREE.Material} mat
  * @param {number} capacity
  */
-function makeVariantMesh(scene, gltf, nodeName, mat, capacity) {
+function makeVariantMesh(scene, gltf, nodeName, capacity) {
   const node = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName(nodeName));
   if (!node) {
     console.warn(`[boulderInstancer] boulder.glb missing node ${nodeName}`);
@@ -248,6 +247,7 @@ function makeVariantMesh(scene, gltf, nodeName, mat, capacity) {
   }
   const geo = node.geometry.clone();
   geo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+  const mat = /** @type {THREE.MeshStandardMaterial} */ (node.material);
   const im = new THREE.InstancedMesh(geo, mat, capacity);
   im.count = 0;
   im.castShadow = true;
