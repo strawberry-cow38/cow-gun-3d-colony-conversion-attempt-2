@@ -22,7 +22,7 @@ function spawnBush(world, grid, i, j) {
   const w = tileToWorld(i, j, grid.W, grid.H);
   const y = grid.getElevation(i, j);
   const yaw = Math.random() * Math.PI * 2;
-  const scale = 0.7 + Math.random() * 0.45;
+  const scale = 1.4 + Math.random() * 0.9;
   return world.spawn({
     Bush: {},
     BushViz: { yaw, scale },
