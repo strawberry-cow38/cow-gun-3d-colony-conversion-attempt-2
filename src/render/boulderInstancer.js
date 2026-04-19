@@ -28,9 +28,12 @@ const BOULDER_GLB_URL = 'models/boulder.glb';
 const VARIANT_NAMES = ['boulder_a', 'boulder_b', 'boulder_c'];
 const MOSSY_NAMES = ['boulder_a_mossy', 'boulder_b_mossy', 'boulder_c_mossy'];
 const COPPER_NAMES = ['boulder_a_copper', 'boulder_b_copper', 'boulder_c_copper'];
-// Stone + copper textures already carry the final palette; tint white to
-// show them raw. Coal (no dedicated mesh) tints the stone texture.
+// Stone texture carries its final palette; tint white to show it raw.
+// Coal (no dedicated mesh) tints the stone texture. Copper gets a soft
+// copper-warm off-white so the ore nodes read as "copper" at a glance
+// across the terrain without washing out the baked patina detail.
 const WHITE_TINT = new THREE.Color(0xffffff);
+const COPPER_TINT = new THREE.Color(0xffd0a8);
 
 const FALLBACK_RADIUS = 0.55 * UNITS_PER_METER;
 const FALLBACK_HEIGHT = 0.9 * UNITS_PER_METER;
@@ -197,9 +200,10 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       if (!parts) continue;
       const slot = counts[bucket];
       if (slot >= capacity) continue;
-      // Copper + stone meshes carry their final palette in the baked
-      // texture; only coal-like kinds need the color multiply.
-      const tint = useCopper || boulder.kind === 'stone' ? WHITE_TINT : draw.color;
+      // Stone carries its final palette raw; copper gets a subtle warm
+      // shift so nodes pop at a glance; coal multiplies its kind color
+      // over the shared stone texture.
+      const tint = useCopper ? COPPER_TINT : boulder.kind === 'stone' ? WHITE_TINT : draw.color;
       for (const part of parts) {
         part.setMatrixAt(slot, _matrix);
         part.setColorAt(slot, tint);
