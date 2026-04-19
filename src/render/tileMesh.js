@@ -52,49 +52,119 @@ const BIOME_COLORS = {
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 
-// PS2 dreamcore grass: 9 atlas cells each hold a different LAB-matched
+// PS2 dreamcore grass: 7 atlas cells each hold a different LAB-matched
 // grass texture. Tiles pick a cell deterministically by coords so the
 // field reads as varied turf. The instance color is a slightly-darker
 // white so textures come through unmodified but overall brightness is
 // knocked down a notch.
-const GRASS_CELL_COUNT = 9;
 const GRASS_DARKEN = 0.9;
 
-function grassPaletteIndex(i, j) {
-  // Cheap integer hash so neighboring tiles rarely land on the same shade.
-  const h = (i * 73856093) ^ (j * 19349663);
-  return ((h % GRASS_CELL_COUNT) + GRASS_CELL_COUNT) % GRASS_CELL_COUNT;
-}
+// Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg.
+//   0-6  grass variants (grass01-07, LAB-matched)
+//   7-8  stone tiles (rock05 + rock11, LAB-shifted purple) — tops AND cliffs
+//   9    pure white — sand/water biomes UV-offset here so the per-instance
+//        biome tint passes through unattenuated
+//   10-11 dirt tiles (grnd03 + grnd04, LAB-matched warm brown)
+//   12-14 orange rock cliffs (rock01/02/03, LAB-shifted toward rock02)
+//   15   spare
+// ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
+const ATLAS_DIVISOR = 1 / 4;
+const NON_GRASS_CELL = 9;
+const GRASS_CELLS = [0, 1, 2, 3, 4, 5, 6];
+const STONE_CELLS = [7, 8];
+const DIRT_CELLS = [10, 11];
+const CLIFF_ORANGE_CELLS = [12, 13, 14];
 
-// Cliff faces are coloured per biome so stone tiles expose grey rock, sand
-// shows sand, and water tiles keep their water tint through the cliff. Grass
-// and dirt default to a warm earth brown — they're meant to read as exposed
-// subsoil rather than "green wall" / "brown wall". Values are intentionally
-// bright-ish so horizontal normals (which barely pick up the hemisphere
-// light's ground term) still read as a colour rather than pure black.
+function pickCell(cells, i, j, saltI, saltJ) {
+  const h = (i * saltI) ^ (j * saltJ);
+  return cells[((h % cells.length) + cells.length) % cells.length];
+}
+const grassPaletteIndex = (i, j) => pickCell(GRASS_CELLS, i, j, 73856093, 19349663);
+const dirtCellIndex = (i, j) => pickCell(DIRT_CELLS, i, j, 83492791, 22695477);
+const stoneCellIndex = (i, j) => pickCell(STONE_CELLS, i, j, 374761393, 668265263);
+const cliffOrangeCellIndex = (i, j) => pickCell(CLIFF_ORANGE_CELLS, i, j, 2246822519, 3266489917);
+
+// Non-textured biomes route cliffs to cell 9 (white) tinted by this per-biome
+// color. Sand/water keep their biome look; stone/grass/dirt sample real
+// rock textures instead (see *_CELLS above).
 const CLIFF_COLORS = {
-  [BIOME.GRASS]: new THREE.Color(0x8a6b48),
-  [BIOME.DIRT]: new THREE.Color(0x8a6b48),
-  [BIOME.STONE]: new THREE.Color(0x7a7e84),
   [BIOME.SAND]: SAND_CLIFF_COLOR,
   [BIOME.SHALLOW_WATER]: SAND_CLIFF_COLOR,
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
-const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
+const DEFAULT_CLIFF_TINT = new THREE.Color(1, 1, 1);
 
-// Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg. Cells 0-8
-// are PS2-tinted Marlin Studios grass variants; cell 9 is pure white so
-// non-textured biomes UV-offset there and let their per-instance color
-// tint pass through unattenuated; cells 10-11 hold LAB-matched Marlin
-// grnd03/grnd04 mud tiles (per-tile hash picks one for variation).
-// ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
-const ATLAS_DIVISOR = 1 / 4;
-const NON_GRASS_CELL = 9;
-const DIRT_CELLS = [10, 11];
+/**
+ * Resolve the tops atlas cell and per-instance tint for a tile. Writes the
+ * tint into `out` in-place so callers can reuse a shared THREE.Color.
+ *
+ * @param {number} biome
+ * @param {number} i @param {number} j
+ * @param {number} topShade  elevation brightness factor in [0.75, 1.25]
+ * @param {THREE.Color} out
+ * @returns {number} atlas cell index
+ */
+function topCellAndColor(biome, i, j, topShade, out) {
+  if (biome === BIOME.GRASS) {
+    const g = GRASS_DARKEN * topShade;
+    out.setRGB(g, g, g);
+    return grassPaletteIndex(i, j);
+  }
+  if (biome === BIOME.DIRT) {
+    out.setRGB(topShade, topShade, topShade);
+    return dirtCellIndex(i, j);
+  }
+  if (biome === BIOME.STONE) {
+    out.setRGB(topShade, topShade, topShade);
+    return stoneCellIndex(i, j);
+  }
+  const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
+  out.setRGB(base.r * topShade, base.g * topShade, base.b * topShade);
+  return NON_GRASS_CELL;
+}
 
-function dirtCellIndex(i, j) {
-  const h = (i * 83492791) ^ (j * 22695477);
-  return DIRT_CELLS[((h % DIRT_CELLS.length) + DIRT_CELLS.length) % DIRT_CELLS.length];
+// Shared scratch for cliffCellAndColor — avoids per-tile heap allocation in
+// the chunk build loop. Only the build loop reads it, and only immediately
+// after the call, so aliasing is safe.
+const _cliffOut = { cell: 0, r: 0, g: 0, b: 0 };
+
+/**
+ * Resolve the cliff atlas cell + vertex tint for a tile's cliff faces and
+ * write into the shared scratch (returned as a convenience). Stone tops →
+ * purple rock cells [7,8]; grass/dirt → orange rock cells [12,13,14];
+ * sand/water → cell 9 white tinted by biome color so beach and lake edges
+ * keep their biome look.
+ */
+function cliffCellAndColor(biome, i, j) {
+  if (biome === BIOME.STONE) {
+    _cliffOut.cell = stoneCellIndex(i, j);
+    _cliffOut.r = 1;
+    _cliffOut.g = 1;
+    _cliffOut.b = 1;
+    return _cliffOut;
+  }
+  if (biome === BIOME.GRASS || biome === BIOME.DIRT) {
+    _cliffOut.cell = cliffOrangeCellIndex(i, j);
+    _cliffOut.r = 1;
+    _cliffOut.g = 1;
+    _cliffOut.b = 1;
+    return _cliffOut;
+  }
+  const tint = CLIFF_COLORS[biome] || DEFAULT_CLIFF_TINT;
+  _cliffOut.cell = NON_GRASS_CELL;
+  _cliffOut.r = tint.r;
+  _cliffOut.g = tint.g;
+  _cliffOut.b = tint.b;
+  return _cliffOut;
+}
+
+// Cell index → atlas UV offset. Works for tops (instanceUvOffset write) and
+// cliffs (per-vertex UV bake) — both slide into the same 4×4 grid.
+function cellColUV(cellIdx) {
+  return (cellIdx % 4) * ATLAS_DIVISOR;
+}
+function cellRowUV(cellIdx) {
+  return Math.floor(cellIdx / 4) * ATLAS_DIVISOR;
 }
 
 let _grassAtlas = null;
@@ -189,11 +259,13 @@ export function buildTileMesh(tileGrid) {
     ? (i, j) => tileGrid.getSkirtBiome(i, j)
     : (i, j) => tileGrid.getBiome(i, j);
 
-  // Two shared materials across chunks: tops sample the atlas + multiply by
-  // per-instance color (carries biome tint × elevation shading); cliffs stay
-  // vertex-coloured (cliff faces are short-lived, not worth atlas-ing).
+  // Two shared materials across chunks: tops sample the atlas via a
+  // per-instance UV offset; cliffs sample the same atlas via per-vertex UV
+  // (baked directly into the cliff geometry). Both multiply by per-vertex
+  // or per-instance color (biome tint × elevation shading).
   const topsMaterial = makeTopsMaterial();
   const cliffsMaterial = new THREE.MeshStandardMaterial({
+    map: getGrassAtlas(),
     vertexColors: true,
     flatShading: true,
     metalness: 0,
@@ -323,19 +395,7 @@ export function setTileBiome(group, i, j, biome, y) {
   if (!hit) return false;
   const topsMesh = /** @type {THREE.InstancedMesh} */ (hit.chunk.children[0]);
   const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
-  let cellIdx;
-  if (biome === BIOME.GRASS) {
-    cellIdx = grassPaletteIndex(i, j);
-    const g = GRASS_DARKEN * topShade;
-    _color.setRGB(g, g, g);
-  } else if (biome === BIOME.DIRT) {
-    cellIdx = dirtCellIndex(i, j);
-    _color.setRGB(topShade, topShade, topShade);
-  } else {
-    cellIdx = NON_GRASS_CELL;
-    const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
-    _color.setRGB(base.r * topShade, base.g * topShade, base.b * topShade);
-  }
+  const cellIdx = topCellAndColor(biome, i, j, topShade, _color);
   topsMesh.setColorAt(hit.instanceId, _color);
   if (topsMesh.instanceColor) topsMesh.instanceColor.needsUpdate = true;
 
@@ -343,8 +403,8 @@ export function setTileBiome(group, i, j, biome, y) {
     topsMesh.geometry.getAttribute('instanceUvOffset')
   );
   const arr = /** @type {Float32Array} */ (uvAttr.array);
-  arr[hit.instanceId * 2] = (cellIdx % 4) * ATLAS_DIVISOR;
-  arr[hit.instanceId * 2 + 1] = Math.floor(cellIdx / 4) * ATLAS_DIVISOR;
+  arr[hit.instanceId * 2] = cellColUV(cellIdx);
+  arr[hit.instanceId * 2 + 1] = cellRowUV(cellIdx);
   uvAttr.needsUpdate = true;
   return true;
 }
@@ -389,14 +449,18 @@ function buildChunkMesh({
   const tileCount = width * height;
   if (tileCount === 0) return null;
 
-  // Cliffs: worst case 4 quads × tile.
+  // Cliffs: worst case 4 quads × tile. Positions, per-vertex color, per-vertex
+  // atlas UV (so the texture slides into the biome's chosen cliff cell), and
+  // an index buffer walking two triangles per quad.
   const cliffsPos = new Float32Array(tileCount * 4 * 4 * 3);
   const cliffsCol = new Float32Array(tileCount * 4 * 4 * 3);
+  const cliffsUV = new Float32Array(tileCount * 4 * 4 * 2);
   const cliffsIdx = new Uint32Array(tileCount * 4 * 6);
   let cv = 0;
+  let cu = 0;
   let cix = 0;
 
-  const pushCliff = (ax, az, bx, bz, topY, bottomY, r, g, b) => {
+  const pushCliff = (ax, az, bx, bz, topY, bottomY, r, g, b, cellIdx) => {
     const baseV = cv / 3;
     cliffsPos[cv++] = ax;
     cliffsPos[cv++] = topY;
@@ -416,6 +480,19 @@ function buildChunkMesh({
       cliffsCol[o + 1] = g;
       cliffsCol[o + 2] = b;
     }
+    // Atlas UVs with flipY=false: (0,0) is the top-left of the texture. Cliff
+    // vertex order is top-left, top-right, bottom-right, bottom-left — walk
+    // the cell box in the same order so the top of the rock reads "up".
+    const uBase = cellColUV(cellIdx);
+    const vBase = cellRowUV(cellIdx);
+    cliffsUV[cu++] = uBase;
+    cliffsUV[cu++] = vBase;
+    cliffsUV[cu++] = uBase + ATLAS_DIVISOR;
+    cliffsUV[cu++] = vBase;
+    cliffsUV[cu++] = uBase + ATLAS_DIVISOR;
+    cliffsUV[cu++] = vBase + ATLAS_DIVISOR;
+    cliffsUV[cu++] = uBase;
+    cliffsUV[cu++] = vBase + ATLAS_DIVISOR;
     cliffsIdx[cix++] = baseV;
     cliffsIdx[cix++] = baseV + 1;
     cliffsIdx[cix++] = baseV + 2;
@@ -452,45 +529,30 @@ function buildChunkMesh({
 
       const biome = getBiome(i, j);
       const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
-      let cellIdx;
-      if (biome === BIOME.GRASS) {
-        // Grass: atlas cell supplies the color; instance tint is a slightly
-        // darker white × elevation shade so the baked textures come through
-        // without a tint shift but overall luminance reads a notch lower.
-        cellIdx = grassPaletteIndex(i, j);
-        const g = GRASS_DARKEN * topShade;
-        _color.setRGB(g, g, g);
-      } else if (biome === BIOME.DIRT) {
-        // Dirt: per-tile hash picks grnd03 or grnd04 (both LAB-matched to
-        // the same warm brown), instance tint is plain white × elevation
-        // shade so the baked texture comes through without a second tint.
-        cellIdx = dirtCellIndex(i, j);
-        _color.setRGB(topShade, topShade, topShade);
-      } else {
-        // Remaining biomes sample cell 9 (pure white) so the biome tint
-        // passes through the texture sample unattenuated.
-        cellIdx = NON_GRASS_CELL;
-        const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
-        _color.setRGB(base.r * topShade, base.g * topShade, base.b * topShade);
-      }
+      const cellIdx = topCellAndColor(biome, i, j, topShade, _color);
       topsMesh.setColorAt(k, _color);
-      uvOffsets[k * 2] = (cellIdx % 4) * ATLAS_DIVISOR;
-      uvOffsets[k * 2 + 1] = Math.floor(cellIdx / 4) * ATLAS_DIVISOR;
+      uvOffsets[k * 2] = cellColUV(cellIdx);
+      uvOffsets[k * 2 + 1] = cellRowUV(cellIdx);
 
       // Out-of-bounds neighbors drop to Y=0 (the water plane). Same-or-higher
       // neighbors get skipped — their own face will cover it when rendered.
-      const cliff = CLIFF_COLORS[biome] || DEFAULT_CLIFF;
-      const cr = cliff.r;
-      const cg = cliff.g;
-      const cb = cliff.b;
+      // Defer cliff lookup until we know at least one edge drops, so flat
+      // terrain skips the cell-hash work entirely.
       const yW = i > iMin ? getElev(i - 1, j) : 0;
       const yE = i < iMax - 1 ? getElev(i + 1, j) : 0;
       const yN = j > jMin ? getElev(i, j - 1) : 0;
       const yS = j < jMax - 1 ? getElev(i, j + 1) : 0;
-      if (yW < y) pushCliff(x0, z1, x0, z0, y, yW, cr, cg, cb);
-      if (yE < y) pushCliff(x1, z0, x1, z1, y, yE, cr, cg, cb);
-      if (yN < y) pushCliff(x0, z0, x1, z0, y, yN, cr, cg, cb);
-      if (yS < y) pushCliff(x1, z1, x0, z1, y, yS, cr, cg, cb);
+      if (yW < y || yE < y || yN < y || yS < y) {
+        const cliff = cliffCellAndColor(biome, i, j);
+        const cliffCell = cliff.cell;
+        const cr = cliff.r;
+        const cg = cliff.g;
+        const cb = cliff.b;
+        if (yW < y) pushCliff(x0, z1, x0, z0, y, yW, cr, cg, cb, cliffCell);
+        if (yE < y) pushCliff(x1, z0, x1, z1, y, yE, cr, cg, cb, cliffCell);
+        if (yN < y) pushCliff(x0, z0, x1, z0, y, yN, cr, cg, cb, cliffCell);
+        if (yS < y) pushCliff(x1, z1, x0, z1, y, yS, cr, cg, cb, cliffCell);
+      }
 
       k++;
     }
@@ -511,6 +573,7 @@ function buildChunkMesh({
     const cliffsGeom = new THREE.BufferGeometry();
     cliffsGeom.setAttribute('position', new THREE.BufferAttribute(cliffsPos.subarray(0, cv), 3));
     cliffsGeom.setAttribute('color', new THREE.BufferAttribute(cliffsCol.subarray(0, cv), 3));
+    cliffsGeom.setAttribute('uv', new THREE.BufferAttribute(cliffsUV.subarray(0, cu), 2));
     cliffsGeom.setIndex(new THREE.BufferAttribute(cliffsIdx.subarray(0, cix), 1));
     cliffsGeom.computeVertexNormals();
     cliffsGeom.computeBoundingSphere();

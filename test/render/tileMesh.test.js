@@ -91,10 +91,10 @@ describe('chunkInstanceToTile', () => {
 });
 
 describe('setTileBiome', () => {
-  it('writes UV offset to the non-grass atlas cell (9) for stone biome', () => {
+  it('writes UV offset to the non-grass atlas cell (9) for sand biome', () => {
     const group = new THREE.Group();
     group.add(makeMockChunk(0, 0, 4, 4));
-    expect(setTileBiome(group, 2, 1, BIOME.STONE, 0)).toBe(true);
+    expect(setTileBiome(group, 2, 1, BIOME.SAND, 0)).toBe(true);
     const mesh = /** @type {THREE.InstancedMesh} */ (group.children[0].children[0]);
     const uvAttr = /** @type {THREE.InstancedBufferAttribute} */ (
       mesh.geometry.getAttribute('instanceUvOffset')
@@ -108,14 +108,29 @@ describe('setTileBiome', () => {
     expect(uvAttr.version).toBeGreaterThan(0);
   });
 
-  it('writes a grass-cell UV offset (cell 0-8) for grass biome', () => {
+  it('writes a grass-cell UV offset (cells 0-6) for grass biome', () => {
     const group = new THREE.Group();
     group.add(makeMockChunk(0, 0, 4, 4));
     expect(setTileBiome(group, 0, 0, BIOME.GRASS, 0)).toBe(true);
     const mesh = /** @type {THREE.InstancedMesh} */ (group.children[0].children[0]);
     const uvAttr = mesh.geometry.getAttribute('instanceUvOffset');
-    // Grass cells 0-8 live in rows 0-2 (cell/4 < 3), so V offset < 0.75.
-    expect(uvAttr.array[1]).toBeLessThan(0.75);
+    // Grass cells 0-6 live in rows 0-1 (cell/4 < 2), so V offset < 0.5.
+    expect(uvAttr.array[1]).toBeLessThan(0.5);
+  });
+
+  it('routes stone biome tops to one of the stone atlas cells (7 or 8)', () => {
+    const group = new THREE.Group();
+    group.add(makeMockChunk(0, 0, 4, 4));
+    expect(setTileBiome(group, 2, 1, BIOME.STONE, 0)).toBe(true);
+    const mesh = /** @type {THREE.InstancedMesh} */ (group.children[0].children[0]);
+    const uvAttr = mesh.geometry.getAttribute('instanceUvOffset');
+    const k = 1 * 4 + 2;
+    const u = uvAttr.array[k * 2];
+    const v = uvAttr.array[k * 2 + 1];
+    // Cell 7 = (col 3, row 1) = (0.75, 0.25). Cell 8 = (col 0, row 2) = (0, 0.5).
+    const isCell7 = Math.abs(u - 0.75) < 1e-6 && Math.abs(v - 0.25) < 1e-6;
+    const isCell8 = Math.abs(u - 0.0) < 1e-6 && Math.abs(v - 0.5) < 1e-6;
+    expect(isCell7 || isCell8).toBe(true);
   });
 
   it('bumps instanceColor version so the GPU resyncs on next draw', () => {
