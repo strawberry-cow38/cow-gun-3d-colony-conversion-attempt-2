@@ -128,6 +128,7 @@ export function createRenderFrame({
     objectHitboxes,
     treeInstancer,
     boulderInstancer,
+    bushInstancer,
     wallInstancer,
     doorInstancer,
     torchInstancer,
@@ -257,6 +258,7 @@ export function createRenderFrame({
     treeInstancer.updateMarkers(world, tileGrid, tSec);
     boulderInstancer.update(world, tileGrid);
     boulderInstancer.updateMarkers(world, tileGrid, tSec);
+    bushInstancer.update(world, tileGrid);
     wallInstancer.update(world, tileGrid);
     doorInstancer.update(world, tileGrid);
     torchInstancer.update(world, tileGrid, tSec, camera);

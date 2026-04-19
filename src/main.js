@@ -54,6 +54,7 @@ import { SimLoop } from './sim/loop.js';
 import { PathCache, defaultWalkable } from './sim/pathfinding.js';
 import { spawnStressEntities, stressBounce } from './stress.js';
 import { spawnInitialBoulders } from './systems/boulders.js';
+import { spawnInitialBushes } from './systems/bushes.js';
 import {
   makeCowBrainSystem,
   makeCowFollowPathSystem,
@@ -194,6 +195,7 @@ scheduler.add(makeSocialSystem());
 if (stressCount > 0) spawnStressEntities(world, stressCount);
 spawnInitialTrees(world, tileGrid, treeCount);
 spawnInitialBoulders(world, tileGrid, treeCount);
+spawnInitialBushes(world, tileGrid, treeCount);
 spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));

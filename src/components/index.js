@@ -311,6 +311,13 @@ export function registerComponents(world) {
     /** Yaw rotation (radians) so neighbours don't look like clones. */
     yaw: 0,
   }));
+  world.defineComponent('Bush', () => ({}));
+  world.defineComponent('BushViz', () => ({
+    /** Yaw rotation (radians); crossed-quad billboard needs variation. */
+    yaw: 0,
+    /** Non-uniform scale 0.7..1.15 so bushes don't look cloned. */
+    scale: 1,
+  }));
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0, z: 0 }));
   world.defineComponent('Item', () => ({
     kind: 'wood',

@@ -13,6 +13,7 @@
 
 import { buildTileMesh, buildWaterSurface, disposeTileMesh } from '../render/tileMesh.js';
 import { TICKS_PER_SIM_HOUR } from '../sim/calendar.js';
+import { spawnInitialBushes } from '../systems/bushes.js';
 import { spawnInitialTrees } from '../systems/trees.js';
 import { addItemToTile } from '../world/items.js';
 import { CURRENT_VERSION } from '../world/migrations/index.js';
@@ -488,6 +489,7 @@ async function loadGame(ctx) {
     despawnAllComp(world, 'Cow');
     despawnAllComp(world, 'Tree');
     despawnAllComp(world, 'Boulder');
+    despawnAllComp(world, 'Bush');
     despawnAllComp(world, 'Item');
     despawnAllComp(world, 'BuildSite');
     despawnAllComp(world, 'Wall');
@@ -509,6 +511,9 @@ async function loadGame(ctx) {
       hydrateTrees(world, tileGrid, jobBoard, migrated);
     }
     hydrateBoulders(world, tileGrid, jobBoard, migrated);
+    // Bushes are pure decor — regenerate on load so reloaded worlds aren't
+    // bare even though save files predate them.
+    spawnInitialBushes(world, tileGrid, ctx.treeCount);
     hydrateItems(world, tileGrid, migrated);
     hydrateBuildSites(world, tileGrid, migrated);
     hydrateWalls(world, tileGrid, jobBoard, migrated);

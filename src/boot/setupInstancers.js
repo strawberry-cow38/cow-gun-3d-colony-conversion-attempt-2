@@ -12,6 +12,7 @@ import { createBedInstancer } from '../render/bedInstancer.js';
 import { createBedNameTags } from '../render/bedNameTags.js';
 import { createBoulderInstancer } from '../render/boulderInstancer.js';
 import { createBuildSiteInstancer } from '../render/buildSiteInstancer.js';
+import { createBushInstancer } from '../render/bushInstancer.js';
 import { createCowChatBubbles } from '../render/cowChatBubbles.js';
 import { createCowHitboxes } from '../render/cowHitboxes.js';
 import { createCowInstancer } from '../render/cowInstancer.js';
@@ -75,6 +76,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     objectHitboxes: createObjectHitboxes(scene, tiles + 4096),
     treeInstancer: createTreeInstancer(scene, 2048),
     boulderInstancer: createBoulderInstancer(scene, 4096),
+    bushInstancer: createBushInstancer(scene, 4096),
     wallInstancer: createWallInstancer(scene, 2048),
     doorInstancer: createDoorInstancer(scene, 512, audio),
     torchInstancer: createTorchInstancer(scene, 512),
