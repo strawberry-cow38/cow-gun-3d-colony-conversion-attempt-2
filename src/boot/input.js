@@ -71,7 +71,7 @@ import { dispatch } from './hotkeys.js';
  * @property {number} gridW
  * @property {number} gridH
  * @property {BootState} state
- * @property {{ play: (kind: string) => void, toggleMute: () => boolean }} audio
+ * @property {{ play: (kind: string) => void, toggleMusicMute: () => boolean }} audio
  * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
  * @property {import('../world/weather.js').Weather} weather
  * @property {import('../sim/loop.js').SimLoop} loop

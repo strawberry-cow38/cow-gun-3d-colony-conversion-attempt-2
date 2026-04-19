@@ -108,20 +108,20 @@ const LOOP_SFX = {
 
 const MASTER_GAIN = 0.35;
 const MAX_HEAR_DIST = 400; // units (≈ 9 tiles) — beyond this we don't allocate
-const MUTE_PREF_KEY = 'pref:audioMuted';
+const MUSIC_MUTE_PREF_KEY = 'pref:musicMuted';
 
-function readMutePref() {
+function readMusicMutePref() {
   try {
-    return globalThis.localStorage?.getItem(MUTE_PREF_KEY) === '1';
+    return globalThis.localStorage?.getItem(MUSIC_MUTE_PREF_KEY) === '1';
   } catch {
     return false;
   }
 }
 
-function writeMutePref(muted) {
+function writeMusicMutePref(muted) {
   try {
-    if (muted) globalThis.localStorage?.setItem(MUTE_PREF_KEY, '1');
-    else globalThis.localStorage?.removeItem(MUTE_PREF_KEY);
+    if (muted) globalThis.localStorage?.setItem(MUSIC_MUTE_PREF_KEY, '1');
+    else globalThis.localStorage?.removeItem(MUSIC_MUTE_PREF_KEY);
   } catch {
     /* private mode etc — fine to drop */
   }
@@ -135,7 +135,7 @@ export function createAudio({ camera }) {
   let ctx = null;
   /** @type {GainNode | null} */
   let master = null;
-  let muted = readMutePref();
+  let musicMuted = readMusicMutePref();
   /** @type {((muted: boolean) => void) | null} */
   let muteListener = null;
 
@@ -160,21 +160,20 @@ export function createAudio({ camera }) {
     if (!AC) return null;
     ctx = /** @type {AudioContext} */ (new AC());
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : MASTER_GAIN;
+    master.gain.value = MASTER_GAIN;
     master.connect(ctx.destination);
     return ctx;
   }
 
-  function setMuted(next) {
-    if (next === muted) return;
-    muted = next;
-    if (master) master.gain.value = muted ? 0 : MASTER_GAIN;
-    // Stop the music element when muted — gain=0 alone leaves the browser
-    // streaming + decoding the ogg in the background.
-    if (muted) music?.pause();
+  function setMusicMuted(next) {
+    if (next === musicMuted) return;
+    musicMuted = next;
+    // Pause the HTMLAudioElement directly — gain=0 on the music subgraph
+    // would silence output but leave the browser streaming + decoding the ogg.
+    if (musicMuted) music?.pause();
     else music?.resume();
-    writeMutePref(muted);
-    muteListener?.(muted);
+    writeMusicMutePref(musicMuted);
+    muteListener?.(musicMuted);
   }
 
   // Browsers require an AudioContext resume inside a user-gesture handler.
@@ -195,7 +194,7 @@ export function createAudio({ camera }) {
       music.start();
       // start() always begins playback; if the saved pref is muted, stop the
       // element immediately so the browser doesn't stream the first track.
-      if (muted) music.pause();
+      if (musicMuted) music.pause();
     }
   };
   addEventListener('pointerdown', resume, { once: true });
@@ -330,18 +329,18 @@ export function createAudio({ camera }) {
     stopLoop,
     getMusicTrack: () => music?.getCurrentTrack() ?? null,
     stopMusic: () => music?.stop(),
-    toggleMute: () => {
-      setMuted(!muted);
-      return muted;
+    toggleMusicMute: () => {
+      setMusicMuted(!musicMuted);
+      return musicMuted;
     },
     /**
      * Single-slot — overwrites any prior subscription. Fires immediately so
      * the caller can sync its initial state in the same call.
      * @param {(muted: boolean) => void} fn
      */
-    setMuteListener: (fn) => {
+    setMusicMuteListener: (fn) => {
       muteListener = fn;
-      fn?.(muted);
+      fn?.(musicMuted);
     },
   };
 }

@@ -311,13 +311,13 @@ export const HOTKEYS = [
       ctx.updateHud();
     },
   },
-  // M — mute/unmute the master gain. Plays the unmute click *after* flipping
-  // so the user actually hears the confirmation; the mute path stays silent.
+  // M — mute/unmute background music. SFX continues either way; the
+  // confirmation click plays in both directions since it isn't muted.
   {
     match: (e) => e.code === 'KeyM',
     run: (ctx) => {
-      const muted = ctx.audio.toggleMute();
-      if (!muted) ctx.audio.play('toggle_on');
+      const muted = ctx.audio.toggleMusicMute();
+      ctx.audio.play(muted ? 'toggle_off' : 'toggle_on');
     },
   },
   // Space — pause toggle. Render keeps running so UI (build tab, portraits,

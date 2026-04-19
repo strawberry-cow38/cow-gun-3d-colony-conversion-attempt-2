@@ -1157,11 +1157,11 @@ if (debugSkipBtn) {
 
 const muteBtn = document.getElementById('audio-mute');
 if (muteBtn) {
-  audio.setMuteListener((m) => {
-    muteBtn.textContent = m ? '🔇' : '🔊';
-    muteBtn.setAttribute('aria-label', m ? 'Unmute audio' : 'Mute audio');
+  audio.setMusicMuteListener((m) => {
+    muteBtn.textContent = m ? '🔇' : '🎵';
+    muteBtn.setAttribute('aria-label', m ? 'Unmute music' : 'Mute music');
   });
   muteBtn.addEventListener('click', () => {
-    audio.toggleMute();
+    audio.toggleMusicMute();
   });
 }
