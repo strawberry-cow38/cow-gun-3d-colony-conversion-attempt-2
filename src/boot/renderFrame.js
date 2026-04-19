@@ -336,8 +336,15 @@ export function createRenderFrame({
       _chunkProjView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       _chunkFrustum.setFromProjectionMatrix(_chunkProjView);
       for (const child of terrainGroup.children) {
+        // Each child is a chunk Group (tops InstancedMesh + optional cliffs
+        // Mesh). Frustum.intersectsObject requires a Mesh — test the tops
+        // instance mesh, whose bounding sphere covers every tile in the
+        // chunk extent (cliffs live within the same XZ rect and only drop
+        // slightly below the lowest top instance).
+        const tops = child.children[0];
+        if (!tops) continue;
         terrainTotal++;
-        if (_chunkFrustum.intersectsObject(child)) terrainVisible++;
+        if (_chunkFrustum.intersectsObject(tops)) terrainVisible++;
       }
     }
     clockEl.textContent = `${formatSimTime(simDate)} ${speedIcon(getSpeed())}\n${formatSimDate(simDate)}\n${measuredFps.toFixed(0)} fps  ${getTps().toFixed(0)} tps\nchunks: ${terrainVisible}/${terrainTotal}`;
