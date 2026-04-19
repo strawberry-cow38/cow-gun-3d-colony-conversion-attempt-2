@@ -1,8 +1,11 @@
 /**
  * Item render: one generic tinted-box InstancedMesh for all loose items, plus
- * three GLB-backed wood meshes that get selected per-stack based on fill tier
- * (1 log / 2 logs / 3-log triangle). Non-wood items stay on the box mesh;
- * wood falls back to the box mesh only until its tier's GLB finishes loading.
+ * three GLB-backed wood tiers that get selected per-stack based on fill
+ * (1 log / 2 logs / 3-log triangle). Each wood tier may decompose into
+ * multiple InstancedMeshes — glTF multi-material meshes import as a Group of
+ * single-material Meshes, one per primitive, all sharing per-instance
+ * transforms. Non-wood items stay on the box mesh; wood falls back to the
+ * box only until the tier's GLB finishes loading.
  */
 
 import * as THREE from 'three';
@@ -53,27 +56,32 @@ export function createItemInstancer(scene, capacity = 1024) {
   mesh.count = 0;
   scene.add(mesh);
 
-  /** @type {Array<THREE.InstancedMesh | null>} */
-  const woodMeshes = [null, null, null];
+  /** @type {Array<Array<THREE.InstancedMesh>>} per-tier list of primitive meshes */
+  const woodMeshes = [[], [], []];
 
   const loader = new GLTFLoader();
   WOOD_TIER_URLS.forEach((url, tier) => {
     loader.load(url, (gltf) => {
-      /** @type {THREE.Mesh | null} */
-      const node = /** @type {any} */ (gltf.scene.getObjectByName('wood'));
-      if (!node) {
-        console.warn(`[itemInstancer] ${url} missing "wood" node`);
+      /** @type {THREE.InstancedMesh[]} */
+      const primitives = [];
+      gltf.scene.traverse((obj) => {
+        const m = /** @type {THREE.Mesh} */ (/** @type {any} */ (obj));
+        if (!m.isMesh || !m.geometry) return;
+        const g = m.geometry.clone();
+        g.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+        g.translate(0, WOOD_Y_LIFT, 0);
+        const im = new THREE.InstancedMesh(g, m.material, capacity);
+        im.count = 0;
+        im.castShadow = false;
+        im.receiveShadow = true;
+        scene.add(im);
+        primitives.push(im);
+      });
+      if (primitives.length === 0) {
+        console.warn(`[itemInstancer] ${url}: no mesh primitives`);
         return;
       }
-      const g = node.geometry.clone();
-      g.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
-      g.translate(0, WOOD_Y_LIFT, 0);
-      const im = new THREE.InstancedMesh(g, node.material, capacity);
-      im.count = 0;
-      im.castShadow = false;
-      im.receiveShadow = true;
-      scene.add(im);
-      woodMeshes[tier] = im;
+      woodMeshes[tier] = primitives;
       dirty = true;
     });
   });
@@ -96,15 +104,14 @@ export function createItemInstancer(scene, capacity = 1024) {
 
       if (item.kind === 'wood') {
         const tier = woodTier(item.count, item.capacity);
-        const im = woodMeshes[tier];
-        if (im && woodI[tier] < capacity) {
+        const prims = woodMeshes[tier];
+        if (prims.length > 0 && woodI[tier] < capacity) {
           _position.set(w.x, y, w.z);
           _matrix.compose(_position, _quat, _identityScale);
-          im.setMatrixAt(woodI[tier], _matrix);
+          for (const im of prims) im.setMatrixAt(woodI[tier], _matrix);
           woodI[tier]++;
           continue;
         }
-        // GLB still loading — fall through to tinted box.
       }
 
       if (boxI >= capacity) continue;
@@ -121,11 +128,11 @@ export function createItemInstancer(scene, capacity = 1024) {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
     for (let t = 0; t < 3; t++) {
-      const im = woodMeshes[t];
-      if (!im) continue;
-      im.count = woodI[t];
-      im.instanceMatrix.needsUpdate = true;
-      im.computeBoundingSphere();
+      for (const im of woodMeshes[t]) {
+        im.count = woodI[t];
+        im.instanceMatrix.needsUpdate = true;
+        im.computeBoundingSphere();
+      }
     }
     dirty = false;
   }
