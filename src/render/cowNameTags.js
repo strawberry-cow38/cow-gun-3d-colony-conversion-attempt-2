@@ -11,8 +11,8 @@
 import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
 
-const TAG_HEIGHT_M = 1.6;
-const HEAD_OFFSET_M = 1.7;
+const TAG_HEIGHT_M = 0.7;
+const HEAD_OFFSET_M = 1.5;
 const FADE_START_M = 30;
 const FADE_END_M = 120;
 
