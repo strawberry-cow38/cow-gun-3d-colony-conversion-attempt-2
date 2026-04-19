@@ -32,7 +32,6 @@ import { BIOME, SKIRT_TILES, TERRAIN_STEP } from '../world/tileGrid.js';
 const WATER_SURFACE_Y = (TERRAIN_STEP * 6) / 8;
 
 const SAND_TOP_COLOR = new THREE.Color(0xc8b27a);
-const SAND_CLIFF_COLOR = new THREE.Color(0xc8b27a);
 
 // 32×32 tiles per chunk → 49 chunks on a 200×200 map (plus a handful for
 // the skirt ring). Each chunk ~1k top quads + cliffs = small enough that
@@ -86,14 +85,13 @@ const stoneCellIndex = (i, j) => pickCell(STONE_CELLS, i, j, 374761393, 66826526
 
 // Cliff faces are grouped by biome family so each family uses its own
 // tileable texture (world-space UVs + RepeatWrapping): stone → purple rock
-// (rock05); grass/dirt → orange rock (rock02); sand/water → plain vertex-
-// colored quads with a biome tint. Textures live outside the grass atlas
-// because they want continuous tiling across tile boundaries and their own
-// world-space UV period — an atlas cell can't do that without bleeding
-// into neighbor cells.
+// (rock05); grass/dirt → orange rock (rock02); sand/shallow-water → the
+// same Marlin "Light Sand" tile used on the tops so the dune face matches
+// the beach it's attached to; deep water → plain vertex-colored quads with
+// a biome tint. Textures live outside the grass atlas because they want
+// continuous tiling across tile boundaries and their own world-space UV
+// period — an atlas cell can't do that without bleeding into neighbors.
 const CLIFF_COLORS = {
-  [BIOME.SAND]: SAND_CLIFF_COLOR,
-  [BIOME.SHALLOW_WATER]: SAND_CLIFF_COLOR,
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 const DEFAULT_CLIFF_TINT = new THREE.Color(0x8a6b48);
@@ -106,10 +104,12 @@ const CLIFF_UV_PERIOD = TILE_SIZE;
 const CLIFF_FAMILY_ORANGE = 0;
 const CLIFF_FAMILY_PURPLE = 1;
 const CLIFF_FAMILY_TINTED = 2;
+const CLIFF_FAMILY_SAND = 3;
 
 function cliffFamilyForBiome(biome) {
   if (biome === BIOME.STONE) return CLIFF_FAMILY_PURPLE;
   if (biome === BIOME.GRASS || biome === BIOME.DIRT) return CLIFF_FAMILY_ORANGE;
+  if (biome === BIOME.SAND || biome === BIOME.SHALLOW_WATER) return CLIFF_FAMILY_SAND;
   return CLIFF_FAMILY_TINTED;
 }
 
@@ -228,6 +228,7 @@ function makeCliffTexture(path) {
 }
 let _cliffOrangeTex = null;
 let _cliffPurpleTex = null;
+let _cliffSandTex = null;
 function getCliffOrangeTexture() {
   if (!_cliffOrangeTex) _cliffOrangeTex = makeCliffTexture('textures/cliff-orange.jpg');
   return _cliffOrangeTex;
@@ -235,6 +236,10 @@ function getCliffOrangeTexture() {
 function getCliffPurpleTexture() {
   if (!_cliffPurpleTex) _cliffPurpleTex = makeCliffTexture('textures/cliff-purple.jpg');
   return _cliffPurpleTex;
+}
+function getCliffSandTexture() {
+  if (!_cliffSandTex) _cliffSandTex = makeCliffTexture('textures/cliff-sand.jpg');
+  return _cliffSandTex;
 }
 
 // Shared horizontal quad geometry (TILE_SIZE square, +Y normal, UV [0,1] per
@@ -338,6 +343,13 @@ export function buildTileMesh(tileGrid) {
       roughness: 1,
     }),
     new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      flatShading: true,
+      metalness: 0,
+      roughness: 1,
+    }),
+    new THREE.MeshStandardMaterial({
+      map: getCliffSandTexture(),
       vertexColors: true,
       flatShading: true,
       metalness: 0,
@@ -522,12 +534,13 @@ function buildChunkMesh({
   const tileCount = width * height;
   if (tileCount === 0) return null;
 
-  // Cliffs split into 3 family buckets (orange / purple / tinted). Each
-  // bucket is its own typed-array trio (pos / color / uv / index) and
+  // Cliffs split into 4 family buckets (orange / purple / tinted / sand).
+  // Each bucket is its own typed-array trio (pos / color / uv / index) and
   // becomes a dedicated sub-mesh with its own material + texture. Worst
   // case is 4 quads × tile in a single family, so per-bucket allocations
   // are oversized to the chunk max and sliced at emit.
   const buckets = [
+    makeCliffBucket(tileCount),
     makeCliffBucket(tileCount),
     makeCliffBucket(tileCount),
     makeCliffBucket(tileCount),
@@ -659,7 +672,7 @@ function buildChunkMesh({
   chunk.userData = { i0, j0, width, height };
   chunk.add(topsMesh);
 
-  const cliffNames = ['cliffs-orange', 'cliffs-purple', 'cliffs-tinted'];
+  const cliffNames = ['cliffs-orange', 'cliffs-purple', 'cliffs-tinted', 'cliffs-sand'];
   for (let f = 0; f < buckets.length; f++) {
     const bucket = buckets[f];
     if (bucket.vCount === 0) continue;

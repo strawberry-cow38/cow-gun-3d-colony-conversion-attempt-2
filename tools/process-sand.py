@@ -14,7 +14,7 @@ SRC = "/tmp/marlin_ground_raw/grnd01.jpg"
 OUT_DIR = "/tmp/marlin_ground_processed"
 OUT = os.path.join(OUT_DIR, "grnd01.jpg")
 TILE = 512
-SAT_BOOST = 1.12
+SAT_BOOST = 1.55
 VAL_BOOST = 1.02
 
 # Target: SAND_TOP_COLOR = 0xc8b27a = (200, 178, 122) — warm light tan.
