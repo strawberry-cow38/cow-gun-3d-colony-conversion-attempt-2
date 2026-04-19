@@ -141,7 +141,6 @@ export const ROOF_DESIGNATOR_CONFIG = {
   addVerb: 'roof',
   cancelVerb: 'cancel roof',
   required: 0,
-  stuffed: true,
 };
 
 /** @type {BuildDesignatorConfig} */

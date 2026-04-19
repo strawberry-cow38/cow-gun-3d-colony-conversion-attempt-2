@@ -10,9 +10,12 @@ import { CROP_ID_FOR_KIND, CROP_KINDS, KIND_FOR_CROP_ID } from '../world/crops.j
 
 /**
  * @typedef {Object} FarmZone
- * @property {number} id            monotonic, > 0
- * @property {Set<number>} tiles    tile indices (grid.idx)
- * @property {string} cropKind      crop kind (corn|carrot|potato)
+ * @property {number} id              monotonic, > 0
+ * @property {Set<number>} tiles      tile indices (grid.idx)
+ * @property {string} cropKind        crop kind (corn|carrot|potato)
+ * @property {boolean} allowHarvest   if false, no harvest jobs are posted here
+ * @property {boolean} allowTilling   if false, no till/plant jobs are posted here
+ * @property {string} [name]          optional user-entered zone name
  */
 
 /**
@@ -70,7 +73,7 @@ export function createFarmZones(grid) {
     }
     if (tiles.size === 0) return null;
     const id = nextId++;
-    const zone = { id, tiles, cropKind };
+    const zone = { id, tiles, cropKind, allowHarvest: true, allowTilling: true, name: '' };
     zones.set(id, zone);
     const cropId = CROP_ID_FOR_KIND[cropKind];
     for (const idx of tiles) {
@@ -169,8 +172,46 @@ export function createFarmZones(grid) {
       const i = idx % W;
       const j = (idx - i) / W;
       grid.setFarmZone(i, j, 0);
+      // Untilling on delete so an abandoned zone doesn't leave bare furrows.
+      // Any Crop entity on these tiles keeps its state and just becomes feral
+      // until the next poster sweep — the poster reaps orphan jobs on tiles
+      // that are no longer zoned, so cows will stop tending it.
+      grid.setTilled(i, j, 0);
     }
     zones.delete(id);
+    fire();
+    return true;
+  }
+
+  /** @param {number} id @param {boolean} v */
+  function setAllowHarvest(id, v) {
+    const zone = zones.get(id);
+    if (!zone) return false;
+    const next = !!v;
+    if (zone.allowHarvest === next) return false;
+    zone.allowHarvest = next;
+    fire();
+    return true;
+  }
+
+  /** @param {number} id @param {boolean} v */
+  function setAllowTilling(id, v) {
+    const zone = zones.get(id);
+    if (!zone) return false;
+    const next = !!v;
+    if (zone.allowTilling === next) return false;
+    zone.allowTilling = next;
+    fire();
+    return true;
+  }
+
+  /** @param {number} id @param {string} name */
+  function setName(id, name) {
+    const zone = zones.get(id);
+    if (!zone) return false;
+    const next = String(name ?? '').slice(0, 60);
+    if (zone.name === next) return false;
+    zone.name = next;
     fire();
     return true;
   }
@@ -240,7 +281,14 @@ export function createFarmZones(grid) {
       }
       const id = nextId++;
       for (const idx of tiles) zoneIdByTile[idx] = id;
-      zones.set(id, { id, tiles, cropKind: kind });
+      zones.set(id, {
+        id,
+        tiles,
+        cropKind: kind,
+        allowHarvest: true,
+        allowTilling: true,
+        name: '',
+      });
     }
     fire();
   }
@@ -252,11 +300,14 @@ export function createFarmZones(grid) {
         id: z.id,
         tiles: [...z.tiles],
         cropKind: z.cropKind,
+        allowHarvest: z.allowHarvest,
+        allowTilling: z.allowTilling,
+        name: z.name ?? '',
       })),
     };
   }
 
-  /** @param {{ nextId: number, zones: { id: number, tiles: number[], cropKind: string }[] }} state */
+  /** @param {{ nextId: number, zones: { id: number, tiles: number[], cropKind: string, allowHarvest?: boolean, allowTilling?: boolean, name?: string }[] }} state */
   function hydrate(state) {
     zones.clear();
     zoneIdByTile.fill(0);
@@ -264,7 +315,14 @@ export function createFarmZones(grid) {
     for (const z of state.zones ?? []) {
       if (!CROP_ID_FOR_KIND[z.cropKind]) continue;
       const tiles = new Set(z.tiles);
-      zones.set(z.id, { id: z.id, tiles, cropKind: z.cropKind });
+      zones.set(z.id, {
+        id: z.id,
+        tiles,
+        cropKind: z.cropKind,
+        allowHarvest: z.allowHarvest ?? true,
+        allowTilling: z.allowTilling ?? true,
+        name: z.name ?? '',
+      });
       const cropId = CROP_ID_FOR_KIND[z.cropKind];
       for (const idx of tiles) {
         zoneIdByTile[idx] = z.id;
@@ -289,6 +347,9 @@ export function createFarmZones(grid) {
     removeTiles,
     deleteZone,
     setCrop,
+    setAllowHarvest,
+    setAllowTilling,
+    setName,
     hydrateFromGrid,
     serialize,
     hydrate,

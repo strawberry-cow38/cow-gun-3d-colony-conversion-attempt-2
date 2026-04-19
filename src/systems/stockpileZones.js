@@ -16,6 +16,7 @@ import { defaultAllowedKinds } from '../world/items.js';
  * @property {number} id                 monotonic, > 0
  * @property {Set<number>} tiles         tile indices (grid.idx)
  * @property {Set<string>} allowedKinds  item kinds the zone accepts
+ * @property {string} [name]             optional user-entered zone name
  */
 
 /**
@@ -76,6 +77,7 @@ export function createStockpileZones(grid) {
       id,
       tiles,
       allowedKinds: opts?.allowedKinds ?? defaultAllowedKinds(),
+      name: '',
     };
     zones.set(id, zone);
     for (const idx of tiles) {
@@ -196,6 +198,17 @@ export function createStockpileZones(grid) {
     return allowed;
   }
 
+  /** @param {number} id @param {string} name */
+  function setName(id, name) {
+    const zone = zones.get(id);
+    if (!zone) return false;
+    const next = String(name ?? '').slice(0, 60);
+    if (zone.name === next) return false;
+    zone.name = next;
+    fire();
+    return true;
+  }
+
   /**
    * Check whether the zone at (i,j) accepts `kind`. No zone → false (open
    * tile, not a stockpile at all, so `findAndReserveSlot` shouldn't target it
@@ -251,7 +264,7 @@ export function createStockpileZones(grid) {
       }
       const id = nextId++;
       for (const idx of tiles) zoneIdByTile[idx] = id;
-      zones.set(id, { id, tiles, allowedKinds: defaultAllowedKinds() });
+      zones.set(id, { id, tiles, allowedKinds: defaultAllowedKinds(), name: '' });
     }
     fire();
   }
@@ -268,11 +281,12 @@ export function createStockpileZones(grid) {
         id: z.id,
         tiles: [...z.tiles],
         allowedKinds: [...z.allowedKinds],
+        name: z.name ?? '',
       })),
     };
   }
 
-  /** @param {{ nextId: number, zones: { id: number, tiles: number[], allowedKinds: string[] }[] }} state */
+  /** @param {{ nextId: number, zones: { id: number, tiles: number[], allowedKinds: string[], name?: string }[] }} state */
   function hydrate(state) {
     zones.clear();
     zoneIdByTile.fill(0);
@@ -280,7 +294,7 @@ export function createStockpileZones(grid) {
     for (const z of state.zones ?? []) {
       const tiles = new Set(z.tiles);
       const allowedKinds = new Set(z.allowedKinds);
-      zones.set(z.id, { id: z.id, tiles, allowedKinds });
+      zones.set(z.id, { id: z.id, tiles, allowedKinds, name: z.name ?? '' });
       for (const idx of tiles) {
         zoneIdByTile[idx] = z.id;
         const i = idx % W;
@@ -304,6 +318,7 @@ export function createStockpileZones(grid) {
     removeTiles,
     deleteZone,
     setAllowed,
+    setName,
     allowsAt,
     hydrateFromGrid,
     serialize,

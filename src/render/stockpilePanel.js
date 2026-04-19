@@ -15,12 +15,13 @@ import { ITEM_CATEGORIES, ITEM_INFO } from '../world/items.js';
  * @property {import('../boot/input.js').BootState} state
  * @property {ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>} stockpileZones
  * @property {(id: number) => void} onDelete
+ * @property {() => void} onExpand     activate the stockpile designator to drag more tiles in
  * @property {() => void} onChange
  */
 
 /** @param {StockpilePanelOpts} opts */
 export function createStockpilePanel(opts) {
-  const { state, stockpileZones, onDelete, onChange } = opts;
+  const { state, stockpileZones, onDelete, onExpand, onChange } = opts;
 
   const root = document.createElement('div');
   root.id = 'stockpile-panel';
@@ -47,6 +48,28 @@ export function createStockpilePanel(opts) {
   Object.assign(title.style, { fontWeight: '700', fontSize: '13px', marginBottom: '6px' });
   title.textContent = 'Stockpile';
 
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'Zone name';
+  nameInput.maxLength = 60;
+  Object.assign(nameInput.style, {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '4px 6px',
+    marginBottom: '6px',
+    background: 'rgba(30, 36, 44, 0.9)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '2px',
+    color: '#e6e6e6',
+    font: 'inherit',
+  });
+  nameInput.addEventListener('input', () => {
+    if (state.selectedZoneId == null) return;
+    stockpileZones.setName(state.selectedZoneId, nameInput.value);
+    onChange();
+  });
+  nameInput.addEventListener('keydown', (e) => e.stopPropagation());
+
   const subtitle = document.createElement('div');
   Object.assign(subtitle.style, { fontSize: '11px', color: '#b5c0cc', marginBottom: '8px' });
 
@@ -57,6 +80,25 @@ export function createStockpilePanel(opts) {
     gap: '4px',
     maxHeight: '320px',
     overflowY: 'auto',
+  });
+
+  const expandBtn = document.createElement('button');
+  expandBtn.type = 'button';
+  expandBtn.textContent = 'Expand Zone';
+  Object.assign(expandBtn.style, {
+    marginTop: '8px',
+    padding: '6px 8px',
+    background: 'rgba(144, 208, 255, 0.2)',
+    border: '1px solid rgba(144, 208, 255, 0.5)',
+    borderRadius: '2px',
+    color: '#e6f0fa',
+    font: 'inherit',
+    cursor: 'pointer',
+    width: '100%',
+  });
+  expandBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onExpand();
   });
 
   const deleteBtn = document.createElement('button');
@@ -78,7 +120,7 @@ export function createStockpilePanel(opts) {
     if (state.selectedZoneId != null) onDelete(state.selectedZoneId);
   });
 
-  root.append(title, subtitle, listWrap, deleteBtn);
+  root.append(title, nameInput, subtitle, listWrap, expandBtn, deleteBtn);
   document.body.appendChild(root);
 
   // Category id → whether the collapsible body is expanded. Default expanded
@@ -107,13 +149,16 @@ export function createStockpilePanel(opts) {
     // between mousedown and mouseup, which nukes click events entirely.
     const allowedSig = [...zone.allowedKinds].sort().join(',');
     const expandedSig = [...expanded].map(([k, v]) => `${k}:${v ? 1 : 0}`).join(',');
-    const key = `${id}|${zone.tiles.size}|${allowedSig}|${expandedSig}`;
+    const key = `${id}|${zone.tiles.size}|${allowedSig}|${expandedSig}|${zone.name ?? ''}`;
     if (key === lastKey) {
       if (root.style.display === 'none') root.style.display = '';
       return;
     }
     lastKey = key;
     if (root.style.display === 'none') root.style.display = '';
+    if (document.activeElement !== nameInput && nameInput.value !== (zone.name ?? '')) {
+      nameInput.value = zone.name ?? '';
+    }
     subtitle.textContent = `${zone.tiles.size} tile${zone.tiles.size === 1 ? '' : 's'} · filter`;
     rebuildList(zone);
   }

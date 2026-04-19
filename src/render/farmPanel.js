@@ -26,12 +26,13 @@ import {
  * @property {import('../world/tileGrid.js').TileGrid} tileGrid
  * @property {() => number} getTick
  * @property {(id: number) => void} onDelete
+ * @property {() => void} onExpand     activate the farm designator to drag more tiles in
  * @property {() => void} onChange
  */
 
 /** @param {FarmPanelOpts} opts */
 export function createFarmPanel(opts) {
-  const { state, farmZones, world, tileGrid, getTick, onDelete, onChange } = opts;
+  const { state, farmZones, world, tileGrid, getTick, onDelete, onExpand, onChange } = opts;
 
   const root = document.createElement('div');
   root.id = 'farm-panel';
@@ -57,6 +58,30 @@ export function createFarmPanel(opts) {
   const title = document.createElement('div');
   Object.assign(title.style, { fontWeight: '700', fontSize: '13px', marginBottom: '6px' });
   title.textContent = 'Farm Zone';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'Zone name';
+  nameInput.maxLength = 60;
+  Object.assign(nameInput.style, {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '4px 6px',
+    marginBottom: '6px',
+    background: 'rgba(30, 36, 44, 0.9)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '2px',
+    color: '#e6e6e6',
+    font: 'inherit',
+  });
+  nameInput.addEventListener('input', () => {
+    if (state.selectedFarmZoneId == null) return;
+    farmZones.setName(state.selectedFarmZoneId, nameInput.value);
+    onChange();
+  });
+  // Input element swallows key events; stops X-to-delete + WASD pan from
+  // firing mid-rename.
+  nameInput.addEventListener('keydown', (e) => e.stopPropagation());
 
   const subtitle = document.createElement('div');
   Object.assign(subtitle.style, { fontSize: '11px', color: '#b5c0cc', marginBottom: '8px' });
@@ -89,6 +114,48 @@ export function createFarmPanel(opts) {
     fontSize: '11px',
   });
 
+  const togglesWrap = document.createElement('div');
+  Object.assign(togglesWrap.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    marginTop: '8px',
+  });
+  const allowTillingRow = buildToggleRow('Allow tilling', () => {
+    const zone = getSelectedZone();
+    if (!zone) return;
+    farmZones.setAllowTilling(zone.id, !zone.allowTilling);
+    onChange();
+    update();
+  });
+  const allowHarvestRow = buildToggleRow('Allow harvesting', () => {
+    const zone = getSelectedZone();
+    if (!zone) return;
+    farmZones.setAllowHarvest(zone.id, !zone.allowHarvest);
+    onChange();
+    update();
+  });
+  togglesWrap.append(allowTillingRow.row, allowHarvestRow.row);
+
+  const expandBtn = document.createElement('button');
+  expandBtn.type = 'button';
+  expandBtn.textContent = 'Expand Zone';
+  Object.assign(expandBtn.style, {
+    marginTop: '8px',
+    padding: '6px 8px',
+    background: 'rgba(111, 226, 160, 0.2)',
+    border: '1px solid rgba(111, 226, 160, 0.5)',
+    borderRadius: '2px',
+    color: '#e6f8ea',
+    font: 'inherit',
+    cursor: 'pointer',
+    width: '100%',
+  });
+  expandBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onExpand();
+  });
+
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.textContent = 'Delete Zone';
@@ -108,8 +175,24 @@ export function createFarmPanel(opts) {
     if (state.selectedFarmZoneId != null) onDelete(state.selectedFarmZoneId);
   });
 
-  root.append(title, subtitle, cropLabel, cropWrap, infoWrap, deleteBtn);
+  root.append(
+    title,
+    nameInput,
+    subtitle,
+    cropLabel,
+    cropWrap,
+    infoWrap,
+    togglesWrap,
+    expandBtn,
+    deleteBtn,
+  );
   document.body.appendChild(root);
+
+  function getSelectedZone() {
+    const id = state.selectedFarmZoneId;
+    if (id == null) return null;
+    return farmZones.zoneById(id);
+  }
 
   let lastKey = '';
 
@@ -130,7 +213,7 @@ export function createFarmPanel(opts) {
     // Coarse key — tick bucket changes once per sim second, catching plant /
     // harvest / stage advances within ≤1s. Built before the expensive world
     // query so the hot path is a single string compare when nothing changed.
-    const key = `${id}|${zone.tiles.size}|${zone.cropKind}|${Math.floor(tick / 30)}`;
+    const key = `${id}|${zone.tiles.size}|${zone.cropKind}|${zone.allowHarvest ? 1 : 0}|${zone.allowTilling ? 1 : 0}|${zone.name ?? ''}|${Math.floor(tick / 30)}`;
     if (key === lastKey) {
       if (root.style.display === 'none') root.style.display = '';
       return;
@@ -139,6 +222,9 @@ export function createFarmPanel(opts) {
     const crops = collectZoneCrops(world, tileGrid, zone);
     const { oldestPlantedAtTick, earliestHarvestTick, stageCounts } = summariseCrops(crops);
     if (root.style.display === 'none') root.style.display = '';
+    if (document.activeElement !== nameInput && nameInput.value !== (zone.name ?? '')) {
+      nameInput.value = zone.name ?? '';
+    }
     subtitle.textContent = `${zone.tiles.size} tile${zone.tiles.size === 1 ? '' : 's'} · ${crops.length} planted`;
     rebuildCropPicker(zone.id, zone.cropKind);
     rebuildInfo({
@@ -149,6 +235,42 @@ export function createFarmPanel(opts) {
       stageCounts,
       tick,
     });
+    allowTillingRow.setOn(zone.allowTilling);
+    allowHarvestRow.setOn(zone.allowHarvest);
+  }
+
+  /**
+   * @param {string} label
+   * @param {() => void} onClick
+   */
+  function buildToggleRow(label, onClick) {
+    const row = document.createElement('div');
+    Object.assign(row.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '3px 4px',
+      cursor: 'pointer',
+      borderRadius: '2px',
+    });
+    const box = document.createElement('span');
+    Object.assign(box.style, {
+      width: '14px',
+      textAlign: 'center',
+    });
+    const name = document.createElement('span');
+    name.textContent = label;
+    row.append(box, name);
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    function setOn(on) {
+      box.textContent = on ? '☑' : '☐';
+      box.style.color = on ? '#8fbcdb' : '#6b7785';
+    }
+    setOn(true);
+    return { row, setOn };
   }
 
   /** @param {number} zoneId @param {string} currentCrop */

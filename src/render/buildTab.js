@@ -233,12 +233,11 @@ export function createBuildTab(opts) {
       id: 'farm',
       label: 'Farm',
       icon: '🌾',
-      hotkeyHint: 'designate growing zones (right-click for crop kind)',
+      hotkeyHint: 'designate growing zones — pick crop on the zone panel',
       activeColor: '#6fe2a0',
       categoryId: 'zones',
       hotkey: 'KeyK',
       designator: opts.farmZoneDesignator,
-      croppable: true,
     },
     {
       id: 'no-roof',
@@ -300,13 +299,11 @@ export function createBuildTab(opts) {
       id: 'roof',
       label: 'Roof',
       icon: '🏠',
-      hotkeyHint:
-        'drag to designate roofs (free; right-click for material — walls must match to support)',
+      hotkeyHint: 'drag to designate roofs — free; adjacent walls still support them',
       activeColor: '#c0a080',
       categoryId: 'structure',
       hotkey: 'KeyT',
       designator: opts.roofDesignator,
-      stuffed: true,
     },
     {
       id: 'floor',

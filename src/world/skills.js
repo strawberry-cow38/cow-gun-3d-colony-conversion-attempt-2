@@ -165,6 +165,7 @@ function gaussianish(rng) {
  *   professionBonus?: SkillBonus,
  *   rng?: () => number,
  *   learnRateMultiplier?: number,
+ *   skillMultiplier?: number,
  * }} opts
  * @returns {{ levels: Record<SkillId, { level: number, xp: number }>, learnRateMultiplier: number }}
  */
@@ -173,6 +174,7 @@ export function rollStartingSkills(opts = {}) {
   const age = Math.max(0, opts.ageYears ?? 30);
   const childhoodBonus = opts.childhoodBonus ?? {};
   const professionBonus = opts.professionBonus ?? {};
+  const skillMultiplier = opts.skillMultiplier ?? 1;
 
   // Age creep: adults gain a small broad baseline so a 55-year-old veteran
   // isn't uniformly level 0. Caps at MAX_AGE_CREEP — we don't want raw age
@@ -186,7 +188,7 @@ export function rollStartingSkills(opts = {}) {
     const prof = professionBonus[id] ?? 0;
     const child = childhoodBonus[id] ?? 0;
     const noise = gaussianish(rng) * 1.3;
-    const raw = ageCreep * 0.8 + prof + child * 0.5 + noise;
+    const raw = (ageCreep * 0.8 + prof + child * 0.5 + noise) * skillMultiplier;
     const level = Math.max(0, Math.min(MAX_LEVEL, Math.round(raw)));
     levels[id] = { level, xp: 0 };
   }

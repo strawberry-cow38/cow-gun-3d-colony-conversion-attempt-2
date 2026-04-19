@@ -67,8 +67,9 @@ export function nearestFreeTile(grid, i, j) {
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} i @param {number} j
  * @param {number} [currentTick] sim tick at spawn, for age back-dating
+ * @param {{ skillMultiplier?: number }} [opts]
  */
-export function spawnCowAt(world, grid, i, j, currentTick = 0) {
+export function spawnCowAt(world, grid, i, j, currentTick = 0, opts = {}) {
   if (!grid.inBounds(i, j)) return;
   const placed = nearestFreeTile(grid, i, j);
   if (!placed) return;
@@ -80,6 +81,7 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     ageYears: ageYears(id.birthTick, currentTick),
     childhoodBonus: skillsForChildhood(id.childhood),
     professionBonus: skillsForProfession(id.profession),
+    skillMultiplier: opts.skillMultiplier,
   });
   world.spawn({
     Cow: { drafted: false },
@@ -116,7 +118,9 @@ export function spawnInitialCows(world, grid, count, currentTick = 0) {
   for (let n = 0; n < count; n++) {
     const i = Math.floor(grid.W / 2 + (Math.random() * 6 - 3));
     const j = Math.floor(grid.H / 2 + (Math.random() * 6 - 3));
-    spawnCowAt(world, grid, i, j, currentTick);
+    // Initial roster gets a 2× skill-roll multiplier so the starting band of
+    // colonists feels meaningfully more experienced than a mid-game recruit.
+    spawnCowAt(world, grid, i, j, currentTick, { skillMultiplier: 2 });
   }
   ensureEveryCategoryCovered(world);
 }

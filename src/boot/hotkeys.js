@@ -64,6 +64,14 @@ import {
  * Putting the usually-used arg first lets the usually-unused one be omitted.
  */
 
+function isTextInputFocused() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+  return el instanceof HTMLElement && el.isContentEditable;
+}
+
 const SPEED_KEYS = /** @type {Record<string, number>} */ ({
   Digit1: 1,
   Digit2: 2,
@@ -137,6 +145,30 @@ export const HOTKEYS = [
     run: (ctx, e) => {
       ctx.fpCamera.cycle(e.code === 'KeyE' ? 1 : -1);
       ctx.audio.play('cycle');
+    },
+  },
+  // X/Delete while a zone is selected — delete the selected stockpile or farm
+  // zone. Matches before the generic X-for-demolish below so selection wins.
+  // Skips when a text input is focused so renaming a zone isn't interrupted
+  // mid-keystroke.
+  {
+    match: (e, ctx) =>
+      (e.code === 'KeyX' || e.code === 'Delete') &&
+      !isTextInputFocused() &&
+      (ctx.state.selectedZoneId != null || ctx.state.selectedFarmZoneId != null),
+    run: (ctx) => {
+      const { state, stockpileZones, farmZones } = ctx;
+      if (state.selectedZoneId != null) {
+        stockpileZones.deleteZone(state.selectedZoneId);
+        state.selectedZoneId = null;
+        ctx.stockpileOverlay.markDirty();
+      } else if (state.selectedFarmZoneId != null) {
+        farmZones.deleteZone(state.selectedFarmZoneId);
+        state.selectedFarmZoneId = null;
+        ctx.farmZoneOverlay.markDirty();
+      }
+      ctx.audio.play('toggle_off');
+      ctx.updateHud();
     },
   },
   // F while stacks are selected — toggle forbidden on the whole selection.

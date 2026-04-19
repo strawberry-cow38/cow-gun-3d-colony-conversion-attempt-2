@@ -15,9 +15,10 @@ import { cropIsReady } from '../world/crops.js';
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../ecs/world.js').World} world
+ * @param {import('./farmZones.js').FarmZones} farmZones
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
-export function makeFarmPostingSystem(board, grid, world) {
+export function makeFarmPostingSystem(board, grid, world, farmZones) {
   /** @type {Set<number>} */
   const pendingTill = new Set();
   /** @type {Set<number>} */
@@ -34,14 +35,24 @@ export function makeFarmPostingSystem(board, grid, world) {
       pendingPlant.clear();
       pendingHarvest.clear();
       occupiedByCrop.clear();
-      // Reap till/plant jobs on tiles that are no longer zoned. The farm-zone
-      // designator already completes these on remove; this pass catches any
-      // other path that could clear a zone (save/load migrations, future
-      // programmatic clears) so cows never claim a stale farm job.
+      // Reap till/plant/harvest jobs on tiles that are no longer zoned OR
+      // whose zone has disabled the relevant toggle. The farm-zone designator
+      // already completes tiles removed from a zone; this pass covers save/
+      // load, toggle flips, and any future programmatic clears so cows never
+      // claim a stale farm job.
       for (const j of board.jobs) {
         if (j.completed) continue;
-        if (j.kind !== 'till' && j.kind !== 'plant') continue;
-        if (grid.getFarmZone(j.payload.i, j.payload.j) === 0) board.complete(j.id);
+        if (j.kind !== 'till' && j.kind !== 'plant' && j.kind !== 'harvest') continue;
+        const zone = farmZones.zoneAt(j.payload.i, j.payload.j);
+        if (!zone) {
+          board.complete(j.id);
+          continue;
+        }
+        if ((j.kind === 'till' || j.kind === 'plant') && !zone.allowTilling) {
+          board.complete(j.id);
+          continue;
+        }
+        if (j.kind === 'harvest' && !zone.allowHarvest) board.complete(j.id);
       }
       for (const j of board.jobs) {
         if (j.completed) continue;
@@ -59,12 +70,20 @@ export function makeFarmPostingSystem(board, grid, world) {
         const c = components.Crop;
         if (!cropIsReady(c.kind, c.growthTicks)) continue;
         if (pendingHarvest.has(idx)) continue;
+        // Only post harvest for crops sitting on a zone with allowHarvest on,
+        // matching master's "cows shouldn't harvest food unless it's in a grow
+        // zone" rule — feral crops (ex-zone tiles, hand-planted debug) never
+        // get a posting.
+        const zone = farmZones.zoneAt(a.i, a.j);
+        if (!zone || !zone.allowHarvest) continue;
         board.post('harvest', { cropId: id, i: a.i, j: a.j });
         pendingHarvest.add(idx);
       }
       for (let j = 0; j < grid.H; j++) {
         for (let i = 0; i < grid.W; i++) {
-          if (grid.getFarmZone(i, j) === 0) continue;
+          const zone = farmZones.zoneAt(i, j);
+          if (!zone) continue;
+          if (!zone.allowTilling) continue;
           // Defence in depth: the designator already refuses to zone a
           // blocked tile, but a tree could grow (future) or the tile could
           // get walled around it, so skip anything unreachable.

@@ -171,7 +171,7 @@ if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeTirednessSystem());
 scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid, stockpileZones, pathCache));
-scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world));
+scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world, farmZones));
 scheduler.add(
   makeFurnaceSystem(jobBoard, tileGrid, stockpileZones, {
     // Forward-decl safe: furnaceInstancer + onWorldItemChange exist by the
@@ -1070,6 +1070,10 @@ const stockpilePanel = createStockpilePanel({
     stockpileOverlay.markDirty();
     updateHud();
   },
+  onExpand: () => {
+    stockpileDesignator.activate();
+    updateHud();
+  },
   onChange: updateHud,
 });
 
@@ -1083,6 +1087,10 @@ const farmPanel = createFarmPanel({
     farmZones.deleteZone(id);
     state.selectedFarmZoneId = null;
     farmZoneOverlay.markDirty();
+    updateHud();
+  },
+  onExpand: () => {
+    farmZoneDesignator.activate();
     updateHud();
   },
   onChange: updateHud,
