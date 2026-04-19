@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { objectTypeFor } from '../ui/objectTypes.js';
 import { worldToTile } from '../world/coords.js';
 import { ITEM_INFO } from '../world/items.js';
-import { BIOME } from '../world/tileGrid.js';
+import { BIOME, LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const _ndc = new THREE.Vector2();
 const _raycaster = new THREE.Raycaster();
@@ -196,6 +196,7 @@ export class HoverTooltip {
   #terrainLabel(i, j) {
     const biome = this.tileGrid.getBiome(i, j);
     const name = BIOME_LABELS[biome] ?? 'Terrain';
-    return `${name} (${i}, ${j})`;
+    const z = Math.round(this.tileGrid.getElevation(i, j) / LAYER_HEIGHT);
+    return `${name} (${i}, ${j}, z${z})`;
   }
 }

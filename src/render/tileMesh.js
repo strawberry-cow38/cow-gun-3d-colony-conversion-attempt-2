@@ -61,7 +61,8 @@ const GRASS_DARKEN = 0.9;
 // Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg. Tops only —
 // cliffs sample their own standalone textures (see CLIFF_COLORS below).
 //   0-6   grass variants (grass01-07, LAB-matched)
-//   7-8   stone tops (rock05 + rock11, LAB-shifted purple)
+//   7-8   unused (was purple stone tops — reverted to flat biome-gray via
+//         the NON_GRASS_CELL passthrough path)
 //   9     pure white — fallback for biomes w/o a baked tile so the per-
 //         instance tint passes through unattenuated
 //   10-11 dirt tops (grnd03 + grnd04, LAB-matched warm brown)
@@ -72,7 +73,6 @@ const ATLAS_DIVISOR = 1 / 4;
 const NON_GRASS_CELL = 9;
 const SAND_CELL = 15;
 const GRASS_CELLS = [0, 1, 2, 3, 4, 5, 6];
-const STONE_CELLS = [7, 8];
 const DIRT_CELLS = [10, 11];
 
 function pickCell(cells, i, j, saltI, saltJ) {
@@ -81,7 +81,6 @@ function pickCell(cells, i, j, saltI, saltJ) {
 }
 const grassPaletteIndex = (i, j) => pickCell(GRASS_CELLS, i, j, 73856093, 19349663);
 const dirtCellIndex = (i, j) => pickCell(DIRT_CELLS, i, j, 83492791, 22695477);
-const stoneCellIndex = (i, j) => pickCell(STONE_CELLS, i, j, 374761393, 668265263);
 
 // Cliff faces are grouped by biome family so each family uses its own
 // tileable texture (world-space UVs + RepeatWrapping): stone → purple rock
@@ -133,14 +132,11 @@ function topCellAndColor(biome, i, j, topShade, out) {
     out.setRGB(topShade, topShade, topShade);
     return dirtCellIndex(i, j);
   }
-  if (biome === BIOME.STONE) {
-    out.setRGB(topShade, topShade, topShade);
-    return stoneCellIndex(i, j);
-  }
   if (biome === BIOME.SAND || biome === BIOME.SHALLOW_WATER) {
-    // Baked sand tile already carries the warm-tan palette, so pass only
-    // the elevation shade through to avoid washing it out with a flat tint.
-    out.setRGB(topShade, topShade, topShade);
+    // Boost tint pulls the baked sand tile toward brighter, warmer, more-
+    // saturated tan. Channels > 1 overdrive the tops shader's vertex-color
+    // multiply (MeshStandardMaterial accepts HDR instance colors).
+    out.setRGB(topShade * 1.22, topShade * 1.12, topShade * 0.94);
     return SAND_CELL;
   }
   const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
@@ -181,6 +177,12 @@ function cliffColor(family, biome, out) {
     out.r = tint.r;
     out.g = tint.g;
     out.b = tint.b;
+  } else if (family === CLIFF_FAMILY_SAND) {
+    // HDR overdrive on the sand cliff texture so the dune face matches the
+    // punchier top tint and reads warmer than the raw image.
+    out.r = 1.22;
+    out.g = 1.12;
+    out.b = 0.94;
   } else {
     out.r = 1;
     out.g = 1;
