@@ -17,13 +17,17 @@
  *                                    spawn/hydrate so fresh cows evaluate once.
  *                                    `name` is authoritative — Identity mirrors
  *                                    it so colonist UI has one record to read.
- * Identity    { name, firstName, surname, title, gender, birthTick,
+ * Identity    { name, firstName, nickname, surname, title, gender, birthTick,
  *                heightCm, hairColor, traits, childhood, profession }
  *                                    Demographic card for a colonist. `name`
- *                                    is the composed display string
- *                                    ("Dr. Bessie Moonfield"); the part
- *                                    fields drive UI that wants them
- *                                    independently. Title is
+ *                                    is the full display string
+ *                                    (`Dr. Bessie "Bess" Moonfield`), composed
+ *                                    by `fullName(identity)`. `nickname` is
+ *                                    what every other surface shows — over
+ *                                    heads, in portraits, in tooltips — and
+ *                                    mirrors `Brain.name`. Defaults to
+ *                                    firstName on spawn; the info panel lets
+ *                                    the player edit it later. Title is
  *                                    Mr./Mrs./Ms./Mx./Dr./Prof. Gender enum
  *                                    is 'male' | 'female' | 'nonbinary' —
  *                                    the last is reserved for future robot
@@ -221,6 +225,7 @@ export function registerComponents(world) {
   world.defineComponent('Identity', () => ({
     name: 'cow',
     firstName: 'cow',
+    nickname: 'cow',
     surname: '',
     /** @type {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.' | 'Col.'} */
     title: 'Mx.',

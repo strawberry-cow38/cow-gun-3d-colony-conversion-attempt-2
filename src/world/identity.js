@@ -68,7 +68,7 @@ const HAIR_COLORS = [
 /**
  * @param {number} currentTick
  * @param {string} firstName
- * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[], firstName: string, surname: string, title: Title, childhood: string, profession: string }}
+ * @returns {{ gender: Gender, birthTick: number, heightCm: number, hairColor: string, traits: string[], firstName: string, nickname: string, surname: string, title: Title, childhood: string, profession: string }}
  */
 export function rollCowIdentity(currentTick, firstName) {
   const gender = /** @type {Gender} */ (Math.random() < 0.5 ? 'female' : 'male');
@@ -88,6 +88,7 @@ export function rollCowIdentity(currentTick, firstName) {
     hairColor,
     traits,
     firstName,
+    nickname: firstName,
     surname,
     title,
     childhood,
@@ -96,13 +97,15 @@ export function rollCowIdentity(currentTick, firstName) {
 }
 
 /**
- * Compose the display string from the parts. Skips blank surnames gracefully
- * so colonists missing one (old saves pre-surname-migration) still render.
+ * Full display name: `Title First "Nickname" Last`. Used only in the colonist
+ * info panel header — every other surface shows just the nickname. Older saves
+ * lacking a nickname fall back to firstName so the quotes still render.
  *
- * @param {{ title: Title, firstName: string, surname: string }} id
+ * @param {{ title: Title, firstName: string, nickname?: string, surname: string }} id
  */
 export function fullName(id) {
-  const parts = [id.title, id.firstName];
+  const nickname = id.nickname || id.firstName;
+  const parts = [id.title, id.firstName, `"${nickname}"`];
   if (id.surname) parts.push(id.surname);
   return parts.join(' ');
 }

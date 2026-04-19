@@ -41,6 +41,11 @@ function spawnCow(world, overrides = {}) {
     Brain: { name: 'cow' },
     Identity: {
       name: 'cow',
+      firstName: 'cow',
+      nickname: 'cow',
+      surname: '',
+      title: 'Mx.',
+      traits: [],
       gender: 'female',
       birthTick: -5000000,
       heightCm: 170,
@@ -101,7 +106,7 @@ describe('cow save/load roundtrip', () => {
       PrevPosition: { x: 1.5, y: 2.5, z: 3.5 },
       Hunger: { value: 0.42 },
       Brain: { name: 'bessie' },
-      Identity: { name: 'bessie' },
+      Identity: { name: 'bessie', firstName: 'bessie', nickname: 'bessie' },
     });
 
     const state = serializeState(tg, w1);
@@ -141,14 +146,14 @@ describe('cow save/load roundtrip', () => {
     spawnCow(w1, {
       Cow: { drafted: true },
       Brain: { name: 'sarge' },
-      Identity: { name: 'sarge', gender: 'male' },
+      Identity: { name: 'sarge', firstName: 'sarge', nickname: 'sarge', gender: 'male' },
     });
     spawnCow(w1, {
       Cow: { drafted: false },
       Position: { x: 1, y: 0, z: 1 },
       PrevPosition: { x: 1, y: 0, z: 1 },
       Brain: { name: 'civvy' },
-      Identity: { name: 'civvy' },
+      Identity: { name: 'civvy', firstName: 'civvy', nickname: 'civvy' },
     });
 
     const state = serializeState(tg, w1);

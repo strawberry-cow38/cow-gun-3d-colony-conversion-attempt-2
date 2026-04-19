@@ -22,6 +22,7 @@ import { createCropInstancer } from '../render/cropInstancer.js';
 import { createCuttableMarkerInstancer } from '../render/cuttableMarkerInstancer.js';
 import { createDeconstructOverlay } from '../render/deconstructOverlay.js';
 import { createDoorInstancer } from '../render/doorInstancer.js';
+import { createDropShadows } from '../render/dropShadows.js';
 import { createEaselInstancer } from '../render/easelInstancer.js';
 import { createFarmZoneOverlay } from '../render/farmZoneOverlay.js';
 import { createFloorInstancer } from '../render/floorInstancer.js';
@@ -80,6 +81,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     bushInstancer: createBushInstancer(scene, 4096),
     wallInstancer: createWallInstancer(scene, 2048),
     doorInstancer: createDoorInstancer(scene, 512, audio),
+    dropShadows: createDropShadows(scene, 1536),
     torchInstancer: createTorchInstancer(scene, 512),
     roofInstancer: createRoofInstancer(scene, tiles),
     roofCollapseParticles: createRoofCollapseParticles(scene),

@@ -162,7 +162,7 @@ function collectCows(world) {
   /** @type {{ id: number, name: string }[]} */
   const cows = [];
   for (const { id, components } of world.query(['Cow', 'Brain', 'Identity'])) {
-    cows.push({ id, name: components.Identity.name ?? components.Brain.name ?? `#${id}` });
+    cows.push({ id, name: nicknameOf(components.Identity, components.Brain, id) });
   }
   cows.sort((a, b) => a.name.localeCompare(b.name));
   return cows;
@@ -174,7 +174,15 @@ function collectCows(world) {
  */
 function nameOf(world, cowId) {
   const ident = world.get(cowId, 'Identity');
-  if (ident?.name) return ident.name;
   const brain = world.get(cowId, 'Brain');
-  return brain?.name ?? `#${cowId}`;
+  return nicknameOf(ident, brain, cowId);
+}
+
+/**
+ * @param {any} ident
+ * @param {any} brain
+ * @param {number} cowId
+ */
+function nicknameOf(ident, brain, cowId) {
+  return ident?.nickname || ident?.firstName || brain?.name || `#${cowId}`;
 }

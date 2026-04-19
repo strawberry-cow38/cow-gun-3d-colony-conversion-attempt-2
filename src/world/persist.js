@@ -65,6 +65,7 @@ function sanitizeSkillLevels(levels) {
  * @property {string} hairColor
  * @property {string[]} traits
  * @property {string} firstName
+ * @property {string} [nickname]
  * @property {string} surname
  * @property {'Mr.' | 'Mrs.' | 'Ms.' | 'Mx.' | 'Dr.' | 'Prof.' | 'Col.'} title
  * @property {string} childhood
@@ -400,6 +401,7 @@ export function serializeState(tileGrid, world) {
         hairColor: components.Identity.hairColor,
         traits: [...components.Identity.traits],
         firstName: components.Identity.firstName,
+        nickname: components.Identity.nickname ?? components.Identity.firstName,
         surname: components.Identity.surname,
         title: components.Identity.title,
         childhood: components.Identity.childhood ?? '',
@@ -793,10 +795,11 @@ export function hydrateCows(world, state) {
       Hunger: { value: c.hunger },
       Tiredness: { value: typeof c.tiredness === 'number' ? c.tiredness : 1 },
       FoodPoisoning: { ticksRemaining: c.foodPoisoning?.ticksRemaining ?? 0 },
-      Brain: { name: c.name },
+      Brain: { name: id.nickname ?? id.firstName ?? c.name },
       Identity: {
         name: c.name,
         firstName: id.firstName,
+        nickname: id.nickname ?? id.firstName,
         surname: id.surname,
         title: id.title,
         gender: id.gender,

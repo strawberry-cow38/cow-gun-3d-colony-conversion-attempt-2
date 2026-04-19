@@ -14,10 +14,9 @@
 import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
 import { nameFontFor, nameFontScaleFor } from '../world/traits.js';
-import { jitterForGlyph } from './handwriting.js';
 
 const HEAD_OFFSET = 2.2 * UNITS_PER_METER;
-const TAG_HEIGHT_WORLD = 0.7 * UNITS_PER_METER;
+const TAG_HEIGHT_WORLD = 1.1 * UNITS_PER_METER;
 const FADE_START = 30 * UNITS_PER_METER;
 const FADE_END = 120 * UNITS_PER_METER;
 
@@ -71,7 +70,7 @@ export function createCowNameTags(scene) {
       let tag = tags.get(id);
       if (!tag || tag.key !== key) {
         if (tag) disposeTag(scene, tag);
-        tag = makeTag(scene, id, name, family, scale, key);
+        tag = makeTag(scene, name, family, scale, key);
         tags.set(id, tag);
       }
 
@@ -124,14 +123,13 @@ export function createCowNameTags(scene) {
 
 /**
  * @param {THREE.Scene} scene
- * @param {number} cowId
  * @param {string} name
  * @param {string} family
  * @param {number} scale
  * @param {string} key
  */
-function makeTag(scene, cowId, name, family, scale, key) {
-  const { canvas, aspect } = renderTextToCanvas(cowId, name, family, scale);
+function makeTag(scene, name, family, scale, key) {
+  const { canvas, aspect } = renderTextToCanvas(name, family, scale);
   const texture = new THREE.CanvasTexture(canvas);
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
@@ -162,27 +160,18 @@ function disposeTag(scene, tag) {
 }
 
 /**
- * @param {number} cowId
  * @param {string} name
  * @param {string} family
  * @param {number} scale
  */
-function renderTextToCanvas(cowId, name, family, scale) {
-  // Extra horizontal pad beyond the default so ±4° rotated letters at the
-  // string edges don't clip — a 72px tall glyph at 4° needs ~5px of overhang.
-  const pad = 32;
+function renderTextToCanvas(name, family, scale) {
+  const pad = 24;
   const fontPx = Math.round(72 * scale);
   const font = `700 ${fontPx}px ${family}`;
   const measureCanvas = document.createElement('canvas');
   const measureCtx = /** @type {CanvasRenderingContext2D} */ (measureCanvas.getContext('2d'));
   measureCtx.font = font;
-
-  const letters = Array.from(name);
-  const letterW = letters.map((ch, i) => {
-    const j = jitterForGlyph(cowId, i);
-    return measureCtx.measureText(ch).width * j.scaleX;
-  });
-  const totalW = letterW.reduce((a, b) => a + b, 0);
+  const totalW = measureCtx.measureText(name).width;
   const width = Math.max(128, Math.ceil(totalW) + pad * 2);
   const height = fontPx + pad * 2;
 
@@ -198,23 +187,8 @@ function renderTextToCanvas(cowId, name, family, scale) {
   ctx.lineWidth = 10;
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
   ctx.fillStyle = '#ffffff';
-
-  let x = (width - totalW) / 2;
-  for (let i = 0; i < letters.length; i++) {
-    const ch = letters[i];
-    const j = jitterForGlyph(cowId, i);
-    const w = letterW[i];
-    const cx = x + w / 2;
-    const cy = height / 2 + j.offsetYEm * fontPx;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate((j.rotDeg * Math.PI) / 180);
-    ctx.scale(j.scaleX, 1);
-    ctx.strokeText(ch, 0, 0);
-    ctx.fillText(ch, 0, 0);
-    ctx.restore();
-    x += w;
-  }
+  ctx.strokeText(name, width / 2, height / 2);
+  ctx.fillText(name, width / 2, height / 2);
 
   return { canvas, aspect: width / height };
 }

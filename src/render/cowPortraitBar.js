@@ -18,7 +18,7 @@
 
 import { nameFontFor, nameFontScaleFor } from '../world/traits.js';
 import { thoughtFor } from './cowThoughtText.js';
-import { writeJitteredName } from './handwriting.js';
+import { writeName } from './handwriting.js';
 
 /**
  * @typedef {Object} PortraitBarOpts
@@ -84,7 +84,7 @@ export function createCowPortraitBar(opts) {
 
       const name = components.Brain.name;
       if (name !== card.name) {
-        writeJitteredName(card.nameEl, id, name);
+        writeName(card.nameEl, name);
         card.avatar.textContent = initialsOf(name);
         card.avatar.style.background = hueForName(name);
         card.name = name;
@@ -182,7 +182,7 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
     fontFamily: nameFontFor(traits),
     fontSize: `${11 * nameFontScaleFor(traits)}px`,
   });
-  writeJitteredName(nameEl, id, initialName);
+  writeName(nameEl, initialName);
 
   const activityEl = document.createElement('div');
   Object.assign(activityEl.style, {

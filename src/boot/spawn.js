@@ -71,7 +71,6 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
   const y = grid.getElevation(placed.i, placed.j);
   const firstName = pickCowName();
   const id = rollCowIdentity(currentTick, firstName);
-  const name = fullName(id);
   const skills = rollStartingSkills({
     ageYears: ageYears(id.birthTick, currentTick),
     childhoodBonus: skillsForChildhood(id.childhood),
@@ -85,8 +84,8 @@ export function spawnCowAt(world, grid, i, j, currentTick = 0) {
     Hunger: { value: 1 },
     Tiredness: { value: 1 },
     FoodPoisoning: { ticksRemaining: 0 },
-    Brain: { name, layerZ: 0 },
-    Identity: { name, ...id },
+    Brain: { name: id.nickname, layerZ: 0 },
+    Identity: { name: fullName(id), ...id },
     Job: { kind: 'none', state: 'idle', payload: {} },
     Path: { steps: [], index: 0 },
     Inventory: { items: [] },

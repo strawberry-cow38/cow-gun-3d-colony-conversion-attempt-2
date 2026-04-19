@@ -21,9 +21,10 @@ import {
 } from '../world/anatomy.js';
 import { getProfessionDescription } from '../world/backstories.js';
 import { opinionLabel } from '../world/chitchat.js';
+import { fullName } from '../world/identity.js';
 import { MAX_LEVEL, SKILL_IDS, SKILL_LABELS, xpForNextLevel } from '../world/skills.js';
 import { nameFontFor, nameFontScaleFor, traitDef } from '../world/traits.js';
-import { writeJitteredName } from './handwriting.js';
+import { writeName } from './handwriting.js';
 
 /**
  * @typedef {Object} CowPanelOpts
@@ -331,7 +332,8 @@ export function createCowPanel(opts) {
     const traits = identity.traits;
     const childhood = identity.childhood ?? '';
     const profession = identity.profession ?? '';
-    const key = `${brain.name}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}|${childhood}|${profession}`;
+    const displayName = fullName(identity);
+    const key = `${displayName}|${identity.gender}|${age}|${identity.heightCm}|${identity.hairColor}|${birthday}|${birthYear}|${traits.join(',')}|${childhood}|${profession}`;
     // Needs bars tick every update — values change continuously, so no cache
     // key gate. Setting style.width is a cheap op the browser batches.
     const hunger = world.get(id, 'Hunger');
@@ -353,11 +355,11 @@ export function createCowPanel(opts) {
     last.key = key;
     root.style.display = 'block';
 
-    avatar.textContent = initialsOf(brain.name);
-    avatar.style.background = hueForName(brain.name);
+    avatar.textContent = initialsOf(identity.nickname || identity.firstName || brain.name);
+    avatar.style.background = hueForName(identity.firstName || brain.name);
     nameEl.style.fontFamily = nameFontFor(traits);
     nameEl.style.fontSize = `${14 * nameFontScaleFor(traits)}px`;
-    writeJitteredName(nameEl, id, brain.name);
+    writeName(nameEl, displayName);
     genderEl.textContent = `${genderLabel(identity.gender)} · ${age} yrs`;
 
     stats.replaceChildren(

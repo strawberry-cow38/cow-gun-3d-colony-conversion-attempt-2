@@ -10,19 +10,13 @@
 
 import * as THREE from 'three';
 import { dayFractionOfTick, formatSimDate, formatSimTime, tickToSimDate } from '../sim/calendar.js';
-import { TILE_SIZE, worldToTileClamp } from '../world/coords.js';
+import { worldToTileClamp } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 
 // Scratch frustum + matrix for the "terrain chunks visible" HUD readout.
 // Reused each frame so the counter doesn't allocate.
 const _chunkFrustum = new THREE.Frustum();
 const _chunkProjView = new THREE.Matrix4();
-
-// Sun-shadow refresh thresholds. autoUpdate is off so we only re-render the
-// ortho depth map when the frustum would have drifted — camera pan of at
-// least a tile, sun direction change (day/night progression), or first frame.
-const SUN_SHADOW_FOCUS_STEP = TILE_SIZE;
-const SUN_SHADOW_DIR_STEP = 8;
 
 /** @param {number} speed */
 function speedIcon(speed) {
@@ -131,6 +125,7 @@ export function createRenderFrame({
     bushInstancer,
     wallInstancer,
     doorInstancer,
+    dropShadows,
     torchInstancer,
     roofInstancer,
     roofCollapseParticles,
@@ -168,9 +163,11 @@ export function createRenderFrame({
   let measuredFps = 0;
   let lastRenderClock = performance.now();
   const startClock = performance.now();
-  // Last frustum parameters the sun shadow was captured with. Used to skip
-  // shadow passes when nothing that'd invalidate the cached depth map moved.
-  const _lastSunShadow = { fx: Number.NaN, fz: Number.NaN, dx: 0, dy: 0, dz: 0 };
+  // Sun starts with a fixed world-space offset from origin; preserve that
+  // direction each frame by rebasing off the origin instead of accumulating.
+  const sunBaseX = sun.position.x;
+  const sunBaseY = sun.position.y;
+  const sunBaseZ = sun.position.z;
   /** Last wall-clock time we spawned a wake burst for each cow id. */
   /** @type {Map<number, number>} */
   const lastWakeAt = new Map();
@@ -209,40 +206,13 @@ export function createRenderFrame({
     audio.update();
     const simTick = getTick() + (state.tickOffset ?? 0);
     timeOfDay.setT(dayFractionOfTick(simTick));
-    // Sun-shadow follow: timeOfDay set sun.position = sunDir*4000 anchored at
-    // the world origin. Shift both the target and the position by the current
-    // camera focus so the ortho shadow frustum re-centers on the visible area
-    // while keeping the same world-space sun direction. Only request a redraw
-    // when the cached frustum would have drifted — otherwise three reuses the
-    // last shadow map for free.
+    // Sun follows camera focus so its directional lighting angle stays
+    // consistent; shadow map is disabled (see scene.js) so we only need to
+    // reposition the light for its Lambert contribution.
     const fx = fpCamera.active ? camera.position.x : rts.focus.x;
     const fz = fpCamera.active ? camera.position.z : rts.focus.z;
-    const dirX = sun.position.x;
-    const dirY = sun.position.y;
-    const dirZ = sun.position.z;
     sun.target.position.set(fx, 0, fz);
-    sun.position.set(dirX + fx, dirY, dirZ + fz);
-    const dfx = _lastSunShadow.fx - fx;
-    const dfz = _lastSunShadow.fz - fz;
-    const ddx = _lastSunShadow.dx - dirX;
-    const ddy = _lastSunShadow.dy - dirY;
-    const ddz = _lastSunShadow.dz - dirZ;
-    const focusDrift2 = dfx * dfx + dfz * dfz;
-    const dirDrift2 = ddx * ddx + ddy * ddy + ddz * ddz;
-    const stepF = SUN_SHADOW_FOCUS_STEP;
-    const stepD = SUN_SHADOW_DIR_STEP;
-    if (
-      Number.isNaN(_lastSunShadow.fx) ||
-      focusDrift2 > stepF * stepF ||
-      dirDrift2 > stepD * stepD
-    ) {
-      sun.shadow.needsUpdate = true;
-      _lastSunShadow.fx = fx;
-      _lastSunShadow.fz = fz;
-      _lastSunShadow.dx = dirX;
-      _lastSunShadow.dy = dirY;
-      _lastSunShadow.dz = dirZ;
-    }
+    sun.position.set(sunBaseX + fx, sunBaseY, sunBaseZ + fz);
     weather.update(rdt, camera.position);
     cowCamOverlay.update(fpCamera, world);
     if (stressInstancer) stressInstancer.update(world, alpha);
@@ -313,6 +283,7 @@ export function createRenderFrame({
     cuttableMarkerInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
+    dropShadows.update(world, tileGrid, alpha);
     stockpileOverlay.update(tileGrid, stockpileZones, state.selectedZoneId);
     farmZoneOverlay.update(tileGrid, farmZones, state.selectedFarmZoneId);
     tilledOverlay.update(tileGrid);

@@ -19,7 +19,7 @@ export function readBootParams() {
   const p = new URLSearchParams(location.search);
   return {
     stressCount: Number.parseInt(p.get('stress') ?? '0', 10),
-    cowCount: Number.parseInt(p.get('cows') ?? '10', 10),
+    cowCount: Number.parseInt(p.get('cows') ?? '3', 10),
     treeCount: Number.parseInt(p.get('trees') ?? '60', 10),
     gridW: Number.parseInt(p.get('w') ?? `${DEFAULT_GRID_W}`, 10),
     gridH: Number.parseInt(p.get('h') ?? `${DEFAULT_GRID_H}`, 10),

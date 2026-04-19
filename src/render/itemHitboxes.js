@@ -28,7 +28,7 @@ const WOOD_TOP_HEIGHT_M = 0.5;
  * @param {number} count
  * @param {number} capacity
  */
-function footprintMeters(kind, count, capacity) {
+export function footprintMeters(kind, count, capacity) {
   if (kind === 'wood') {
     const frac = Math.min(1, count / Math.max(1, capacity));
     const tier = Math.min(2, Math.floor(frac * 3));
