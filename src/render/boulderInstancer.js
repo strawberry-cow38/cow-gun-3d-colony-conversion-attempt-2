@@ -1,18 +1,16 @@
 /**
- * Boulder render: nine variant InstancedMeshes loaded from boulder.glb
- * (3 shapes × {regular, mossy, copper}) plus a pickaxe-shaped floating
- * marker (handle + head) for marked boulders.
+ * Boulder render: twelve variant InstancedMeshes loaded from boulder.glb
+ * (3 shapes × {regular, mossy, copper, coal}) plus a pickaxe-shaped
+ * floating marker (handle + head) for marked boulders.
  *
  * Each GLB variant ships its own baked 512×512 diffuse texture (the
  * procedural stone / moss shader rendered into UV space) so per-pixel
- * detail survives export. Copper variants are two-primitive meshes
- * (stone base w/ verdigris overlay + oxidized copper ore chunks), so the
- * JS side just renders them white-tinted — the baked material carries
- * the look. Runtime uses the GLTF-provided materials as-is and tints via
- * setColorAt: stone/copper = white (raw texture), coal = kind color
- * multiplied over the stone texture to shift hue. Until boulder.glb
- * resolves, a procedural dodecahedron fallback renders so the first
- * frame isn't empty.
+ * detail survives export. Copper + coal variants are two-primitive meshes
+ * (stone base + embedded ore chunks w/ vertex-colored palettes), so they
+ * come through GLTFLoader as Group → Mesh[]. Runtime uses the GLTF-provided
+ * materials as-is and tints via setColorAt: stone = white, copper = warm
+ * off-white, coal = cool darker off-white. Until boulder.glb resolves, a
+ * procedural dodecahedron fallback renders so the first frame isn't empty.
  *
  * Per-boulder yaw from BoulderViz.yaw so neighbours don't look like clones.
  * Static rebuild gated on `dirty`; marker rebuilt every frame (small count).
@@ -28,12 +26,14 @@ const BOULDER_GLB_URL = 'models/boulder.glb';
 const VARIANT_NAMES = ['boulder_a', 'boulder_b', 'boulder_c'];
 const MOSSY_NAMES = ['boulder_a_mossy', 'boulder_b_mossy', 'boulder_c_mossy'];
 const COPPER_NAMES = ['boulder_a_copper', 'boulder_b_copper', 'boulder_c_copper'];
+const COAL_NAMES = ['boulder_a_coal', 'boulder_b_coal', 'boulder_c_coal'];
 // Stone texture carries its final palette; tint white to show it raw.
-// Coal (no dedicated mesh) tints the stone texture. Copper gets a soft
-// copper-warm off-white so the ore nodes read as "copper" at a glance
-// across the terrain without washing out the baked patina detail.
+// Copper gets a soft warm off-white so ore nodes read as "copper" at a
+// glance; coal gets a cool darker off-white so the stone base reads as
+// sootier than plain rock without crushing the baked pixel detail.
 const WHITE_TINT = new THREE.Color(0xffffff);
 const COPPER_TINT = new THREE.Color(0xffd0a8);
+const COAL_TINT = new THREE.Color(0x9a9aa0);
 
 const FALLBACK_RADIUS = 0.55 * UNITS_PER_METER;
 const FALLBACK_HEIGHT = 0.9 * UNITS_PER_METER;
@@ -101,12 +101,15 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   const mossyMeshes = [null, null, null];
   /** @type {(THREE.InstancedMesh[] | null)[]} */
   const copperMeshes = [null, null, null];
+  /** @type {(THREE.InstancedMesh[] | null)[]} */
+  const coalMeshes = [null, null, null];
 
   new GLTFLoader().load(BOULDER_GLB_URL, (gltf) => {
     for (let v = 0; v < 3; v++) {
       regularMeshes[v] = makeVariantMesh(scene, gltf, VARIANT_NAMES[v], capacity);
       mossyMeshes[v] = makeVariantMesh(scene, gltf, MOSSY_NAMES[v], capacity);
       copperMeshes[v] = makeVariantMesh(scene, gltf, COPPER_NAMES[v], capacity);
+      coalMeshes[v] = makeVariantMesh(scene, gltf, COAL_NAMES[v], capacity);
     }
     dirty = true;
   });
@@ -146,8 +149,8 @@ export function createBoulderInstancer(scene, capacity = 4096) {
     if (!dirty) return;
     const glbReady =
       regularMeshes[0] !== null && regularMeshes[1] !== null && regularMeshes[2] !== null;
-    // [reg0..2, moss0..2, copper0..2]
-    const counts = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // [reg0..2, moss0..2, copper0..2, coal0..2]
+    const counts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     let fallbackI = 0;
     let shadowI = 0;
     for (const { components } of world.query(['Boulder', 'TileAnchor', 'BoulderViz'])) {
@@ -184,12 +187,16 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       }
       const variantIdx = viz.variantIdx % 3;
       const useCopper = boulder.kind === 'copper';
+      const useCoal = boulder.kind === 'coal';
       const useMossy = viz.mossy && boulder.kind === 'stone';
       let bucket;
       let parts;
       if (useCopper) {
         bucket = 6 + variantIdx;
         parts = copperMeshes[variantIdx];
+      } else if (useCoal) {
+        bucket = 9 + variantIdx;
+        parts = coalMeshes[variantIdx];
       } else if (useMossy) {
         bucket = 3 + variantIdx;
         parts = mossyMeshes[variantIdx];
@@ -200,10 +207,9 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       if (!parts) continue;
       const slot = counts[bucket];
       if (slot >= capacity) continue;
-      // Stone carries its final palette raw; copper gets a subtle warm
-      // shift so nodes pop at a glance; coal multiplies its kind color
-      // over the shared stone texture.
-      const tint = useCopper ? COPPER_TINT : boulder.kind === 'stone' ? WHITE_TINT : draw.color;
+      // Stone carries its final palette raw; ore variants tint the baked
+      // material: copper warmer + brighter, coal cooler + darker.
+      const tint = useCopper ? COPPER_TINT : useCoal ? COAL_TINT : WHITE_TINT;
       for (const part of parts) {
         part.setMatrixAt(slot, _matrix);
         part.setColorAt(slot, tint);
@@ -218,6 +224,7 @@ export function createBoulderInstancer(scene, capacity = 4096) {
         commitParts(regularMeshes[v], counts[v]);
         commitParts(mossyMeshes[v], counts[3 + v]);
         commitParts(copperMeshes[v], counts[6 + v]);
+        commitParts(coalMeshes[v], counts[9 + v]);
       }
     }
     shadowMesh.count = shadowI;
