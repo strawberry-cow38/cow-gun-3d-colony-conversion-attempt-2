@@ -1,8 +1,8 @@
 /**
  * Bottom-right "what's under the cursor" readout. Listens for mousemove on
- * the canvas and picks the closest hit from the cow instancer, the object
- * hitbox mesh, and the tile mesh. Fallbacks handle items, nearby-cow
- * proximity, and bare terrain.
+ * the canvas and picks the closest hit from the cow hitbox mesh, the
+ * object hitbox mesh, and the tile mesh. Fallbacks handle items and bare
+ * terrain labels.
  *
  * Throttled to ~10Hz. The tile mesh raycast walks ~40k triangles (one giant
  * BufferGeometry, no BVH) — doing that at rAF cadence on fast mice halved
@@ -13,7 +13,7 @@
 
 import * as THREE from 'three';
 import { objectTypeFor } from '../ui/objectTypes.js';
-import { TILE_SIZE, worldToTile } from '../world/coords.js';
+import { worldToTile } from '../world/coords.js';
 import { ITEM_INFO } from '../world/items.js';
 import { BIOME } from '../world/tileGrid.js';
 
@@ -29,7 +29,6 @@ const BIOME_LABELS = /** @type {Record<number, string>} */ ({
   [BIOME.DEEP_WATER]: 'Deep water',
 });
 
-const PICK_RADIUS = TILE_SIZE * 1.5;
 // Tile mesh is one giant BufferGeometry (~40k tris, no BVH). Each raycast
 // against it walks every tri, so cap label refresh to ~10Hz — human eye
 // can't read a tooltip faster and mousemove fires at 120Hz on fast mice.
@@ -45,11 +44,11 @@ export class HoverTooltip {
    *   grid: { W: number, H: number },
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
    *   world: import('../ecs/world.js').World,
-   *   cowInstancer: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
+   *   cowHitboxes: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
    *   objectHitboxes: { mesh: import('three').InstancedMesh, entityFromInstanceId: (i: number) => number | null },
    * }} opts
    */
-  constructor({ dom, el, camera, tileMesh, grid, tileGrid, world, cowInstancer, objectHitboxes }) {
+  constructor({ dom, el, camera, tileMesh, grid, tileGrid, world, cowHitboxes, objectHitboxes }) {
     this.dom = dom;
     this.el = el;
     this.camera = camera;
@@ -57,7 +56,7 @@ export class HoverTooltip {
     this.grid = grid;
     this.tileGrid = tileGrid;
     this.world = world;
-    this.cowInstancer = cowInstancer;
+    this.cowHitboxes = cowHitboxes;
     this.objectHitboxes = objectHitboxes;
     this.pending = /** @type {MouseEvent | null} */ (null);
     this.scheduled = false;
@@ -117,7 +116,7 @@ export class HoverTooltip {
     // the frustum/sphere rejection skips most of the scene before we touch
     // any triangles. Tile raycast is the expensive one (~40k tris, no BVH)
     // and only runs if neither cow nor object gives us a label.
-    const cowHit = _raycaster.intersectObject(this.cowInstancer.mesh, false)[0];
+    const cowHit = _raycaster.intersectObject(this.cowHitboxes.mesh, false)[0];
     const objHit = _raycaster.intersectObject(this.objectHitboxes.mesh, false)[0];
     const cowDist = cowHit?.instanceId !== undefined ? cowHit.distance : Number.POSITIVE_INFINITY;
     const objDist = objHit?.instanceId !== undefined ? objHit.distance : Number.POSITIVE_INFINITY;
@@ -127,7 +126,7 @@ export class HoverTooltip {
     // the winning instanced hit actually resolves to a label — otherwise
     // fall through to the tile path.
     if (cowDist < objDist) {
-      const ent = this.cowInstancer.entityFromInstanceId(/** @type {number} */ (cowHit.instanceId));
+      const ent = this.cowHitboxes.entityFromInstanceId(/** @type {number} */ (cowHit.instanceId));
       if (ent !== null) return this.#cowLabel(ent);
     }
     if (objDist < Number.POSITIVE_INFINITY) {
@@ -145,22 +144,6 @@ export class HoverTooltip {
     const p = tileHit.point;
     const tile = worldToTile(p.x, p.z, this.grid.W, this.grid.H);
     if (tile.i < 0) return null;
-
-    // Cow proximity fallback: at RTS zoom a moving cow can be a few pixels
-    // wide, so grab any cow within a tile of the tile-hit point.
-    let best = /** @type {number | null} */ (null);
-    let bestD2 = PICK_RADIUS * PICK_RADIUS;
-    for (const { id, components } of this.world.query(['Cow', 'Position'])) {
-      const pos = components.Position;
-      const dx = pos.x - p.x;
-      const dz = pos.z - p.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < bestD2) {
-        bestD2 = d2;
-        best = id;
-      }
-    }
-    if (best !== null) return this.#cowLabel(best);
 
     const itemId = this.#entityAt(tile.i, tile.j, 'Item');
     if (itemId !== null) return this.#itemLabel(itemId);

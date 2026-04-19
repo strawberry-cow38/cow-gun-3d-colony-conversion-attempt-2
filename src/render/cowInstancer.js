@@ -9,9 +9,8 @@
  * figure, hairColor tints the hair via setColorAt, and gender widens or
  * narrows the torso. Everything else is shared material.
  *
- * `pickFromInstanceId` / `.mesh` still expose a single InstancedMesh for the
- * CowSelector raycast; we use the torso since it's the biggest single block.
- * The selector's proximity fallback already handles misses on limbs.
+ * Cow picking goes through cowHitboxes.js (a dedicated full-figure AABB
+ * InstancedMesh) so nothing here is used as a raycast target.
  */
 
 import * as THREE from 'three';
@@ -181,8 +180,6 @@ export function createCowInstancer(scene, capacity = 256) {
    */
   /** @type {PartRecord[]} */
   const parts = [];
-  /** @type {THREE.InstancedMesh | null} */
-  let torsoMesh = null;
 
   const faceTex = buildFaceTexture();
   for (const spec of PART_SPECS) {
@@ -228,9 +225,7 @@ export function createCowInstancer(scene, capacity = 256) {
       femaleOnly: spec.femaleOnly === true,
     };
     parts.push(rec);
-    if (rec.isTorso) torsoMesh = mesh;
   }
-  if (!torsoMesh) throw new Error('cowInstancer: torso part missing from PART_SPECS');
 
   const carryGeo = new THREE.BoxGeometry(CARRY_SIZE, CARRY_SIZE, CARRY_SIZE);
   const carryMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
@@ -399,5 +394,5 @@ export function createCowInstancer(scene, capacity = 256) {
     return slotToEntity[instanceId] ?? null;
   }
 
-  return { mesh: torsoMesh, update, entityFromInstanceId };
+  return { update, entityFromInstanceId };
 }

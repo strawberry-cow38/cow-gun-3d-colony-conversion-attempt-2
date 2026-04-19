@@ -809,7 +809,7 @@ new HoverTooltip({
   grid: { W: gridW, H: gridH },
   tileGrid,
   world,
-  cowInstancer,
+  cowHitboxes,
   objectHitboxes,
 });
 
