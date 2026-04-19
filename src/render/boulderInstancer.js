@@ -88,11 +88,15 @@ export function createBoulderInstancer(scene, capacity = 4096) {
 
   const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.4);
 
-  /** @type {(THREE.InstancedMesh | null)[]} */
+  // Each entry is null until the GLB resolves, then an array of 1+ InstancedMesh
+  // — one per primitive of the GLB node. Copper nodes export as two primitives
+  // (stone base + ore chunks, split on material_index), so they come through
+  // as Group → Mesh[], not a single Mesh.
+  /** @type {(THREE.InstancedMesh[] | null)[]} */
   const regularMeshes = [null, null, null];
-  /** @type {(THREE.InstancedMesh | null)[]} */
+  /** @type {(THREE.InstancedMesh[] | null)[]} */
   const mossyMeshes = [null, null, null];
-  /** @type {(THREE.InstancedMesh | null)[]} */
+  /** @type {(THREE.InstancedMesh[] | null)[]} */
   const copperMeshes = [null, null, null];
 
   new GLTFLoader().load(BOULDER_GLB_URL, (gltf) => {
@@ -179,25 +183,27 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       const useCopper = boulder.kind === 'copper';
       const useMossy = viz.mossy && boulder.kind === 'stone';
       let bucket;
-      let mesh;
+      let parts;
       if (useCopper) {
         bucket = 6 + variantIdx;
-        mesh = copperMeshes[variantIdx];
+        parts = copperMeshes[variantIdx];
       } else if (useMossy) {
         bucket = 3 + variantIdx;
-        mesh = mossyMeshes[variantIdx];
+        parts = mossyMeshes[variantIdx];
       } else {
         bucket = variantIdx;
-        mesh = regularMeshes[variantIdx];
+        parts = regularMeshes[variantIdx];
       }
-      if (!mesh) continue;
+      if (!parts) continue;
       const slot = counts[bucket];
       if (slot >= capacity) continue;
-      mesh.setMatrixAt(slot, _matrix);
       // Copper + stone meshes carry their final palette in the baked
       // texture; only coal-like kinds need the color multiply.
       const tint = useCopper || boulder.kind === 'stone' ? WHITE_TINT : draw.color;
-      mesh.setColorAt(slot, tint);
+      for (const part of parts) {
+        part.setMatrixAt(slot, _matrix);
+        part.setColorAt(slot, tint);
+      }
       counts[bucket] = slot + 1;
     }
     if (!glbReady) {
@@ -205,12 +211,9 @@ export function createBoulderInstancer(scene, capacity = 4096) {
     } else {
       commitMesh(fallbackMesh, 0);
       for (let v = 0; v < 3; v++) {
-        const reg = regularMeshes[v];
-        const moss = mossyMeshes[v];
-        const cop = copperMeshes[v];
-        if (reg) commitMesh(reg, counts[v]);
-        if (moss) commitMesh(moss, counts[3 + v]);
-        if (cop) commitMesh(cop, counts[6 + v]);
+        commitParts(regularMeshes[v], counts[v]);
+        commitParts(mossyMeshes[v], counts[3 + v]);
+        commitParts(copperMeshes[v], counts[6 + v]);
       }
     }
     shadowMesh.count = shadowI;
@@ -275,10 +278,20 @@ function commitMesh(mesh, count) {
 }
 
 /**
- * Reuse the GLB mesh's own material (which carries the baked texture) rather
- * than a shared plain material — that's the whole point of baking. Disable
- * flatShading on it so the UV-space noise detail doesn't fight per-face
- * lighting breaks.
+ * @param {THREE.InstancedMesh[] | null} parts
+ * @param {number} count
+ */
+function commitParts(parts, count) {
+  if (!parts) return;
+  for (const p of parts) commitMesh(p, count);
+}
+
+/**
+ * Reuse each GLB primitive's own material (which carries the baked texture)
+ * rather than a shared plain material — that's the whole point of baking.
+ * Multi-primitive nodes (like copper: stone base + ore chunks) come through
+ * GLTFLoader as a Group, so walk any Mesh children and build one
+ * InstancedMesh per primitive. Caller renders every part at the same matrix.
  *
  * @param {THREE.Scene} scene
  * @param {import('three/examples/jsm/loaders/GLTFLoader.js').GLTF} gltf
@@ -286,18 +299,31 @@ function commitMesh(mesh, count) {
  * @param {number} capacity
  */
 function makeVariantMesh(scene, gltf, nodeName, capacity) {
-  const node = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName(nodeName));
+  const node = gltf.scene.getObjectByName(nodeName);
   if (!node) {
     console.warn(`[boulderInstancer] boulder.glb missing node ${nodeName}`);
     return null;
   }
-  const geo = node.geometry.clone();
-  geo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
-  const mat = /** @type {THREE.MeshStandardMaterial} */ (node.material);
-  const im = new THREE.InstancedMesh(geo, mat, capacity);
-  im.count = 0;
-  im.castShadow = true;
-  im.receiveShadow = true;
-  scene.add(im);
-  return im;
+  /** @type {THREE.Mesh[]} */
+  const meshes = [];
+  node.traverse((o) => {
+    if (/** @type {THREE.Mesh} */ (o).isMesh) meshes.push(/** @type {THREE.Mesh} */ (o));
+  });
+  if (meshes.length === 0) {
+    console.warn(`[boulderInstancer] boulder.glb node ${nodeName} has no mesh primitives`);
+    return null;
+  }
+  const parts = [];
+  for (const m of meshes) {
+    const geo = /** @type {THREE.BufferGeometry} */ (m.geometry).clone();
+    geo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+    const mat = /** @type {THREE.MeshStandardMaterial} */ (m.material);
+    const im = new THREE.InstancedMesh(geo, mat, capacity);
+    im.count = 0;
+    im.castShadow = true;
+    im.receiveShadow = true;
+    scene.add(im);
+    parts.push(im);
+  }
+  return parts;
 }
