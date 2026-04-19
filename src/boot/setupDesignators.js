@@ -53,6 +53,7 @@ import { UninstallDesignator } from '../render/uninstallDesignator.js';
  *   state: import('./input.js').BootState,
  *   instancers: ReturnType<typeof import('./setupInstancers.js').setupInstancers>,
  *   stockpileZones: ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>,
+ *   farmZones: import('../systems/farmZones.js').FarmZones,
  *   updateHud: () => void,
  * }} opts
  */
@@ -68,6 +69,7 @@ export function setupDesignators({
   state,
   instancers,
   stockpileZones,
+  farmZones,
   updateHud,
 }) {
   const {
@@ -143,8 +145,8 @@ export function setupDesignators({
 
   const farmZoneDesignator = new FarmZoneDesignator({
     ...baseArgs,
-    jobBoard,
     overlay: farmZoneOverlay,
+    farmZones,
     onChanged: () => notifyChanged(farmZoneDesignator),
   });
   designators.push(farmZoneDesignator);

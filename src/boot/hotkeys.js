@@ -483,6 +483,7 @@ async function loadGame(ctx) {
     // counters + torchTiles Set are stale until rebuilt.
     tileGrid.recomputeCounts();
     ctx.stockpileZones.hydrateFromGrid();
+    ctx.farmZones.hydrateFromGrid();
     pathCache.clear();
     despawnAllComp(world, 'Cow');
     despawnAllComp(world, 'Tree');

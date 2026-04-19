@@ -53,6 +53,7 @@ function speedIcon(speed) {
  *   draftBadge: ReturnType<typeof import('../render/draftBadge.js').createDraftBadge>,
  *   stressInstancer: ReturnType<typeof import('../render/stressInstancer.js').createStressInstancer> | null,
  *   stockpileZones: import('../systems/stockpileZones.js').StockpileZones,
+ *   farmZones: import('../systems/farmZones.js').FarmZones,
  *   instancers: ReturnType<typeof import('./setupInstancers.js').setupInstancers>,
  *   cowPortraitBar: { update: () => void },
  *   cowPanel: { update: () => void },
@@ -62,6 +63,7 @@ function speedIcon(speed) {
  *   stovePanel: { update: () => void },
  *   bedPanel: { update: () => void },
  *   stockpilePanel: { update: () => void },
+ *   farmPanel: { update: () => void },
  *   objectPanel: { update: () => void },
  *   buildTab: { update: () => void },
  *   workTab: { update: () => void },
@@ -92,6 +94,7 @@ export function createRenderFrame({
   draftBadge,
   stressInstancer,
   stockpileZones,
+  farmZones,
   instancers,
   cowPortraitBar,
   cowPanel,
@@ -101,6 +104,7 @@ export function createRenderFrame({
   stovePanel,
   bedPanel,
   stockpilePanel,
+  farmPanel,
   objectPanel,
   buildTab,
   workTab,
@@ -307,7 +311,7 @@ export function createRenderFrame({
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
     stockpileOverlay.update(tileGrid, stockpileZones, state.selectedZoneId);
-    farmZoneOverlay.update(tileGrid);
+    farmZoneOverlay.update(tileGrid, farmZones, state.selectedFarmZoneId);
     tilledOverlay.update(tileGrid);
     roomOverlay.update(tileGrid, rooms);
     ignoreRoofOverlay.update(tileGrid);
@@ -322,6 +326,7 @@ export function createRenderFrame({
     stovePanel.update();
     bedPanel.update();
     stockpilePanel.update();
+    farmPanel.update();
     objectPanel.update();
     buildTab.update();
     workTab.update();

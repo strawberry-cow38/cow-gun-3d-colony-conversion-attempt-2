@@ -359,6 +359,7 @@ export function registerComponents(world) {
   world.defineComponent('Crop', () => ({
     kind: 'corn',
     growthTicks: 0,
+    plantedAtTick: 0,
   }));
   world.defineComponent('CropViz', () => ({}));
   world.defineComponent('Cuttable', () => ({ markedJobId: 0, progress: 0 }));

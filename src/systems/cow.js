@@ -630,7 +630,7 @@ export function makeCowBrainSystem(deps) {
         } else if (job.kind === 'till') {
           runTillJob(world, id, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'plant') {
-          runPlantJob(world, id, job, path, pos, grid, paths, board, deps);
+          runPlantJob(world, id, job, path, pos, grid, paths, board, deps, ctx);
         } else if (job.kind === 'harvest') {
           runHarvestJob(world, id, job, path, pos, grid, paths, board, deps);
         } else if (job.kind === 'paint') {
@@ -1737,8 +1737,9 @@ function runTillJob(world, cowId, job, path, pos, grid, paths, board, deps) {
  * @param {import('../sim/pathfinding.js').PathCache} paths
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {BrainDeps} deps
+ * @param {{ tick: number }} ctx
  */
-function runPlantJob(world, cowId, job, path, pos, grid, paths, board, deps) {
+function runPlantJob(world, cowId, job, path, pos, grid, paths, board, deps, ctx) {
   const { i, j, jobId } = /** @type {{ i: number, j: number, jobId: number }} */ (job.payload);
 
   const boardJob = board.get(jobId);
@@ -1794,7 +1795,7 @@ function runPlantJob(world, cowId, job, path, pos, grid, paths, board, deps) {
     if (remaining <= 0) {
       const w = tileToWorld(i, j, grid.W, grid.H);
       world.spawn({
-        Crop: { kind, growthTicks: 0 },
+        Crop: { kind, growthTicks: 0, plantedAtTick: ctx.tick },
         CropViz: {},
         Cuttable: { markedJobId: 0, progress: 0 },
         TileAnchor: { i, j },

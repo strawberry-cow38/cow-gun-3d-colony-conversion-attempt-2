@@ -2,12 +2,9 @@
  * Farm-zone designation mode.
  *
  * Activated from the build tab; LMB drag a rectangle to mark tiles as a
- * farming zone. Shift+drag clears the zone. Escape exits. Zoned tiles display
- * a green overlay and trigger cows to till / plant / tend the tile.
- *
- * Mirrors StockpileDesignator's structure: drag rect, capture-phase mouse
- * listeners to keep selection / pan out of the way, a toggle bitmap on
- * TileGrid.farmZone.
+ * farming zone. Shift+drag clears the zone. Escape exits. Drags routed into
+ * the farmZones registry so overlapping drags merge into a single zone —
+ * mirrors StockpileDesignator's structure.
  */
 
 import * as THREE from 'three';
@@ -27,20 +24,20 @@ export class FarmZoneDesignator {
    *   camera: THREE.PerspectiveCamera,
    *   tileMesh: () => THREE.Group,
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
-   *   jobBoard: import('../jobs/board.js').JobBoard,
    *   overlay: { markDirty: () => void },
+   *   farmZones: import('../systems/farmZones.js').FarmZones,
    *   scene: THREE.Scene,
    *   onChanged: () => void,
    *   audio?: { play: (kind: string) => void },
    * }} opts
    */
-  constructor({ canvas, camera, tileMesh, tileGrid, jobBoard, overlay, scene, onChanged, audio }) {
+  constructor({ canvas, camera, tileMesh, tileGrid, overlay, farmZones, scene, onChanged, audio }) {
     this.dom = canvas;
     this.camera = camera;
     this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
-    this.board = jobBoard;
     this.overlay = overlay;
+    this.farmZones = farmZones;
     this.onStateChanged = onChanged;
     this.audio = audio;
     this.active = false;
@@ -160,38 +157,50 @@ export class FarmZoneDesignator {
    * @param {boolean} removing
    */
   #apply(a, b, removing) {
+    const grid = this.tileGrid;
     const i0 = Math.min(a.i, b.i);
     const i1 = Math.max(a.i, b.i);
     const j0 = Math.min(a.j, b.j);
     const j1 = Math.max(a.j, b.j);
-    let any = false;
+    /** @type {number[]} */
+    const idxs = [];
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
-        if (!this.tileGrid.inBounds(i, j)) continue;
-        // Skip blocked tiles when adding — farm zones can't overlap trees,
-        // walls, or built structures. Stockpile tiles share ground with zones
-        // fine so no extra check for that.
-        if (!removing && this.tileGrid.isBlocked(i, j)) continue;
-        const cur = this.tileGrid.getFarmZone(i, j);
-        const target = removing ? 0 : CROP_ID_FOR_KIND[this.currentCrop];
-        if (cur === target) continue;
-        this.tileGrid.setFarmZone(i, j, target);
-        any = true;
+        if (!grid.inBounds(i, j)) continue;
+        if (!removing && grid.isBlocked(i, j)) continue;
+        idxs.push(grid.idx(i, j));
       }
     }
-    // Reap till/plant jobs on de-zoned tiles so cows don't thrash claiming
-    // stale work that runXJob would immediately bail on (see
-    // runTillJob/runPlantJob — both check getFarmZone === 0 and release).
-    if (any && removing) {
-      for (const j of this.board.jobs) {
-        if (j.completed) continue;
-        if (j.kind !== 'till' && j.kind !== 'plant') continue;
-        const { i: ji, j: jj } = j.payload;
-        if (ji < i0 || ji > i1 || jj < j0 || jj > j1) continue;
-        this.board.complete(j.id);
+    let changed = false;
+    if (removing) {
+      changed = this.farmZones.removeTiles(idxs);
+    } else {
+      // Collect zone ids the drag overlaps; fresh tiles land in the survivor
+      // (or a new zone if no overlap). farm.js reaps stale till/plant jobs
+      // on de-zoned tiles automatically, so no need to touch the board here.
+      /** @type {Set<number>} */
+      const overlap = new Set();
+      /** @type {number[]} */
+      const fresh = [];
+      for (const k of idxs) {
+        const id = this.farmZones.zoneIdByTile[k];
+        if (id > 0) overlap.add(id);
+        else fresh.push(k);
+      }
+      if (overlap.size === 0) {
+        const zone = this.farmZones.createZone(fresh, { cropKind: this.currentCrop });
+        changed = !!zone;
+      } else {
+        const survivorId =
+          overlap.size === 1 ? [...overlap][0] : this.farmZones.mergeZones([...overlap]);
+        if (fresh.length > 0) {
+          changed = this.farmZones.extendZone(survivorId, fresh) || overlap.size > 1;
+        } else {
+          changed = overlap.size > 1;
+        }
       }
     }
-    if (any) {
+    if (changed) {
       this.audio?.play('command');
       this.overlay.markDirty();
       this.onStateChanged();

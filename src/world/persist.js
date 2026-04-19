@@ -18,7 +18,7 @@
  *   torches: [ { i, j, decon: boolean, progress: number } ],
  *   roofs: [ { i, j, stuff, decon: boolean, progress: number } ],
  *   floors: [ { i, j, stuff, decon: boolean, progress: number } ],
- *   crops: [ { i, j, kind: string, growthTicks: number } ],
+ *   crops: [ { i, j, kind: string, growthTicks: number, plantedAtTick: number } ],
  *   furnaces: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, stored: { kind, count }[], outputs: { kind, count }[], bills, nextBillId } ],
  *   easels: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, artistCowId, startTick, stored: { kind, count }[], bills, nextBillId } ],
  *   stoves: [ { i, j, stuff, workI, workJ, facing, decon, progress, workTicksRemaining, activeBillId, cookCowId, startTick, mealQuality, mealIngredients: string[], stored: { kind, count }[], bills, nextBillId } ],
@@ -217,6 +217,7 @@ function sanitizeSkillLevels(levels) {
  * @property {number} j
  * @property {string} kind
  * @property {number} growthTicks
+ * @property {number} plantedAtTick
  * @property {boolean} cutMarked
  * @property {number} cutProgress
  */
@@ -576,6 +577,7 @@ export function serializeState(tileGrid, world) {
       j: components.TileAnchor.j,
       kind: components.Crop.kind,
       growthTicks: components.Crop.growthTicks,
+      plantedAtTick: components.Crop.plantedAtTick ?? 0,
       cutMarked: components.Cuttable.markedJobId > 0,
       cutProgress: components.Cuttable.progress,
     });
@@ -1096,7 +1098,11 @@ export function hydrateCrops(world, grid, board, state) {
     if (!grid.inBounds(c.i, c.j)) continue;
     const w = tileToWorld(c.i, c.j, grid.W, grid.H);
     const id = world.spawn({
-      Crop: { kind: c.kind, growthTicks: c.growthTicks ?? 0 },
+      Crop: {
+        kind: c.kind,
+        growthTicks: c.growthTicks ?? 0,
+        plantedAtTick: c.plantedAtTick ?? 0,
+      },
       CropViz: {},
       Cuttable: { markedJobId: 0, progress: c.cutProgress ?? 0 },
       TileAnchor: { i: c.i, j: c.j },

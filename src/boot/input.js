@@ -29,6 +29,9 @@ import { dispatch } from './hotkeys.js';
  * @property {number|null} selectedZoneId
  *   currently selected stockpile zone id, or null. Mutex w/ cow/item/station
  *   buckets — panel reads this to render filter checkboxes + delete button.
+ * @property {number|null} selectedFarmZoneId
+ *   currently selected farm zone id, or null. Mutex w/ cow/item/station/
+ *   stockpile buckets — panel reads this to render crop picker + info.
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Group} tileMesh
  *   chunked terrain Group — raycasts against it must use `recursive: true`.
@@ -65,6 +68,7 @@ import { dispatch } from './hotkeys.js';
  * @property {{ markDirty: () => void } | null} [wallArtInstancer]
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
  * @property {ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>} stockpileZones
+ * @property {import('../systems/farmZones.js').FarmZones} farmZones
  * @property {{ markDirty: () => void }} roomOverlay
  * @property {{ markDirty: () => void }} ignoreRoofOverlay
  * @property {{ markDirty: () => void }} roofInstancer

@@ -28,6 +28,8 @@ import { createCowPanel } from './render/cowPanel.js';
 import { createCowPortraitBar } from './render/cowPortraitBar.js';
 import { CowSelector } from './render/cowSelector.js';
 import { createDraftBadge } from './render/draftBadge.js';
+import { createFarmPanel } from './render/farmPanel.js';
+import { FarmSelector } from './render/farmSelector.js';
 import { FirstPersonCamera } from './render/firstPersonCamera.js';
 import { createEaselPanel, createFurnacePanel, createStovePanel } from './render/furnacePanel.js';
 import { HoverTooltip } from './render/hoverTooltip.js';
@@ -61,6 +63,7 @@ import {
 } from './systems/cow.js';
 import { makeEaselSystem } from './systems/easel.js';
 import { makeFarmPostingSystem } from './systems/farm.js';
+import { createFarmZones } from './systems/farmZones.js';
 import { makeFurnaceSystem } from './systems/furnace.js';
 import { makeFurnaceExpelSystem } from './systems/furnaceExpel.js';
 import { makeGrowthSystem } from './systems/growth.js';
@@ -101,6 +104,7 @@ const pathCache = new PathCache(tileWorld, defaultWalkable);
 const jobBoard = new JobBoard();
 const rooms = createRooms(tileGrid);
 const stockpileZones = createStockpileZones(tileGrid);
+const farmZones = createFarmZones(tileGrid);
 
 // Forward-declared so the brain can poke the renderers + audio engine once
 // they're constructed below. Callbacks receive the emitter's world position
@@ -291,6 +295,7 @@ const {
 // Zone registry tips the overlay any time a zone's tiles or filter change,
 // so the flat sky-blue quads update in-place without per-frame scans.
 stockpileZones.setOnChanged(() => stockpileOverlay.markDirty());
+farmZones.setOnChanged(() => farmZoneOverlay.markDirty());
 
 ({
   onWorldChopComplete,
@@ -345,6 +350,7 @@ const state = {
   selectedObjects: new Set(),
   primaryObject: null,
   selectedZoneId: null,
+  selectedFarmZoneId: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
   waterMesh: /** @type {import('three').Mesh | null} */ (buildWaterSurface(tileGrid)),
@@ -367,7 +373,7 @@ const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
  * (non-additive) pick is exclusive: picking a cow drops item/station/object
  * selections, picking an object drops cow/item/station, and so on.
  *
- * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'stairs'|'objects'|'stockpileZone'} keep
+ * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'stairs'|'objects'|'stockpileZone'|'farmZone'} keep
  */
 const clearOtherSelections = (keep) => {
   if (keep !== 'cows') {
@@ -403,6 +409,9 @@ const clearOtherSelections = (keep) => {
   }
   if (keep !== 'stockpileZone') {
     state.selectedZoneId = null;
+  }
+  if (keep !== 'farmZone') {
+    state.selectedFarmZoneId = null;
   }
 };
 
@@ -827,6 +836,30 @@ new StockpileSelector({
   isDesignatorActive: isDesignatorArmed,
 });
 
+/** @param {number | null} id */
+const selectFarmZone = (id) => {
+  if (id === null) {
+    if (state.selectedFarmZoneId === null) return;
+    state.selectedFarmZoneId = null;
+  } else {
+    if (state.selectedFarmZoneId === id) return;
+    clearOtherSelections('farmZone');
+    state.selectedFarmZoneId = id;
+    audio.play('click');
+  }
+  updateHud();
+};
+
+new FarmSelector({
+  canvas,
+  camera,
+  tileMesh: () => state.tileMesh,
+  grid: { W: gridW, H: gridH },
+  farmZones,
+  onSelect: selectFarmZone,
+  isDesignatorActive: isDesignatorArmed,
+});
+
 new TilePicker(
   canvas,
   camera,
@@ -912,6 +945,7 @@ const {
   state,
   instancers,
   stockpileZones,
+  farmZones,
   updateHud,
 });
 isDesignatorArmedImpl = isAnyToolActive;
@@ -1018,6 +1052,21 @@ const stockpilePanel = createStockpilePanel({
   onChange: updateHud,
 });
 
+const farmPanel = createFarmPanel({
+  state,
+  farmZones,
+  world,
+  tileGrid,
+  getTick: () => loop.tick,
+  onDelete: (id) => {
+    farmZones.deleteZone(id);
+    state.selectedFarmZoneId = null;
+    farmZoneOverlay.markDirty();
+    updateHud();
+  },
+  onChange: updateHud,
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -1085,6 +1134,7 @@ const { render, getFps } = createRenderFrame({
   draftBadge,
   stressInstancer,
   stockpileZones,
+  farmZones,
   instancers,
   cowPortraitBar,
   cowPanel,
@@ -1094,6 +1144,7 @@ const { render, getFps } = createRenderFrame({
   stovePanel,
   bedPanel,
   stockpilePanel,
+  farmPanel,
   objectPanel,
   buildTab,
   workTab,
@@ -1133,6 +1184,7 @@ hudApi = createHud({
   pickTileOverlay,
   rooms,
   stockpileZones,
+  farmZones,
   timeOfDay,
   weather,
   getFps,
@@ -1163,6 +1215,7 @@ installKeyboard({
   tilledOverlay,
   rooms,
   stockpileZones,
+  farmZones,
   roomOverlay,
   ignoreRoofOverlay,
   roofInstancer,

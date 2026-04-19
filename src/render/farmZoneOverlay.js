@@ -1,7 +1,9 @@
 /**
  * Farm-zone overlay. InstancedMesh of flat green quads sitting just above
  * ground so zoned tiles stay visible even when empty. Dirty-flagged by the
- * designator on any farmZone change.
+ * designator on any farmZone change. A second hilite layer brightens every
+ * tile of the currently-selected zone so the player can see zone extent at
+ * a glance.
  *
  * Separate from the tilled overlay so un-zoning a planted tile still shows
  * soil rows underneath until a cow re-tills or the player tills manually.
@@ -13,6 +15,7 @@ import { CROP_VISUALS, KIND_FOR_CROP_ID } from '../world/crops.js';
 
 const TILE_GROUND_CLEARANCE = 0.04 * UNITS_PER_METER;
 const TILE_PAD = 0.04 * TILE_SIZE;
+const HILITE_LIFT = 0.02 * UNITS_PER_METER;
 
 // Pre-bake zoneId → ripe color so the W×H sweep skips the kind-lookup +
 // setHex per tile. Only the zoneIds with a registered crop kind land here;
@@ -52,31 +55,82 @@ export function createFarmZoneOverlay(scene, capacity = 4096) {
   mesh.frustumCulled = false;
   scene.add(mesh);
 
+  const hiliteMat = new THREE.MeshBasicMaterial({
+    color: 0xffe14a,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  const hilite = new THREE.InstancedMesh(geo, hiliteMat, capacity);
+  hilite.count = 0;
+  hilite.frustumCulled = false;
+  hilite.renderOrder = 1;
+  scene.add(hilite);
+
   _quat.setFromEuler(_euler);
   let dirty = true;
+  let lastSelectionKey = '';
 
-  /** @param {import('../world/tileGrid.js').TileGrid} grid */
-  function update(grid) {
-    if (!dirty) return;
-    let k = 0;
-    for (let j = 0; j < grid.H; j++) {
-      for (let i = 0; i < grid.W; i++) {
-        const zoneId = grid.getFarmZone(i, j);
-        if (zoneId === 0) continue;
-        if (k >= capacity) break;
-        const w = tileToWorld(i, j, grid.W, grid.H);
-        const y = grid.getElevation(i, j) + TILE_GROUND_CLEARANCE;
-        _position.set(w.x, y, w.z);
-        _matrix.compose(_position, _quat, _scale);
-        mesh.setMatrixAt(k, _matrix);
-        mesh.setColorAt(k, ZONE_COLORS.get(zoneId) ?? FALLBACK_COLOR);
-        k++;
+  /**
+   * @param {import('../world/tileGrid.js').TileGrid} grid
+   * @param {import('../systems/farmZones.js').FarmZones} [zones]
+   * @param {number | null} [selectedZoneId]
+   */
+  function update(grid, zones, selectedZoneId) {
+    if (dirty) {
+      let k = 0;
+      for (let j = 0; j < grid.H; j++) {
+        for (let i = 0; i < grid.W; i++) {
+          const zoneId = grid.getFarmZone(i, j);
+          if (zoneId === 0) continue;
+          if (k >= capacity) break;
+          const w = tileToWorld(i, j, grid.W, grid.H);
+          const y = grid.getElevation(i, j) + TILE_GROUND_CLEARANCE;
+          _position.set(w.x, y, w.z);
+          _matrix.compose(_position, _quat, _scale);
+          mesh.setMatrixAt(k, _matrix);
+          mesh.setColorAt(k, ZONE_COLORS.get(zoneId) ?? FALLBACK_COLOR);
+          k++;
+        }
       }
+      mesh.count = k;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      dirty = false;
+      // Sentinel — '' is also the no-selection key, so a dirty rebuild that
+      // coincides with the selected zone being deleted would otherwise leave
+      // the hilite stuck on forever.
+      lastSelectionKey = '\0';
     }
-    mesh.count = k;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    dirty = false;
+
+    const selZone = zones && selectedZoneId != null ? zones.zoneById(selectedZoneId) : null;
+    const selKey = selZone ? `${selectedZoneId}:${selZone.tiles.size}` : '';
+    if (selKey === lastSelectionKey) return;
+    lastSelectionKey = selKey;
+
+    if (!selZone) {
+      hilite.count = 0;
+      hilite.visible = false;
+      return;
+    }
+    let k = 0;
+    for (const idx of selZone.tiles) {
+      if (k >= capacity) break;
+      const i = idx % grid.W;
+      const j = (idx - i) / grid.W;
+      const w = tileToWorld(i, j, grid.W, grid.H);
+      const y = grid.getElevation(i, j) + TILE_GROUND_CLEARANCE + HILITE_LIFT;
+      _position.set(w.x, y, w.z);
+      _matrix.compose(_position, _quat, _scale);
+      hilite.setMatrixAt(k, _matrix);
+      k++;
+    }
+    hilite.count = k;
+    hilite.instanceMatrix.needsUpdate = true;
+    hilite.visible = k > 0;
   }
 
   function markDirty() {
@@ -86,6 +140,7 @@ export function createFarmZoneOverlay(scene, capacity = 4096) {
   /** @param {boolean} v */
   function setVisible(v) {
     mesh.visible = v;
+    if (!v) hilite.visible = false;
   }
 
   return { mesh, update, markDirty, setVisible };
