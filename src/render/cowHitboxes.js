@@ -18,12 +18,15 @@ import { UNITS_PER_METER, worldToTileClamp } from '../world/coords.js';
 import { BIOME } from '../world/tileGrid.js';
 import { LIE_DOWN_HEIGHT_M, REF_HEIGHT_CM, REF_HEIGHT_M, SWIM_SINK_M } from './cowInstancer.js';
 
-// Figure AABB in meters at the reference height, a touch larger than the
-// rendered silhouette so cursor imprecision is forgiven. At heightCm=170:
-// hair top ≈ 1.79 m, arm outer reach ≈ 0.30 m, hair depth ≈ 0.125 m.
-const HITBOX_W_M = 0.8;
-const HITBOX_H_M = REF_HEIGHT_M + 0.1;
-const HITBOX_D_M = 0.45;
+// Figure AABB in meters at the reference height. Intentionally generous so
+// clicks feel permissive and orientation-independent — a square footprint
+// (W == D) means the player's side-on view of a standing colonist has the
+// same click target as the front-on view. At heightCm=170 the rendered
+// silhouette is ~0.6m wide (arm-to-arm) × ~0.25m deep × 1.79m tall; the
+// hitbox adds slop around that.
+const HITBOX_W_M = 1.0;
+const HITBOX_H_M = REF_HEIGHT_M + 0.15;
+const HITBOX_D_M = 1.0;
 
 const HITBOX_W = HITBOX_W_M * UNITS_PER_METER;
 const HITBOX_H = HITBOX_H_M * UNITS_PER_METER;
@@ -135,6 +138,11 @@ export function createCowHitboxes(scene, capacity = 256) {
     debugMesh.count = n;
     mesh.instanceMatrix.needsUpdate = true;
     debugMesh.instanceMatrix.needsUpdate = true;
+    // Raycaster short-circuits on a stale bounding sphere (cached from the
+    // first call when `count` may have been 0). Recompute every frame so
+    // moving colonists stay clickable regardless of spawn order.
+    mesh.computeBoundingSphere();
+    debugMesh.computeBoundingSphere();
   }
 
   /** @param {number} instanceId @returns {number | null} */
