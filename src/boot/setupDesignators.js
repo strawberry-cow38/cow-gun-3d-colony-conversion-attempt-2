@@ -52,6 +52,7 @@ import { UninstallDesignator } from '../render/uninstallDesignator.js';
  *   jobBoard: import('../jobs/board.js').JobBoard,
  *   state: import('./input.js').BootState,
  *   instancers: ReturnType<typeof import('./setupInstancers.js').setupInstancers>,
+ *   stockpileZones: ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>,
  *   updateHud: () => void,
  * }} opts
  */
@@ -66,6 +67,7 @@ export function setupDesignators({
   jobBoard,
   state,
   instancers,
+  stockpileZones,
   updateHud,
 }) {
   const {
@@ -134,6 +136,7 @@ export function setupDesignators({
   const stockpileDesignator = new StockpileDesignator({
     ...baseArgs,
     overlay: stockpileOverlay,
+    stockpileZones,
     onChanged: () => notifyChanged(stockpileDesignator),
   });
   designators.push(stockpileDesignator);

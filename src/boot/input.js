@@ -26,6 +26,9 @@ import { dispatch } from './hotkeys.js';
  * @property {number|null} primaryStair
  * @property {Set<number>} selectedObjects
  * @property {number|null} primaryObject
+ * @property {number|null} selectedZoneId
+ *   currently selected stockpile zone id, or null. Mutex w/ cow/item/station
+ *   buckets — panel reads this to render filter checkboxes + delete button.
  * @property {{ i: number, j: number } | null} lastPick
  * @property {import('three').Group} tileMesh
  *   chunked terrain Group — raycasts against it must use `recursive: true`.

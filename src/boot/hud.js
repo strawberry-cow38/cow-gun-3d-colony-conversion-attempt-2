@@ -45,6 +45,7 @@ const BIOME_NAMES = /** @type {Record<number, string>} */ ({
  * @property {{ setVisible(v: boolean): void }} roofInstancer
  * @property {{ setVisible(v: boolean): void }} pickTileOverlay
  * @property {import('../systems/rooms.js').RoomRegistry} rooms
+ * @property {ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>} stockpileZones
  * @property {import('../world/timeOfDay.js').TimeOfDay} timeOfDay
  * @property {import('../world/weather.js').Weather} weather
  * @property {() => number} getFps
@@ -151,6 +152,9 @@ export function createHud(ctx) {
         state.selectedObjects.size > 0
           ? /** @type {number} */ (state.selectedObjects.values().next().value)
           : null;
+    }
+    if (state.selectedZoneId !== null && !ctx.stockpileZones.zoneById(state.selectedZoneId)) {
+      state.selectedZoneId = null;
     }
   }
 

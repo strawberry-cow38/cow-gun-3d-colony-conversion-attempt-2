@@ -41,6 +41,8 @@ import { createPrioritizeMenu } from './render/prioritizeMenu.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
+import { createStockpilePanel } from './render/stockpilePanel.js';
+import { StockpileSelector } from './render/stockpileSelector.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh, buildWaterSurface } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
@@ -342,6 +344,7 @@ const state = {
   primaryStair: null,
   selectedObjects: new Set(),
   primaryObject: null,
+  selectedZoneId: null,
   lastPick: null,
   tileMesh: buildTileMesh(tileGrid),
   waterMesh: /** @type {import('three').Mesh | null} */ (buildWaterSurface(tileGrid)),
@@ -364,7 +367,7 @@ const pruneStaleSelections = () => hudApi?.pruneStaleSelections();
  * (non-additive) pick is exclusive: picking a cow drops item/station/object
  * selections, picking an object drops cow/item/station, and so on.
  *
- * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'stairs'|'objects'} keep
+ * @param {'cows'|'items'|'furnaces'|'easels'|'stoves'|'beds'|'stairs'|'objects'|'stockpileZone'} keep
  */
 const clearOtherSelections = (keep) => {
   if (keep !== 'cows') {
@@ -397,6 +400,9 @@ const clearOtherSelections = (keep) => {
   if (keep !== 'objects') {
     state.selectedObjects.clear();
     state.primaryObject = null;
+  }
+  if (keep !== 'stockpileZone') {
+    state.selectedZoneId = null;
   }
 };
 
@@ -797,6 +803,30 @@ new ObjectSelector({
   isDesignatorActive: isDesignatorArmed,
 });
 
+/** @param {number | null} id */
+const selectStockpileZone = (id) => {
+  if (id === null) {
+    if (state.selectedZoneId === null) return;
+    state.selectedZoneId = null;
+  } else {
+    if (state.selectedZoneId === id) return;
+    clearOtherSelections('stockpileZone');
+    state.selectedZoneId = id;
+    audio.play('click');
+  }
+  updateHud();
+};
+
+new StockpileSelector({
+  canvas,
+  camera,
+  tileMesh: () => state.tileMesh,
+  grid: { W: gridW, H: gridH },
+  stockpileZones,
+  onSelect: selectStockpileZone,
+  isDesignatorActive: isDesignatorArmed,
+});
+
 new TilePicker(
   canvas,
   camera,
@@ -880,6 +910,7 @@ const {
   jobBoard,
   state,
   instancers,
+  stockpileZones,
   updateHud,
 });
 isDesignatorArmedImpl = isAnyToolActive;
@@ -974,6 +1005,18 @@ const bedPanel = createBedPanel({
   },
 });
 
+const stockpilePanel = createStockpilePanel({
+  state,
+  stockpileZones,
+  onDelete: (id) => {
+    stockpileZones.deleteZone(id);
+    state.selectedZoneId = null;
+    stockpileOverlay.markDirty();
+    updateHud();
+  },
+  onChange: updateHud,
+});
+
 const cowPortraitBar = createCowPortraitBar({
   world,
   state,
@@ -1048,6 +1091,7 @@ const { render, getFps } = createRenderFrame({
   easelPanel,
   stovePanel,
   bedPanel,
+  stockpilePanel,
   objectPanel,
   buildTab,
   workTab,
@@ -1086,6 +1130,7 @@ hudApi = createHud({
   roofInstancer,
   pickTileOverlay,
   rooms,
+  stockpileZones,
   timeOfDay,
   weather,
   getFps,

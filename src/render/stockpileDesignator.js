@@ -26,17 +26,29 @@ export class StockpileDesignator {
    *   tileMesh: () => THREE.Group,
    *   tileGrid: import('../world/tileGrid.js').TileGrid,
    *   overlay: { markDirty: () => void },
+   *   stockpileZones: ReturnType<typeof import('../systems/stockpileZones.js').createStockpileZones>,
    *   scene: THREE.Scene,
    *   onChanged: () => void,
    *   audio?: { play: (kind: string) => void },
    * }} opts
    */
-  constructor({ canvas, camera, tileMesh, tileGrid, overlay, scene, onChanged, audio }) {
+  constructor({
+    canvas,
+    camera,
+    tileMesh,
+    tileGrid,
+    overlay,
+    stockpileZones,
+    scene,
+    onChanged,
+    audio,
+  }) {
     this.dom = canvas;
     this.camera = camera;
     this.getTileMesh = tileMesh;
     this.tileGrid = tileGrid;
     this.overlay = overlay;
+    this.stockpileZones = stockpileZones;
     this.onStateChanged = onChanged;
     this.audio = audio;
     this.active = false;
@@ -147,24 +159,51 @@ export class StockpileDesignator {
    * @param {boolean} removing
    */
   #apply(a, b, removing) {
+    const grid = this.tileGrid;
     const i0 = Math.min(a.i, b.i);
     const i1 = Math.max(a.i, b.i);
     const j0 = Math.min(a.j, b.j);
     const j1 = Math.max(a.j, b.j);
-    let any = false;
+    /** @type {number[]} */
+    const idxs = [];
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
-        if (!this.tileGrid.inBounds(i, j)) continue;
-        // Skip blocked tiles when adding — stockpiles shouldn't overlap trees.
-        if (!removing && this.tileGrid.isBlocked(i, j)) continue;
-        const cur = this.tileGrid.isStockpile(i, j);
-        const target = !removing;
-        if (cur === target) continue;
-        this.tileGrid.setStockpile(i, j, target ? 1 : 0);
-        any = true;
+        if (!grid.inBounds(i, j)) continue;
+        if (!removing && grid.isBlocked(i, j)) continue;
+        idxs.push(grid.idx(i, j));
       }
     }
-    if (any) {
+    let changed = false;
+    if (removing) {
+      changed = this.stockpileZones.removeTiles(idxs);
+    } else {
+      // Collect zone ids overlapping the rect. If any exist, we merge them
+      // (or just extend the single one) and drop the remaining fresh tiles
+      // into the survivor — so a drag across two zones stitches them into
+      // one.
+      /** @type {Set<number>} */
+      const overlap = new Set();
+      /** @type {number[]} */
+      const fresh = [];
+      for (const k of idxs) {
+        const id = this.stockpileZones.zoneIdByTile[k];
+        if (id > 0) overlap.add(id);
+        else fresh.push(k);
+      }
+      if (overlap.size === 0) {
+        const zone = this.stockpileZones.createZone(fresh);
+        changed = !!zone;
+      } else {
+        const survivorId =
+          overlap.size === 1 ? [...overlap][0] : this.stockpileZones.mergeZones([...overlap]);
+        if (fresh.length > 0) {
+          changed = this.stockpileZones.extendZone(survivorId, fresh) || overlap.size > 1;
+        } else {
+          changed = overlap.size > 1;
+        }
+      }
+    }
+    if (changed) {
       this.audio?.play('command');
       this.overlay.markDirty();
       this.onStateChanged();
