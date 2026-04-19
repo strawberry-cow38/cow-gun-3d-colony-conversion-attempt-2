@@ -16,9 +16,11 @@ import { KIND_COLOR } from '../world/items.js';
 const ITEM_SIZE = 0.35 * UNITS_PER_METER;
 const MIN_HEIGHT_FRAC = 0.3;
 
+// Post-import scale on top of UNITS_PER_METER so logs read at ground-item size.
+const WOOD_EXTRA_SCALE = 1.5;
 // Lifts wood GLBs so the lowest log rests on the tile (geometry is modelled
-// centered about y=0 with log radius 0.11m).
-const WOOD_Y_LIFT = 0.11 * UNITS_PER_METER;
+// centered about y=0 with log radius 0.11m, pre-scale).
+const WOOD_Y_LIFT = 0.11 * UNITS_PER_METER * WOOD_EXTRA_SCALE;
 
 const WOOD_TIER_URLS = ['models/wood.glb', 'models/wood_2.glb', 'models/wood_3.glb'];
 
@@ -68,9 +70,23 @@ export function createItemInstancer(scene, capacity = 1024) {
         const m = /** @type {THREE.Mesh} */ (/** @type {any} */ (obj));
         if (!m.isMesh || !m.geometry) return;
         const g = m.geometry.clone();
-        g.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+        const s = UNITS_PER_METER * WOOD_EXTRA_SCALE;
+        g.scale(s, s, s);
         g.translate(0, WOOD_Y_LIFT, 0);
-        const im = new THREE.InstancedMesh(g, m.material, capacity);
+        // Clone the material so we can add a self-lit floor without mutating
+        // the shared GLB material (bark + end-grain share textures across
+        // tiers). The baked textures are mid-tone at best and read as near
+        // black when shaded, so mirror the base map into emissive at low
+        // intensity — the log stays grounded but doesn't crush to black.
+        const srcMat = /** @type {THREE.MeshStandardMaterial} */ (m.material);
+        const litMat = srcMat.clone();
+        if (litMat.map) {
+          litMat.emissiveMap = litMat.map;
+          litMat.emissive = new THREE.Color(0xffffff);
+          litMat.emissiveIntensity = 0.35;
+          litMat.needsUpdate = true;
+        }
+        const im = new THREE.InstancedMesh(g, litMat, capacity);
         im.count = 0;
         im.castShadow = false;
         im.receiveShadow = true;
