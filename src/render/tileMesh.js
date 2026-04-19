@@ -255,6 +255,98 @@ export function disposeTileMesh(group) {
 }
 
 /**
+ * Locate the chunk containing tile (i, j). Returns the chunk Group plus its
+ * instance index within the tops InstancedMesh, or null if the tile falls
+ * outside the terrain group's coverage.
+ *
+ * Instance layout in each chunk matches the build-time loop: outer j, inner
+ * i, so `k = (j - j0) * width + (i - i0)`.
+ *
+ * @param {THREE.Group} group  terrain group returned by buildTileMesh
+ * @param {number} i
+ * @param {number} j
+ * @returns {{ chunk: THREE.Group, instanceId: number } | null}
+ */
+export function findTileInstance(group, i, j) {
+  for (const obj of group.children) {
+    const chunk = /** @type {THREE.Group} */ (obj);
+    const ud =
+      /** @type {{ i0: number, j0: number, width: number, height: number } | undefined} */ (
+        chunk.userData
+      );
+    if (!ud) continue;
+    const di = i - ud.i0;
+    const dj = j - ud.j0;
+    if (di < 0 || dj < 0 || di >= ud.width || dj >= ud.height) continue;
+    return { chunk, instanceId: dj * ud.width + di };
+  }
+  return null;
+}
+
+/**
+ * Inverse of findTileInstance: given a chunk and an instance id, return the
+ * world-tile coordinates that instance represents.
+ *
+ * @param {THREE.Group} chunk
+ * @param {number} instanceId
+ * @returns {{ i: number, j: number } | null}
+ */
+export function chunkInstanceToTile(chunk, instanceId) {
+  const ud = /** @type {{ i0: number, j0: number, width: number, height: number } | undefined} */ (
+    chunk.userData
+  );
+  if (!ud) return null;
+  if (instanceId < 0 || instanceId >= ud.width * ud.height) return null;
+  const dj = Math.floor(instanceId / ud.width);
+  const di = instanceId - dj * ud.width;
+  return { i: ud.i0 + di, j: ud.j0 + dj };
+}
+
+/**
+ * Repaint tile (i, j) in-place: updates the instance tint and atlas UV offset
+ * to match the new biome. Cheap — no geometry rebuild, no allocation. Does
+ * NOT touch cliffs; a biome change in isolation keeps existing cliff
+ * colouring until the next full-group rebuild (cliffs rarely read by a
+ * casual player and repainting them would require rebuilding the chunk's
+ * cliff BufferGeometry).
+ *
+ * Returns true on success, false if the tile is not in the terrain group.
+ *
+ * @param {THREE.Group} group  terrain group returned by buildTileMesh
+ * @param {number} i
+ * @param {number} j
+ * @param {number} biome  BIOME.* enum value
+ * @param {number} y  current elevation (used for the brightness shade)
+ * @returns {boolean}
+ */
+export function setTileBiome(group, i, j, biome, y) {
+  const hit = findTileInstance(group, i, j);
+  if (!hit) return false;
+  const topsMesh = /** @type {THREE.InstancedMesh} */ (hit.chunk.children[0]);
+  const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
+  let cellIdx;
+  if (biome === BIOME.GRASS) {
+    cellIdx = grassPaletteIndex(i, j);
+    _color.setRGB(topShade, topShade, topShade);
+  } else {
+    cellIdx = NON_GRASS_CELL;
+    const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
+    _color.setRGB(base.r * topShade, base.g * topShade, base.b * topShade);
+  }
+  topsMesh.setColorAt(hit.instanceId, _color);
+  if (topsMesh.instanceColor) topsMesh.instanceColor.needsUpdate = true;
+
+  const uvAttr = /** @type {THREE.InstancedBufferAttribute} */ (
+    topsMesh.geometry.getAttribute('instanceUvOffset')
+  );
+  const arr = /** @type {Float32Array} */ (uvAttr.array);
+  arr[hit.instanceId * 2] = (cellIdx % 4) * ATLAS_DIVISOR;
+  arr[hit.instanceId * 2 + 1] = Math.floor(cellIdx / 4) * ATLAS_DIVISOR;
+  uvAttr.needsUpdate = true;
+  return true;
+}
+
+/**
  * Build one chunk over the sub-rect [i0, i1) × [j0, j1) as a Group of two
  * child Meshes:
  *   - `tops`: an InstancedMesh (one instance per tile) sampling the grass
