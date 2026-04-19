@@ -9,7 +9,7 @@ Layout: 4×4 grid of 512×512 cells = 2048×2048 atlas.
                 material.
   cell  9     = pure white (biomes w/o a baked texture UV-offset here so
                 the per-instance color tint passes through unattenuated —
-                sand / water biomes and their cliffs)
+                fallback for biomes that don't bake their own tile)
   cells 10..11 = Marlin grnd03/grnd04 after LAB color-match to a shared warm
                 brown. Dirt tops alternate between these two cells by
                 tile-coord hash so the field reads as one coherent mud
@@ -17,7 +17,9 @@ Layout: 4×4 grid of 512×512 cells = 2048×2048 atlas.
   cells 12..14 = cliff-biome tiles: rock01 + rock02 + rock03 LAB-shifted to
                 rock02's orange. Used on cliff faces under grass / dirt /
                 sand biomes so exposed subsoil reads as warm rock.
-  cell 15     = white (spare, free for future biomes)
+  cell 15     = Marlin grnd01 ("Light Sand") LAB-matched to the game's sand
+                top color. Used on sand + shallow-water beds so those tiles
+                read as real sand instead of flat tint.
 
 Cell index `i` maps to atlas UV offset `(i % 4 / 4, i // 4 / 4)`.
 
@@ -64,6 +66,7 @@ def main() -> None:
     paste_cell(atlas, ROCK_SRC / "rock01.jpg", 12)
     paste_cell(atlas, ROCK_SRC / "rock02.jpg", 13)
     paste_cell(atlas, ROCK_SRC / "rock03.jpg", 14)
+    paste_cell(atlas, GROUND_SRC / "grnd01.jpg", 15)
 
     atlas.save(out, quality=92, optimize=True)
     print(f"wrote {out}  ({atlas.size}, {out.stat().st_size // 1024} KB)")

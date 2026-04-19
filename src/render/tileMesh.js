@@ -63,13 +63,15 @@ const GRASS_DARKEN = 0.9;
 // cliffs sample their own standalone textures (see CLIFF_COLORS below).
 //   0-6   grass variants (grass01-07, LAB-matched)
 //   7-8   stone tops (rock05 + rock11, LAB-shifted purple)
-//   9     pure white — sand/water biomes UV-offset here so the per-instance
-//         biome tint passes through unattenuated
+//   9     pure white — fallback for biomes w/o a baked tile so the per-
+//         instance tint passes through unattenuated
 //   10-11 dirt tops (grnd03 + grnd04, LAB-matched warm brown)
-//   12-15 spare
+//   12-14 cliff family (rock01-03)
+//   15    sand (grnd01 "Light Sand", LAB-matched to SAND_TOP_COLOR)
 // ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
 const ATLAS_DIVISOR = 1 / 4;
 const NON_GRASS_CELL = 9;
+const SAND_CELL = 15;
 const GRASS_CELLS = [0, 1, 2, 3, 4, 5, 6];
 const STONE_CELLS = [7, 8];
 const DIRT_CELLS = [10, 11];
@@ -134,6 +136,12 @@ function topCellAndColor(biome, i, j, topShade, out) {
   if (biome === BIOME.STONE) {
     out.setRGB(topShade, topShade, topShade);
     return stoneCellIndex(i, j);
+  }
+  if (biome === BIOME.SAND || biome === BIOME.SHALLOW_WATER) {
+    // Baked sand tile already carries the warm-tan palette, so pass only
+    // the elevation shade through to avoid washing it out with a flat tint.
+    out.setRGB(topShade, topShade, topShade);
+    return SAND_CELL;
   }
   const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
   out.setRGB(base.r * topShade, base.g * topShade, base.b * topShade);

@@ -91,7 +91,7 @@ describe('chunkInstanceToTile', () => {
 });
 
 describe('setTileBiome', () => {
-  it('writes UV offset to the non-grass atlas cell (9) for sand biome', () => {
+  it('writes UV offset to the sand atlas cell (15) for sand biome', () => {
     const group = new THREE.Group();
     group.add(makeMockChunk(0, 0, 4, 4));
     expect(setTileBiome(group, 2, 1, BIOME.SAND, 0)).toBe(true);
@@ -100,9 +100,9 @@ describe('setTileBiome', () => {
       mesh.geometry.getAttribute('instanceUvOffset')
     );
     const k = 1 * 4 + 2; // dj=1, di=2
-    // Cell 9 = col 1, row 2 in a 4×4 atlas (ATLAS_DIVISOR = 0.25).
-    expect(uvAttr.array[k * 2]).toBeCloseTo(0.25, 6);
-    expect(uvAttr.array[k * 2 + 1]).toBeCloseTo(0.5, 6);
+    // Cell 15 = col 3, row 3 in a 4×4 atlas (ATLAS_DIVISOR = 0.25).
+    expect(uvAttr.array[k * 2]).toBeCloseTo(0.75, 6);
+    expect(uvAttr.array[k * 2 + 1]).toBeCloseTo(0.75, 6);
     // needsUpdate is a write-only setter on BufferAttribute that bumps
     // `version`; we verify the bump rather than the boolean.
     expect(uvAttr.version).toBeGreaterThan(0);
