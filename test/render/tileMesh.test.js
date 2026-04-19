@@ -108,15 +108,14 @@ describe('setTileBiome', () => {
     expect(uvAttr.version).toBeGreaterThan(0);
   });
 
-  it('writes cell-0 UV offset (0,0) for grass biome', () => {
+  it('writes a grass-cell UV offset (cell 0-8) for grass biome', () => {
     const group = new THREE.Group();
     group.add(makeMockChunk(0, 0, 4, 4));
     expect(setTileBiome(group, 0, 0, BIOME.GRASS, 0)).toBe(true);
     const mesh = /** @type {THREE.InstancedMesh} */ (group.children[0].children[0]);
     const uvAttr = mesh.geometry.getAttribute('instanceUvOffset');
-    // Single grass texture lives in cell 0 → UV offset (0, 0).
-    expect(uvAttr.array[0]).toBeCloseTo(0, 6);
-    expect(uvAttr.array[1]).toBeCloseTo(0, 6);
+    // Grass cells 0-8 live in rows 0-2 (cell/4 < 3), so V offset < 0.75.
+    expect(uvAttr.array[1]).toBeLessThan(0.75);
   });
 
   it('bumps instanceColor version so the GPU resyncs on next draw', () => {

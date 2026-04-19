@@ -52,26 +52,18 @@ const BIOME_COLORS = {
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
 
-// Per-tile tint palette for grass. The atlas only holds one grass texture
-// (grass11) now — variation across the field comes from multiplying this
-// palette into the instance color, so neighboring tiles read as subtly
-// different greens over the same detail pattern instead of a flat mat.
-const GRASS_PALETTE = [
-  new THREE.Color(0xb8d890),
-  new THREE.Color(0xa8cc80),
-  new THREE.Color(0xc0dca0),
-  new THREE.Color(0xb0d888),
-  new THREE.Color(0xa0c878),
-  new THREE.Color(0xbcd898),
-  new THREE.Color(0xa4c880),
-  new THREE.Color(0xb4d492),
-  new THREE.Color(0xacd088),
-];
+// PS2 dreamcore grass: 9 atlas cells each hold a different LAB-matched
+// grass texture. Tiles pick a cell deterministically by coords so the
+// field reads as varied turf. The instance color is a slightly-darker
+// white so textures come through unmodified but overall brightness is
+// knocked down a notch.
+const GRASS_CELL_COUNT = 9;
+const GRASS_DARKEN = 0.9;
 
 function grassPaletteIndex(i, j) {
   // Cheap integer hash so neighboring tiles rarely land on the same shade.
   const h = (i * 73856093) ^ (j * 19349663);
-  return ((h % GRASS_PALETTE.length) + GRASS_PALETTE.length) % GRASS_PALETTE.length;
+  return ((h % GRASS_CELL_COUNT) + GRASS_CELL_COUNT) % GRASS_CELL_COUNT;
 }
 
 // Cliff faces are coloured per biome so stone tiles expose grey rock, sand
@@ -90,12 +82,12 @@ const CLIFF_COLORS = {
 };
 const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
 
-// Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg. Cell 0 holds
-// the single grass texture (grass11); cell 9 is pure white so non-grass
-// biomes UV-offset there and let their per-instance color tint pass through
-// unattenuated. ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
+// Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg. Cells 0-8
+// are PS2-tinted Marlin Studios grass variants; cell 9 is pure white so
+// non-grass biomes UV-offset there and let their per-instance color tint
+// pass through unattenuated. ATLAS_DIVISOR = 1/4 picks one cell out of the
+// 4x4 grid.
 const ATLAS_DIVISOR = 1 / 4;
-const GRASS_CELL = 0;
 const NON_GRASS_CELL = 9;
 
 let _grassAtlas = null;
@@ -326,9 +318,9 @@ export function setTileBiome(group, i, j, biome, y) {
   const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
   let cellIdx;
   if (biome === BIOME.GRASS) {
-    cellIdx = GRASS_CELL;
-    const tint = GRASS_PALETTE[grassPaletteIndex(i, j)];
-    _color.setRGB(tint.r * topShade, tint.g * topShade, tint.b * topShade);
+    cellIdx = grassPaletteIndex(i, j);
+    const g = GRASS_DARKEN * topShade;
+    _color.setRGB(g, g, g);
   } else {
     cellIdx = NON_GRASS_CELL;
     const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
@@ -452,12 +444,12 @@ function buildChunkMesh({
       const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
       let cellIdx;
       if (biome === BIOME.GRASS) {
-        // Single grass texture + per-tile palette tint: the atlas detail
-        // pattern is the same across the field, but neighboring tiles get
-        // subtly different green tints so the turf doesn't read as flat.
-        cellIdx = GRASS_CELL;
-        const tint = GRASS_PALETTE[grassPaletteIndex(i, j)];
-        _color.setRGB(tint.r * topShade, tint.g * topShade, tint.b * topShade);
+        // Grass: atlas cell supplies the color; instance tint is a slightly
+        // darker white × elevation shade so the baked textures come through
+        // without a tint shift but overall luminance reads a notch lower.
+        cellIdx = grassPaletteIndex(i, j);
+        const g = GRASS_DARKEN * topShade;
+        _color.setRGB(g, g, g);
       } else {
         // Non-grass biomes sample cell 9 (pure white) so the biome tint
         // passes through the texture sample unattenuated.
