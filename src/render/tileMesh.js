@@ -85,11 +85,17 @@ const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
 // Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg. Cells 0-8
 // are PS2-tinted Marlin Studios grass variants; cell 9 is pure white so
 // non-textured biomes UV-offset there and let their per-instance color
-// tint pass through unattenuated; cell 10 is a seamless synthesized dirt
-// tile. ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
+// tint pass through unattenuated; cells 10-11 hold LAB-matched Marlin
+// grnd03/grnd04 mud tiles (per-tile hash picks one for variation).
+// ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
 const ATLAS_DIVISOR = 1 / 4;
 const NON_GRASS_CELL = 9;
-const DIRT_CELL = 10;
+const DIRT_CELLS = [10, 11];
+
+function dirtCellIndex(i, j) {
+  const h = (i * 83492791) ^ (j * 22695477);
+  return DIRT_CELLS[((h % DIRT_CELLS.length) + DIRT_CELLS.length) % DIRT_CELLS.length];
+}
 
 let _grassAtlas = null;
 function getGrassAtlas() {
@@ -323,7 +329,7 @@ export function setTileBiome(group, i, j, biome, y) {
     const g = GRASS_DARKEN * topShade;
     _color.setRGB(g, g, g);
   } else if (biome === BIOME.DIRT) {
-    cellIdx = DIRT_CELL;
+    cellIdx = dirtCellIndex(i, j);
     _color.setRGB(topShade, topShade, topShade);
   } else {
     cellIdx = NON_GRASS_CELL;
@@ -455,10 +461,10 @@ function buildChunkMesh({
         const g = GRASS_DARKEN * topShade;
         _color.setRGB(g, g, g);
       } else if (biome === BIOME.DIRT) {
-        // Dirt: baked texture in cell 10 supplies the brown. Instance tint
-        // is plain white × elevation shade so the texture's own color
-        // comes through without a second brown multiply.
-        cellIdx = DIRT_CELL;
+        // Dirt: per-tile hash picks grnd03 or grnd04 (both LAB-matched to
+        // the same warm brown), instance tint is plain white × elevation
+        // shade so the baked texture comes through without a second tint.
+        cellIdx = dirtCellIndex(i, j);
         _color.setRGB(topShade, topShade, topShade);
       } else {
         // Remaining biomes sample cell 9 (pure white) so the biome tint
