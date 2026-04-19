@@ -163,24 +163,39 @@ export function buildTileMesh(tileGrid) {
  * side if they're about to rebuild (cheap to recreate, but disposed here for
  * symmetry with the old `mesh.geometry.dispose()` pattern).
  *
+ * Each chunk is itself a Group containing two child Meshes (tops + cliffs);
+ * walk both levels.
+ *
  * @param {THREE.Group} group
  */
 export function disposeTileMesh(group) {
-  for (const child of group.children) {
-    const mesh = /** @type {THREE.Mesh} */ (child);
-    mesh.geometry.dispose();
+  /** @type {THREE.Material | null} */
+  let sharedMat = null;
+  for (const chunk of group.children) {
+    for (const child of chunk.children) {
+      const mesh = /** @type {THREE.Mesh} */ (child);
+      mesh.geometry.dispose();
+      if (!sharedMat) sharedMat = /** @type {THREE.Material} */ (mesh.material);
+    }
   }
-  const firstMesh = /** @type {THREE.Mesh | undefined} */ (group.children[0]);
-  if (firstMesh) {
-    const mat = /** @type {THREE.Material} */ (firstMesh.material);
-    mat.dispose();
-  }
+  if (sharedMat) sharedMat.dispose();
 }
 
 /**
- * Build one chunk mesh over the sub-rect [i0, i1) × [j0, j1). Cliff edge
- * checks use the global `iMin/iMax/jMin/jMax` so cliffs at the outer map
- * border drop to Y=0 (not to the neighboring chunk's in-bounds tile).
+ * Build one chunk over the sub-rect [i0, i1) × [j0, j1) as a Group of two
+ * child Meshes:
+ *   - `tops`: per-tile horizontal quads (one per tile)
+ *   - `cliffs`: per-edge vertical quads where a neighbor is lower
+ *
+ * They share the same material (vertex-colored MeshStandardMaterial) but live
+ * in separate geometries so commit 3 can swap `tops` for an InstancedMesh
+ * without touching cliff generation.
+ *
+ * Cliff edge checks use the global `iMin/iMax/jMin/jMax` so cliffs at the
+ * outer map border drop to Y=0 (not to the neighboring chunk's in-bounds
+ * tile).
+ *
+ * @returns {THREE.Group | null}
  */
 function buildChunkMesh(
   i0,
@@ -198,42 +213,48 @@ function buildChunkMesh(
   material,
 ) {
   const tileCount = (i1 - i0) * (j1 - j0);
-  // Worst case: every tile has 4 neighbors lower than itself → 4 cliff quads.
-  const maxVerts = tileCount * (4 + 4 * 4);
-  const maxIdx = tileCount * (6 + 4 * 6);
-  const positions = new Float32Array(maxVerts * 3);
-  const colors = new Float32Array(maxVerts * 3);
-  const indices = new Uint32Array(maxIdx);
 
-  let v = 0;
-  let ix = 0;
+  // Tops: 4 verts × tile, 6 indices × tile. Allocate exact.
+  const topsPos = new Float32Array(tileCount * 4 * 3);
+  const topsCol = new Float32Array(tileCount * 4 * 3);
+  const topsIdx = new Uint32Array(tileCount * 6);
+
+  // Cliffs: worst case 4 quads × tile.
+  const cliffsPos = new Float32Array(tileCount * 4 * 4 * 3);
+  const cliffsCol = new Float32Array(tileCount * 4 * 4 * 3);
+  const cliffsIdx = new Uint32Array(tileCount * 4 * 6);
+
+  let tv = 0;
+  let tix = 0;
+  let cv = 0;
+  let cix = 0;
 
   const pushCliff = (ax, az, bx, bz, topY, bottomY, r, g, b) => {
-    const baseV = v / 3;
-    positions[v++] = ax;
-    positions[v++] = topY;
-    positions[v++] = az;
-    positions[v++] = bx;
-    positions[v++] = topY;
-    positions[v++] = bz;
-    positions[v++] = bx;
-    positions[v++] = bottomY;
-    positions[v++] = bz;
-    positions[v++] = ax;
-    positions[v++] = bottomY;
-    positions[v++] = az;
+    const baseV = cv / 3;
+    cliffsPos[cv++] = ax;
+    cliffsPos[cv++] = topY;
+    cliffsPos[cv++] = az;
+    cliffsPos[cv++] = bx;
+    cliffsPos[cv++] = topY;
+    cliffsPos[cv++] = bz;
+    cliffsPos[cv++] = bx;
+    cliffsPos[cv++] = bottomY;
+    cliffsPos[cv++] = bz;
+    cliffsPos[cv++] = ax;
+    cliffsPos[cv++] = bottomY;
+    cliffsPos[cv++] = az;
     for (let k = 0; k < 4; k++) {
       const o = (baseV + k) * 3;
-      colors[o] = r;
-      colors[o + 1] = g;
-      colors[o + 2] = b;
+      cliffsCol[o] = r;
+      cliffsCol[o + 1] = g;
+      cliffsCol[o + 2] = b;
     }
-    indices[ix++] = baseV;
-    indices[ix++] = baseV + 1;
-    indices[ix++] = baseV + 2;
-    indices[ix++] = baseV;
-    indices[ix++] = baseV + 2;
-    indices[ix++] = baseV + 3;
+    cliffsIdx[cix++] = baseV;
+    cliffsIdx[cix++] = baseV + 1;
+    cliffsIdx[cix++] = baseV + 2;
+    cliffsIdx[cix++] = baseV;
+    cliffsIdx[cix++] = baseV + 2;
+    cliffsIdx[cix++] = baseV + 3;
   };
 
   for (let j = j0; j < j1; j++) {
@@ -244,19 +265,19 @@ function buildChunkMesh(
       const z1 = z0 + TILE_SIZE;
       const y = getElev(i, j);
 
-      const baseV = v / 3;
-      positions[v++] = x0;
-      positions[v++] = y;
-      positions[v++] = z0;
-      positions[v++] = x1;
-      positions[v++] = y;
-      positions[v++] = z0;
-      positions[v++] = x1;
-      positions[v++] = y;
-      positions[v++] = z1;
-      positions[v++] = x0;
-      positions[v++] = y;
-      positions[v++] = z1;
+      const baseV = tv / 3;
+      topsPos[tv++] = x0;
+      topsPos[tv++] = y;
+      topsPos[tv++] = z0;
+      topsPos[tv++] = x1;
+      topsPos[tv++] = y;
+      topsPos[tv++] = z0;
+      topsPos[tv++] = x1;
+      topsPos[tv++] = y;
+      topsPos[tv++] = z1;
+      topsPos[tv++] = x0;
+      topsPos[tv++] = y;
+      topsPos[tv++] = z1;
 
       const biome = getBiome(i, j);
       const base =
@@ -269,19 +290,19 @@ function buildChunkMesh(
       const tb = base.b * topShade;
       for (let k = 0; k < 4; k++) {
         const o = (baseV + k) * 3;
-        colors[o] = tr;
-        colors[o + 1] = tg;
-        colors[o + 2] = tb;
+        topsCol[o] = tr;
+        topsCol[o + 1] = tg;
+        topsCol[o + 2] = tb;
       }
 
       // Counter-clockwise winding when viewed from above (+Y) so normals
       // face up and the mesh is visible from the camera, not just from below.
-      indices[ix++] = baseV;
-      indices[ix++] = baseV + 2;
-      indices[ix++] = baseV + 1;
-      indices[ix++] = baseV;
-      indices[ix++] = baseV + 3;
-      indices[ix++] = baseV + 2;
+      topsIdx[tix++] = baseV;
+      topsIdx[tix++] = baseV + 2;
+      topsIdx[tix++] = baseV + 1;
+      topsIdx[tix++] = baseV;
+      topsIdx[tix++] = baseV + 3;
+      topsIdx[tix++] = baseV + 2;
 
       // Out-of-bounds neighbors drop to Y=0 (the water plane). Same-or-higher
       // neighbors get skipped — their own face will cover it when rendered.
@@ -300,20 +321,36 @@ function buildChunkMesh(
     }
   }
 
-  if (v === 0) return null;
+  if (tv === 0) return null;
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions.subarray(0, v), 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors.subarray(0, v), 3));
-  geometry.setIndex(new THREE.BufferAttribute(indices.subarray(0, ix), 1));
-  geometry.computeVertexNormals();
-  // Explicit bounding sphere so Three's frustum culler has real bounds from
-  // the first frame instead of falling back to "always visible".
-  geometry.computeBoundingSphere();
+  const chunk = new THREE.Group();
+  chunk.name = 'terrain-chunk';
 
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.receiveShadow = true;
-  return mesh;
+  const topsGeom = new THREE.BufferGeometry();
+  topsGeom.setAttribute('position', new THREE.BufferAttribute(topsPos.subarray(0, tv), 3));
+  topsGeom.setAttribute('color', new THREE.BufferAttribute(topsCol.subarray(0, tv), 3));
+  topsGeom.setIndex(new THREE.BufferAttribute(topsIdx.subarray(0, tix), 1));
+  topsGeom.computeVertexNormals();
+  topsGeom.computeBoundingSphere();
+  const topsMesh = new THREE.Mesh(topsGeom, material);
+  topsMesh.name = 'tops';
+  topsMesh.receiveShadow = true;
+  chunk.add(topsMesh);
+
+  if (cv > 0) {
+    const cliffsGeom = new THREE.BufferGeometry();
+    cliffsGeom.setAttribute('position', new THREE.BufferAttribute(cliffsPos.subarray(0, cv), 3));
+    cliffsGeom.setAttribute('color', new THREE.BufferAttribute(cliffsCol.subarray(0, cv), 3));
+    cliffsGeom.setIndex(new THREE.BufferAttribute(cliffsIdx.subarray(0, cix), 1));
+    cliffsGeom.computeVertexNormals();
+    cliffsGeom.computeBoundingSphere();
+    const cliffsMesh = new THREE.Mesh(cliffsGeom, material);
+    cliffsMesh.name = 'cliffs';
+    cliffsMesh.receiveShadow = true;
+    chunk.add(cliffsMesh);
+  }
+
+  return chunk;
 }
 
 // Depth tint palette. Tile "depth" is the Chebyshev distance from shore
