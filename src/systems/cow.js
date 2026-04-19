@@ -3563,7 +3563,11 @@ export function makeTirednessSystem() {
     tier: 'rare',
     run(world) {
       const drain = TIREDNESS_DRAIN_PER_TICK * 8;
-      for (const { components } of world.query(['Tiredness', 'Brain'])) {
+      for (const { components } of world.query(['Tiredness', 'Brain', 'Job'])) {
+        // Sleeping cows freeze the drain — the brain tick adds restore while
+        // the cow is on a bed/floor, so any drain fired in parallel would net
+        // the refill rate down to ~0 and make sleep feel broken.
+        if (components.Job.kind === 'sleep') continue;
         const t = components.Tiredness;
         t.value = Math.max(0, t.value - drain);
       }

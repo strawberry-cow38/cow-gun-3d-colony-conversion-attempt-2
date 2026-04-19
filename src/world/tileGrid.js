@@ -101,6 +101,11 @@ export function isWaterBiome(b) {
   return b === BIOME.SHALLOW_WATER || b === BIOME.DEEP_WATER;
 }
 
+/** Soil that the till + plant pipeline accepts. Stone/sand/water reject. */
+export function isGrowableBiome(b) {
+  return b === BIOME.GRASS || b === BIOME.DIRT;
+}
+
 /**
  * Erode sand → shallow water: any sand tile with an unbroken 2-tile-thick sand
  * buffer in all directions (full 5×5 sand neighborhood, Chebyshev distance

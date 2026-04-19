@@ -15,6 +15,7 @@ describe('tirednessDrain', () => {
     const id = w.spawn({
       Tiredness: { value: 1 },
       Brain: { name: 'test' },
+      Job: { kind: 'none', state: 'idle', payload: {} },
     });
     const sys = makeTirednessSystem();
     sys.run(w, /** @type {any} */ ({}));
@@ -28,6 +29,7 @@ describe('tirednessDrain', () => {
     const id = w.spawn({
       Tiredness: { value: 0.0001 },
       Brain: { name: 'test' },
+      Job: { kind: 'none', state: 'idle', payload: {} },
     });
     const sys = makeTirednessSystem();
     for (let i = 0; i < 100; i++) sys.run(w, /** @type {any} */ ({}));
@@ -42,5 +44,17 @@ describe('tirednessDrain', () => {
     const sys = makeTirednessSystem();
     sys.run(w, /** @type {any} */ ({}));
     expect(w.get(id, 'Tiredness').value).toBe(1);
+  });
+
+  it('skips cows whose Job.kind is sleep so refill is not fought', () => {
+    const w = makeWorld();
+    const id = w.spawn({
+      Tiredness: { value: 0.4 },
+      Brain: { name: 'test' },
+      Job: { kind: 'sleep', state: 'sleeping', payload: {} },
+    });
+    const sys = makeTirednessSystem();
+    for (let i = 0; i < 10; i++) sys.run(w, /** @type {any} */ ({}));
+    expect(w.get(id, 'Tiredness').value).toBe(0.4);
   });
 });

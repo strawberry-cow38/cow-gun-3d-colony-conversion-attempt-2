@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
 import { CROP_ID_FOR_KIND, CROP_KINDS } from '../world/crops.js';
+import { isGrowableBiome } from '../world/tileGrid.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 
 const _ndc = new THREE.Vector2();
@@ -167,7 +168,13 @@ export class FarmZoneDesignator {
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
         if (!grid.inBounds(i, j)) continue;
-        if (!removing && grid.isBlocked(i, j)) continue;
+        if (!removing) {
+          if (grid.isBlocked(i, j)) continue;
+          // Crops only grow on grass/dirt. Stone, sand, and water tiles reject
+          // till + plant jobs downstream, so silently skip them here instead of
+          // letting the player paint dead zones they'd never see come to life.
+          if (!isGrowableBiome(grid.getBiome(i, j))) continue;
+        }
         idxs.push(grid.idx(i, j));
       }
     }
