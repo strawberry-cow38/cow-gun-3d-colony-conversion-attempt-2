@@ -29,6 +29,7 @@ import { createFlowerInstancer } from '../render/flowerInstancer.js';
 import { createFurnaceEffects } from '../render/furnaceEffects.js';
 import { createFurnaceInstancer } from '../render/furnaceInstancer.js';
 import { createIgnoreRoofOverlay } from '../render/ignoreRoofOverlay.js';
+import { createItemHitboxes } from '../render/itemHitboxes.js';
 import { createItemInstancer } from '../render/itemInstancer.js';
 import { createItemLabels } from '../render/itemLabels.js';
 import { createItemSelectionViz } from '../render/itemSelectionViz.js';
@@ -99,6 +100,7 @@ export function setupInstancers({ scene, audio, gridW, gridH, tileGrid }) {
     cropInstancer: createCropInstancer(scene, 1024),
     cuttableMarkerInstancer: createCuttableMarkerInstancer(scene, 256),
     itemInstancer: createItemInstancer(scene, 1024),
+    itemHitboxes: createItemHitboxes(scene, 1024),
     itemLabels: createItemLabels(scene),
     stockpileOverlay: createStockpileOverlay(scene, tiles),
     farmZoneOverlay: createFarmZoneOverlay(scene, tiles),

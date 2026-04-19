@@ -152,6 +152,7 @@ export function createRenderFrame({
     cropInstancer,
     cuttableMarkerInstancer,
     itemInstancer,
+    itemHitboxes,
     itemLabels,
     stockpileOverlay,
     farmZoneOverlay,
@@ -336,6 +337,7 @@ export function createRenderFrame({
     itemSelectionViz.update(world, tileGrid, state.selectedItems);
     objectSelectionViz.update(world, tileGrid, state.selectedObjects);
     objectHitboxes.update(world, tileGrid);
+    itemHitboxes.update(world, tileGrid);
     const simDate = tickToSimDate(simTick);
     // Terrain chunk visibility: frustum-test each chunk mesh's bounding sphere
     // and surface "visible / total" on the clock readout. A healthy chunked

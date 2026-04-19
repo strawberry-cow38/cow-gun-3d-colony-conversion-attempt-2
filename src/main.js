@@ -284,6 +284,7 @@ const {
   cropInstancer,
   cuttableMarkerInstancer,
   itemInstancer,
+  itemHitboxes,
   itemLabels,
   stockpileOverlay,
   farmZoneOverlay,
@@ -701,16 +702,9 @@ const selectStair = (id, additive) => {
   updateHud();
 };
 
-new ItemSelector(
-  canvas,
-  camera,
-  () => state.tileMesh,
-  { W: gridW, H: gridH },
-  world,
-  selectItem,
-  selectItemsMany,
-  { isDesignatorActive: isDesignatorArmed },
-);
+new ItemSelector(canvas, camera, itemHitboxes, world, selectItem, selectItemsMany, {
+  isDesignatorActive: isDesignatorArmed,
+});
 
 new WallArtSelector({
   canvas,
