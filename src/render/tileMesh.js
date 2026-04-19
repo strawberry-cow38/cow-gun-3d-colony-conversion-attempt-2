@@ -84,11 +84,12 @@ const DEFAULT_CLIFF = CLIFF_COLORS[BIOME.GRASS];
 
 // Atlas: 4x4 grid of 512px cells in /textures/grass-atlas.jpg. Cells 0-8
 // are PS2-tinted Marlin Studios grass variants; cell 9 is pure white so
-// non-grass biomes UV-offset there and let their per-instance color tint
-// pass through unattenuated. ATLAS_DIVISOR = 1/4 picks one cell out of the
-// 4x4 grid.
+// non-textured biomes UV-offset there and let their per-instance color
+// tint pass through unattenuated; cell 10 is a seamless synthesized dirt
+// tile. ATLAS_DIVISOR = 1/4 picks one cell out of the 4x4 grid.
 const ATLAS_DIVISOR = 1 / 4;
 const NON_GRASS_CELL = 9;
+const DIRT_CELL = 10;
 
 let _grassAtlas = null;
 function getGrassAtlas() {
@@ -321,6 +322,9 @@ export function setTileBiome(group, i, j, biome, y) {
     cellIdx = grassPaletteIndex(i, j);
     const g = GRASS_DARKEN * topShade;
     _color.setRGB(g, g, g);
+  } else if (biome === BIOME.DIRT) {
+    cellIdx = DIRT_CELL;
+    _color.setRGB(topShade, topShade, topShade);
   } else {
     cellIdx = NON_GRASS_CELL;
     const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
@@ -450,8 +454,14 @@ function buildChunkMesh({
         cellIdx = grassPaletteIndex(i, j);
         const g = GRASS_DARKEN * topShade;
         _color.setRGB(g, g, g);
+      } else if (biome === BIOME.DIRT) {
+        // Dirt: baked texture in cell 10 supplies the brown. Instance tint
+        // is plain white × elevation shade so the texture's own color
+        // comes through without a second brown multiply.
+        cellIdx = DIRT_CELL;
+        _color.setRGB(topShade, topShade, topShade);
       } else {
-        // Non-grass biomes sample cell 9 (pure white) so the biome tint
+        // Remaining biomes sample cell 9 (pure white) so the biome tint
         // passes through the texture sample unattenuated.
         cellIdx = NON_GRASS_CELL;
         const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
