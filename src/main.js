@@ -1084,6 +1084,7 @@ const { render, getFps } = createRenderFrame({
   cowCamOverlay,
   draftBadge,
   stressInstancer,
+  stockpileZones,
   instancers,
   cowPortraitBar,
   cowPanel,

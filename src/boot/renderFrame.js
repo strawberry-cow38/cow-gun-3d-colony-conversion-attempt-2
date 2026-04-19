@@ -52,6 +52,7 @@ function speedIcon(speed) {
  *   cowCamOverlay: ReturnType<typeof import('../render/cowCamOverlay.js').createCowCamOverlay>,
  *   draftBadge: ReturnType<typeof import('../render/draftBadge.js').createDraftBadge>,
  *   stressInstancer: ReturnType<typeof import('../render/stressInstancer.js').createStressInstancer> | null,
+ *   stockpileZones: import('../systems/stockpileZones.js').StockpileZones,
  *   instancers: ReturnType<typeof import('./setupInstancers.js').setupInstancers>,
  *   cowPortraitBar: { update: () => void },
  *   cowPanel: { update: () => void },
@@ -90,6 +91,7 @@ export function createRenderFrame({
   cowCamOverlay,
   draftBadge,
   stressInstancer,
+  stockpileZones,
   instancers,
   cowPortraitBar,
   cowPanel,
@@ -304,7 +306,7 @@ export function createRenderFrame({
     cuttableMarkerInstancer.updateMarkers(world, tileGrid, tSec);
     itemInstancer.update(world, tileGrid);
     itemLabels.update(world, camera, tileGrid);
-    stockpileOverlay.update(tileGrid);
+    stockpileOverlay.update(tileGrid, stockpileZones, state.selectedZoneId);
     farmZoneOverlay.update(tileGrid);
     tilledOverlay.update(tileGrid);
     roomOverlay.update(tileGrid, rooms);

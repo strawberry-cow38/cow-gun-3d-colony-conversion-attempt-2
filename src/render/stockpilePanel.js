@@ -87,24 +87,33 @@ export function createStockpilePanel(opts) {
   const expanded = new Map();
   for (const c of ITEM_CATEGORIES) expanded.set(c.id, true);
 
-  /** @type {number | null} */
-  let currentId = null;
+  let lastKey = '';
 
   function update() {
     const id = state.selectedZoneId;
     if (id == null) {
       if (root.style.display !== 'none') root.style.display = 'none';
-      currentId = null;
+      lastKey = '';
       return;
     }
     const zone = stockpileZones.zoneById(id);
     if (!zone) {
       if (root.style.display !== 'none') root.style.display = 'none';
-      currentId = null;
+      lastKey = '';
       return;
     }
+    // Rebuild only when something the panel actually renders has changed.
+    // Otherwise the per-frame replaceChildren() wipes checkbox DOM nodes
+    // between mousedown and mouseup, which nukes click events entirely.
+    const allowedSig = [...zone.allowedKinds].sort().join(',');
+    const expandedSig = [...expanded].map(([k, v]) => `${k}:${v ? 1 : 0}`).join(',');
+    const key = `${id}|${zone.tiles.size}|${allowedSig}|${expandedSig}`;
+    if (key === lastKey) {
+      if (root.style.display === 'none') root.style.display = '';
+      return;
+    }
+    lastKey = key;
     if (root.style.display === 'none') root.style.display = '';
-    if (currentId !== id) currentId = id;
     subtitle.textContent = `${zone.tiles.size} tile${zone.tiles.size === 1 ? '' : 's'} · filter`;
     rebuildList(zone);
   }
