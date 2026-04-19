@@ -174,7 +174,12 @@ export function createAudio({ camera }) {
     // Pause the HTMLAudioElement directly — gain=0 on the music subgraph
     // would silence output but leave the browser streaming + decoding the ogg.
     if (musicMuted) music?.pause();
-    else music?.resume();
+    else {
+      // On first unmute the player hasn't started yet (we skip start() when
+      // the pref is muted at boot). Resume handles the already-started case.
+      music?.start();
+      music?.resume();
+    }
     writeMusicMutePref(musicMuted);
     muteListener?.(musicMuted);
   }
@@ -194,10 +199,10 @@ export function createAudio({ camera }) {
       }
       pendingLoops.clear();
       if (!music) music = createMusic({ ctx: c, master });
-      music.start();
-      // start() always begins playback; if the saved pref is muted, stop the
-      // element immediately so the browser doesn't stream the first track.
-      if (musicMuted) music.pause();
+      // Don't start when the pref is muted — start() would kick off the first
+      // track's network fetch + playback before pause() races in. setMusicMuted
+      // calls start() lazily the first time the user unmutes.
+      if (!musicMuted) music.start();
     }
   };
   addEventListener('pointerdown', resume, { once: true });
