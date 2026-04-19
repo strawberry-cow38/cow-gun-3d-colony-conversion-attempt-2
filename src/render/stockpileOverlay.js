@@ -84,7 +84,11 @@ export function createStockpileOverlay(scene, capacity = 4096) {
       mesh.count = k;
       mesh.instanceMatrix.needsUpdate = true;
       dirty = false;
-      lastSelectionKey = '';
+      // Sentinel — the no-selection key is '' too, so resetting to '' would
+      // make the early-return below skip the hilite clear when the user
+      // deletes the selected zone (dirty fires, selection just became null,
+      // both keys are '' → stale hilite stays on forever).
+      lastSelectionKey = '\0';
     }
 
     const selZone = zones && selectedZoneId != null ? zones.zoneById(selectedZoneId) : null;
