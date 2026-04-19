@@ -165,5 +165,17 @@ export function createMusic({ ctx, master, gain = 0.28, gapMinSec = 6, gapMaxSec
     return currentTrack?.name ?? null;
   }
 
-  return { start, stop, getCurrentTrack };
+  // gain=0 on the master would silence playback but leave the HTMLAudioElement
+  // streaming + decoding in the background. Pause the element on mute so the
+  // browser actually stops the work; resume picks back up mid-track.
+  function pause() {
+    audio?.pause();
+  }
+  function resume() {
+    void audio?.play().catch(() => {
+      /* play() can reject if user gesture state lapsed — wait for next track */
+    });
+  }
+
+  return { start, stop, getCurrentTrack, pause, resume };
 }

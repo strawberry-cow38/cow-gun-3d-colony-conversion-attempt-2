@@ -1154,3 +1154,14 @@ if (debugSkipBtn) {
     loop.tick += 2 * TICKS_PER_SIM_HOUR;
   });
 }
+
+const muteBtn = document.getElementById('audio-mute');
+if (muteBtn) {
+  audio.setMuteListener((m) => {
+    muteBtn.textContent = m ? '🔇' : '🔊';
+    muteBtn.setAttribute('aria-label', m ? 'Unmute audio' : 'Mute audio');
+  });
+  muteBtn.addEventListener('click', () => {
+    audio.toggleMute();
+  });
+}

@@ -311,6 +311,15 @@ export const HOTKEYS = [
       ctx.updateHud();
     },
   },
+  // M — mute/unmute the master gain. Plays the unmute click *after* flipping
+  // so the user actually hears the confirmation; the mute path stays silent.
+  {
+    match: (e) => e.code === 'KeyM',
+    run: (ctx) => {
+      const muted = ctx.audio.toggleMute();
+      if (!muted) ctx.audio.play('toggle_on');
+    },
+  },
   // Space — pause toggle. Render keeps running so UI (build tab, portraits,
   // designators) stays interactive while the sim is frozen.
   {
