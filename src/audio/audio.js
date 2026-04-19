@@ -110,18 +110,21 @@ const MASTER_GAIN = 0.35;
 const MAX_HEAR_DIST = 400; // units (≈ 9 tiles) — beyond this we don't allocate
 const MUSIC_MUTE_PREF_KEY = 'pref:musicMuted';
 
+// Music defaults to muted. The classical playlist gets repetitive so first-run
+// players hear a quiet game until they opt in via M. Explicit unmute is stored
+// as '0'; anything else (no key, '1', garbage) means muted.
 function readMusicMutePref() {
   try {
-    return globalThis.localStorage?.getItem(MUSIC_MUTE_PREF_KEY) === '1';
+    return globalThis.localStorage?.getItem(MUSIC_MUTE_PREF_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
 function writeMusicMutePref(muted) {
   try {
-    if (muted) globalThis.localStorage?.setItem(MUSIC_MUTE_PREF_KEY, '1');
-    else globalThis.localStorage?.removeItem(MUSIC_MUTE_PREF_KEY);
+    if (muted) globalThis.localStorage?.removeItem(MUSIC_MUTE_PREF_KEY);
+    else globalThis.localStorage?.setItem(MUSIC_MUTE_PREF_KEY, '0');
   } catch {
     /* private mode etc — fine to drop */
   }
