@@ -30,6 +30,16 @@ const TIERED_KINDS = /** @type {const} */ ({
     extraScale: 1.0,
     yLift: 0,
   },
+  coal: {
+    urls: ['models/coal.glb', 'models/coal_2.glb', 'models/coal_3.glb'],
+    extraScale: 1.0,
+    yLift: 0,
+  },
+  copper_ore: {
+    urls: ['models/copper_ore.glb', 'models/copper_ore_2.glb', 'models/copper_ore_3.glb'],
+    extraScale: 1.0,
+    yLift: 0,
+  },
 });
 
 const KIND_COLORS = /** @type {Record<string, THREE.Color>} */ (

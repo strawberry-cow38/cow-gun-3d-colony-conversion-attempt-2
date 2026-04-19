@@ -44,7 +44,7 @@ export function footprintMeters(kind, count, capacity) {
     const h = (tier === 2 ? WOOD_TOP_HEIGHT_M : WOOD_LOG_DIAMETER_M) * WOOD_SCALE;
     return { w, h, d };
   }
-  if (kind === 'stone') {
+  if (kind === 'stone' || kind === 'coal' || kind === 'copper_ore') {
     return STONE_TIER_DIMS[tier];
   }
   return { w: GENERIC_FOOTPRINT_M, h: GENERIC_FOOTPRINT_M, d: GENERIC_FOOTPRINT_M };
