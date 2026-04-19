@@ -23,19 +23,29 @@ const WOOD_LOG_DIAMETER_M = 0.22;
 const WOOD_SCALE = 1.5;
 const WOOD_TOP_HEIGHT_M = 0.5;
 
+// Stone tier dims from the baked stone_{1,2,3}.glb meshes (w, d, h in metres).
+const STONE_TIER_DIMS = /** @type {const} */ ([
+  { w: 0.32, d: 0.35, h: 0.21 },
+  { w: 0.51, d: 0.33, h: 0.23 },
+  { w: 0.58, d: 0.47, h: 0.27 },
+]);
+
 /**
  * @param {string} kind
  * @param {number} count
  * @param {number} capacity
  */
 export function footprintMeters(kind, count, capacity) {
+  const frac = Math.min(1, count / Math.max(1, capacity));
+  const tier = Math.min(2, Math.floor(frac * 3));
   if (kind === 'wood') {
-    const frac = Math.min(1, count / Math.max(1, capacity));
-    const tier = Math.min(2, Math.floor(frac * 3));
     const w = WOOD_LOG_LENGTH_M * WOOD_SCALE;
     const d = (tier === 0 ? WOOD_LOG_DIAMETER_M : WOOD_LOG_DIAMETER_M * 2) * WOOD_SCALE;
     const h = (tier === 2 ? WOOD_TOP_HEIGHT_M : WOOD_LOG_DIAMETER_M) * WOOD_SCALE;
     return { w, h, d };
+  }
+  if (kind === 'stone') {
+    return STONE_TIER_DIMS[tier];
   }
   return { w: GENERIC_FOOTPRINT_M, h: GENERIC_FOOTPRINT_M, d: GENERIC_FOOTPRINT_M };
 }
