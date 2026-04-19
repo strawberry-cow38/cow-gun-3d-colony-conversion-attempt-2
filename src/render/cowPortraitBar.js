@@ -130,16 +130,17 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
   const el = document.createElement('div');
   Object.assign(el.style, {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: '6px',
-    minWidth: '132px',
-    maxWidth: '132px',
-    padding: '4px 6px',
+    gap: '3px',
+    width: '82px',
+    minHeight: '92px',
+    padding: '5px 4px 4px 4px',
     background: 'rgba(14, 18, 24, 0.82)',
     border: '1px solid rgba(255, 255, 255, 0.18)',
     borderRadius: '4px',
     color: '#e6e6e6',
-    font: "11px/1.25 system-ui, -apple-system, 'Segoe UI', sans-serif",
+    font: "11px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif",
     cursor: 'pointer',
     pointerEvents: 'auto',
     userSelect: 'none',
@@ -150,9 +151,9 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
 
   const avatar = document.createElement('div');
   Object.assign(avatar.style, {
-    width: '28px',
-    height: '28px',
-    flex: '0 0 28px',
+    width: '40px',
+    height: '40px',
+    flex: '0 0 40px',
     borderRadius: '50%',
     background: hueForName(initialName),
     color: '#111',
@@ -160,19 +161,11 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
     alignItems: 'center',
     justifyContent: 'center',
     fontWeight: '700',
-    fontSize: '11px',
+    fontSize: '14px',
     letterSpacing: '0.5px',
     textShadow: '0 1px 0 rgba(255, 255, 255, 0.35)',
   });
   avatar.textContent = initialsOf(initialName);
-
-  const text = document.createElement('div');
-  Object.assign(text.style, {
-    display: 'flex',
-    flexDirection: 'column',
-    minWidth: '0',
-    flex: '1 1 auto',
-  });
 
   const nameEl = document.createElement('div');
   Object.assign(nameEl.style, {
@@ -180,6 +173,8 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    maxWidth: '100%',
+    textAlign: 'center',
     fontFamily: nameFontFor(traits),
     fontSize: `${11 * nameFontScaleFor(traits)}px`,
   });
@@ -191,10 +186,12 @@ function makeCard(id, initialName, traits, onSelect, onFocus) {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+    maxWidth: '100%',
+    textAlign: 'center',
+    fontSize: '10px',
   });
 
-  text.append(nameEl, activityEl);
-  el.append(avatar, text);
+  el.append(avatar, nameEl, activityEl);
 
   // dblclick fires after click in the standard DOM sequence, so the single-
   // click always runs first (selection) and the double-click layers focus on
