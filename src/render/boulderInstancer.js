@@ -20,7 +20,11 @@ import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 const BOULDER_GLB_URL = 'models/boulder.glb';
 const VARIANT_NAMES = ['boulder_a', 'boulder_b', 'boulder_c'];
 const MOSSY_NAMES = ['boulder_a_mossy', 'boulder_b_mossy', 'boulder_c_mossy'];
-const MOSSY_TINT = new THREE.Color(0x7a935a);
+// Vertex colors are baked into boulder.glb (stone grey + moss green on mossy
+// tops). Stone boulders tint white so the paint renders raw. Copper/coal
+// multiply a kind tint over the grey paint to shift hue while preserving
+// value variation.
+const WHITE_TINT = new THREE.Color(0xffffff);
 
 const FALLBACK_RADIUS = 0.55 * UNITS_PER_METER;
 const FALLBACK_HEIGHT = 0.9 * UNITS_PER_METER;
@@ -58,13 +62,20 @@ const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
  * @param {number} capacity
  */
 export function createBoulderInstancer(scene, capacity = 4096) {
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
+  const rockMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    flatShading: true,
+    vertexColors: true,
+  });
 
   // Fallback procedural mesh used until the GLB resolves. Gets hidden and left
-  // at count=0 once real variant meshes are live.
+  // at count=0 once real variant meshes are live. Stuff a solid-white color
+  // buffer in so the shared vertexColors=true material doesn't render it black.
   const fallbackGeo = new THREE.DodecahedronGeometry(FALLBACK_RADIUS, 0);
   fallbackGeo.scale(1, FALLBACK_HEIGHT / (FALLBACK_RADIUS * 2), 1);
   fallbackGeo.translate(0, FALLBACK_HEIGHT * 0.5, 0);
+  const fallbackColors = new Float32Array(fallbackGeo.attributes.position.count * 3).fill(1);
+  fallbackGeo.setAttribute('color', new THREE.BufferAttribute(fallbackColors, 3));
   const fallbackMesh = new THREE.InstancedMesh(fallbackGeo, rockMat, capacity);
   fallbackMesh.count = 0;
   fallbackMesh.castShadow = true;
@@ -149,7 +160,8 @@ export function createBoulderInstancer(scene, capacity = 4096) {
       const slot = counts[bucket];
       if (slot >= capacity) continue;
       mesh.setMatrixAt(slot, _matrix);
-      mesh.setColorAt(slot, useMossy ? MOSSY_TINT : draw.color);
+      const tint = boulder.kind === 'stone' ? WHITE_TINT : draw.color;
+      mesh.setColorAt(slot, tint);
       counts[bucket] = slot + 1;
     }
     if (!glbReady) {
