@@ -793,6 +793,7 @@ const routeObjectPick = (id, additive) => {
     selectStove(null, false);
     selectBed(null, false);
     selectStair(null, false);
+    selectItem(null, false);
   }
 };
 
@@ -896,7 +897,7 @@ new CowMoveCommand(
   audio,
   {
     isDesignatorActive: isDesignatorArmed,
-    getHitboxMesh: () => objectHitboxes.mesh,
+    getHitboxes: () => objectHitboxes,
     tileWorld,
   },
 );

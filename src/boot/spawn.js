@@ -9,9 +9,14 @@ import { skillsForChildhood, skillsForProfession } from '../world/backstories.js
 import { tileToWorld } from '../world/coords.js';
 import { pickCowName } from '../world/cowNames.js';
 import { fullName, rollCowIdentity } from '../world/identity.js';
-import { rollStartingSkills } from '../world/skills.js';
+import { rollStartingSkills, skillLevelFor } from '../world/skills.js';
 import { isWaterBiome } from '../world/tileGrid.js';
-import { deriveDefaultsFromSkills } from '../world/workPriorities.js';
+import {
+  CATEGORY_TO_SKILL,
+  DEFAULT_PRIORITY,
+  WORK_CATEGORIES,
+  deriveDefaultsFromSkills,
+} from '../world/workPriorities.js';
 
 /**
  * BFS outward from (i,j) to the nearest non-blocked, non-water in-bounds
@@ -112,5 +117,37 @@ export function spawnInitialCows(world, grid, count, currentTick = 0) {
     const i = Math.floor(grid.W / 2 + (Math.random() * 6 - 3));
     const j = Math.floor(grid.H / 2 + (Math.random() * 6 - 3));
     spawnCowAt(world, grid, i, j, currentTick);
+  }
+  ensureEveryCategoryCovered(world);
+}
+
+/**
+ * Every work category must have at least one cow willing to take it, otherwise
+ * essential jobs (cook, mine, grow) sit on the board with nobody to claim
+ * them. After spawn, scan the roster; if a category has no takers, enable it
+ * on the cow with the highest backing skill (or any cow if the category has
+ * no backing skill).
+ *
+ * @param {import('../ecs/world.js').World} world
+ */
+function ensureEveryCategoryCovered(world) {
+  const cows = [...world.query(['Cow', 'WorkPriorities'])];
+  if (cows.length === 0) return;
+  for (const cat of WORK_CATEGORIES) {
+    const covered = cows.some((c) => (c.components.WorkPriorities.priorities?.[cat] | 0) > 0);
+    if (covered) continue;
+    const skillId = CATEGORY_TO_SKILL[cat];
+    let pick = cows[0];
+    if (skillId) {
+      let bestLvl = -1;
+      for (const c of cows) {
+        const lvl = skillLevelFor(world, c.id, skillId);
+        if (lvl > bestLvl) {
+          bestLvl = lvl;
+          pick = c;
+        }
+      }
+    }
+    pick.components.WorkPriorities.priorities[cat] = DEFAULT_PRIORITY;
   }
 }

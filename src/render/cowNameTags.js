@@ -16,7 +16,7 @@ import { UNITS_PER_METER } from '../world/coords.js';
 import { nameFontFor, nameFontScaleFor } from '../world/traits.js';
 
 const HEAD_OFFSET = 2.2 * UNITS_PER_METER;
-const TAG_HEIGHT_WORLD = 1.1 * UNITS_PER_METER;
+const TAG_HEIGHT_WORLD = 2.2 * UNITS_PER_METER;
 const FADE_START = 30 * UNITS_PER_METER;
 const FADE_END = 120 * UNITS_PER_METER;
 

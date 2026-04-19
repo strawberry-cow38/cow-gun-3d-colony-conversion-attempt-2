@@ -57,7 +57,7 @@ export class CowMoveCommand {
    * @param {{ show: (x: number, y: number, items: { label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
    * @param {import('../systems/stockpileZones.js').StockpileZones} stockpileZones
    * @param {{ play: (kind: string) => void }} [audio]
-   * @param {{ isDesignatorActive?: () => boolean, getHitboxMesh?: () => THREE.Mesh | null, tileWorld?: import('../world/tileWorld.js').TileWorld }} [opts]
+   * @param {{ isDesignatorActive?: () => boolean, getHitboxes?: () => { mesh: THREE.Mesh, entityFromInstanceId: (i: number) => number | null } | null, tileWorld?: import('../world/tileWorld.js').TileWorld }} [opts]
    */
   constructor(
     dom,
@@ -78,7 +78,7 @@ export class CowMoveCommand {
     this.dom = dom;
     this.camera = camera;
     this.getTileMesh = getTileMesh;
-    this.getHitboxMesh = opts.getHitboxMesh ?? (() => null);
+    this.getHitboxes = opts.getHitboxes ?? (() => null);
     this.tileGrid = tileGrid;
     this.tileWorld = opts.tileWorld ?? null;
     this.pathCache = pathCache;
@@ -411,11 +411,22 @@ export class CowMoveCommand {
     _ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(_ndc, this.camera);
     const groundHits = this.raycaster.intersectObject(this.getTileMesh(), true);
-    const hitbox = this.getHitboxMesh();
-    const boxHits = hitbox ? this.raycaster.intersectObject(hitbox, false) : [];
-    let best = null;
-    if (groundHits.length > 0) best = groundHits[0];
-    if (boxHits.length > 0 && (!best || boxHits[0].distance < best.distance)) best = boxHits[0];
+    const hitboxes = this.getHitboxes();
+    const boxHit = hitboxes ? this.raycaster.intersectObject(hitboxes.mesh, false)[0] : null;
+    const groundHit = groundHits[0] ?? null;
+    const boxWins = boxHit && (!groundHit || boxHit.distance < groundHit.distance);
+    // Hitbox picks snap to the entity's anchor tile — trees/boulders overhang
+    // their tile, and raw hit.point.(x,z) can land in a neighboring tile when
+    // the click grazes the canopy. Using TileAnchor keeps "right-click tree"
+    // matched to the chop job's payload tile.
+    if (boxWins && hitboxes && boxHit.instanceId !== undefined) {
+      const id = hitboxes.entityFromInstanceId(boxHit.instanceId);
+      if (id !== null) {
+        const anchor = this.world.get(id, 'TileAnchor');
+        if (anchor) return { i: anchor.i, j: anchor.j, z: anchor.z | 0 };
+      }
+    }
+    const best = boxWins ? boxHit : groundHit;
     if (!best) return null;
     const p = best.point;
     const tile = worldToTile(p.x, p.z, this.tileGrid.W, this.tileGrid.H);
