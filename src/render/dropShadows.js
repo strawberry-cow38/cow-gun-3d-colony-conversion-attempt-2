@@ -15,7 +15,7 @@ import { makeShadowTexture } from './dropShadow.js';
 import { footprintMeters } from './itemHitboxes.js';
 
 const COW_RADIUS_M = 0.45;
-const SHADOW_OPACITY = 0.55;
+const SHADOW_OPACITY = 0.78;
 const SHADOW_LIFT_Y = 0.04 * UNITS_PER_METER;
 // Ellipse diameter = footprint width * this factor. Slight overscan so the
 // soft radial edge fades past the pile silhouette instead of cutting inside.

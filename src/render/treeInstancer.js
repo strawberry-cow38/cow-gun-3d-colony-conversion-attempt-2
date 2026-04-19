@@ -120,7 +120,7 @@ export function createTreeInstancer(scene, capacity = 2048) {
   canopySphereMesh.receiveShadow = true;
   scene.add(canopySphereMesh);
 
-  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.4);
+  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.62);
 
   // Species-specific GLB renders. Loaded async — until ready, trees of that
   // kind fall through to the procedural path for the frame.

@@ -307,7 +307,7 @@ export function createRenderFrame({
     selectionViz.update(world, state.selectedCows, alpha, tSec, tileGrid);
     itemSelectionViz.update(world, tileGrid, state.selectedItems);
     objectSelectionViz.update(world, tileGrid, state.selectedObjects);
-    objectHitboxes.update(world, tileGrid);
+    objectHitboxes.update(world, tileGrid, { roofsVisible: state.roofsVisible !== false });
     itemHitboxes.update(world, tileGrid);
     const simDate = tickToSimDate(simTick);
     // Terrain chunk visibility: frustum-test each chunk mesh's bounding sphere

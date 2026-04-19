@@ -38,7 +38,7 @@ export function createBushInstancer(scene, capacity = 2048) {
   let mesh = null;
   let dirty = true;
 
-  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.38);
+  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.6);
 
   new GLTFLoader().load(BUSH_GLB_URL, (gltf) => {
     const node = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName(BUSH_NODE_NAME));

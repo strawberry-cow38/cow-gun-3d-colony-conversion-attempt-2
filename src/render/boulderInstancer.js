@@ -89,7 +89,7 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   fallbackMesh.receiveShadow = true;
   scene.add(fallbackMesh);
 
-  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.4);
+  const shadowMesh = createDropShadowInstancedMesh(scene, capacity, SHADOW_RADIUS, 0.62);
 
   // Each entry is null until the GLB resolves, then an array of 1+ InstancedMesh
   // — one per primitive of the GLB node. Copper nodes export as two primitives

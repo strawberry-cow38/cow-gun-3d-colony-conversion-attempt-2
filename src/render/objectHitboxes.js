@@ -50,12 +50,17 @@ export function createObjectHitboxes(scene, capacity) {
   /**
    * @param {import('../ecs/world.js').World} world
    * @param {import('../world/tileGrid.js').TileGrid} grid
+   * @param {{ roofsVisible?: boolean }} [opts]
    */
-  function update(world, grid) {
+  function update(world, grid, opts) {
+    const roofsVisible = opts?.roofsVisible !== false;
     let n = 0;
     slotToEntity.length = 0;
     _q.identity();
     for (const comp of TRACKED_COMPONENTS) {
+      // Hidden roofs must also be unpickable — otherwise the invisible mesh
+      // still captures clicks through whatever's below it.
+      if (comp === 'Roof' && !roofsVisible) continue;
       for (const { id, components } of world.query([comp, 'TileAnchor'])) {
         if (n >= capacity) break;
         const box = boxForEntity(world, id);
