@@ -133,6 +133,9 @@ function sanitizeSkillLevels(levels) {
  * @property {boolean} marked
  * @property {number} progress  0..1 mine progress at save time
  * @property {string} kind      stone/copper/coal
+ * @property {number} [variantIdx] 0..2 shape variant; missing on pre-variants saves
+ * @property {boolean} [mossy]    stone-only mossy-top; missing on pre-variants saves
+ * @property {number} [yaw]       yaw rotation radians; missing on pre-variants saves
  */
 
 /**
@@ -461,13 +464,16 @@ export function serializeState(tileGrid, world) {
   }
   /** @type {SerializedBoulder[]} */
   const boulders = [];
-  for (const { components } of world.query(['Boulder', 'TileAnchor'])) {
+  for (const { components } of world.query(['Boulder', 'TileAnchor', 'BoulderViz'])) {
     boulders.push({
       i: components.TileAnchor.i,
       j: components.TileAnchor.j,
       marked: components.Boulder.markedJobId > 0,
       progress: components.Boulder.progress,
       kind: components.Boulder.kind,
+      variantIdx: components.BoulderViz.variantIdx,
+      mossy: components.BoulderViz.mossy,
+      yaw: components.BoulderViz.yaw,
     });
   }
   /** @type {SerializedItem[]} */
@@ -900,9 +906,13 @@ export function hydrateBoulders(world, grid, board, state) {
     if (!grid.inBounds(b.i, b.j) || grid.isBlocked(b.i, b.j)) continue;
     grid.blockTile(b.i, b.j);
     const w = tileToWorld(b.i, b.j, grid.W, grid.H);
+    const variantIdx =
+      typeof b.variantIdx === 'number' ? b.variantIdx : Math.floor(Math.random() * 3);
+    const mossy = typeof b.mossy === 'boolean' ? b.mossy : false;
+    const yaw = typeof b.yaw === 'number' ? b.yaw : Math.random() * Math.PI * 2;
     const id = world.spawn({
       Boulder: { markedJobId: 0, progress: b.progress, kind: b.kind },
-      BoulderViz: {},
+      BoulderViz: { variantIdx, mossy, yaw },
       TileAnchor: { i: b.i, j: b.j },
       Position: { x: w.x, y: grid.getElevation(b.i, b.j), z: w.z },
     });

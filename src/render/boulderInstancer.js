@@ -1,23 +1,36 @@
 /**
- * Boulder render: one InstancedMesh tinted per kind via setColorAt, plus a
- * pickaxe-shaped floating marker (handle + head) that only renders for marked
- * boulders. Follows the treeInstancer layout: lazy static rebuild gated on a
- * `dirty` flag; marker rebuilt every frame since there are only a handful.
+ * Boulder render: six variant InstancedMeshes loaded from boulder.glb
+ * (3 shapes × {regular, mossy}) plus a pickaxe-shaped floating marker
+ * (handle + head) for marked boulders.
+ *
+ * Regular variants are shared-tinted per-kind via setColorAt (stone/copper/
+ * coal colors). Mossy only applies to kind='stone' (copper/coal with moss
+ * looks wrong) and uses a mossy-green tint. Until boulder.glb loads, a
+ * procedural dodecahedron fallback renders so the first frame isn't empty.
+ *
+ * Per-boulder yaw from BoulderViz.yaw so neighbours don't look like clones.
+ * Static rebuild gated on `dirty`; marker rebuilt every frame (small count).
  */
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BOULDER_KINDS, BOULDER_VISUALS } from '../world/boulders.js';
 import { UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 
-const ROCK_RADIUS = 0.55 * UNITS_PER_METER;
-const ROCK_HEIGHT = 0.9 * UNITS_PER_METER;
+const BOULDER_GLB_URL = 'models/boulder.glb';
+const VARIANT_NAMES = ['boulder_a', 'boulder_b', 'boulder_c'];
+const MOSSY_NAMES = ['boulder_a_mossy', 'boulder_b_mossy', 'boulder_c_mossy'];
+const MOSSY_TINT = new THREE.Color(0x7a935a);
+
+const FALLBACK_RADIUS = 0.55 * UNITS_PER_METER;
+const FALLBACK_HEIGHT = 0.9 * UNITS_PER_METER;
 
 const MARKER_HANDLE_LENGTH = 0.55 * UNITS_PER_METER;
 const MARKER_HANDLE_RADIUS = 0.05 * UNITS_PER_METER;
 const MARKER_HEAD_WIDTH = 0.4 * UNITS_PER_METER;
 const MARKER_HEAD_HEIGHT = 0.12 * UNITS_PER_METER;
 const MARKER_HEAD_DEPTH = 0.08 * UNITS_PER_METER;
-const MARKER_HOVER_BASE = ROCK_HEIGHT + 0.3 * UNITS_PER_METER;
+const MARKER_HOVER_BASE = FALLBACK_HEIGHT + 0.3 * UNITS_PER_METER;
 const MARKER_BOB_AMP = 0.15 * UNITS_PER_METER;
 const MARKER_BOB_FREQ_HZ = 1.4;
 const MARKER_SPIN_RATE = 1.1;
@@ -45,15 +58,31 @@ const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
  * @param {number} capacity
  */
 export function createBoulderInstancer(scene, capacity = 4096) {
-  const rockGeo = new THREE.DodecahedronGeometry(ROCK_RADIUS, 0);
-  rockGeo.scale(1, ROCK_HEIGHT / (ROCK_RADIUS * 2), 1);
-  rockGeo.translate(0, ROCK_HEIGHT * 0.5, 0);
   const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true });
-  const rockMesh = new THREE.InstancedMesh(rockGeo, rockMat, capacity);
-  rockMesh.count = 0;
-  rockMesh.castShadow = true;
-  rockMesh.receiveShadow = true;
-  scene.add(rockMesh);
+
+  // Fallback procedural mesh used until the GLB resolves. Gets hidden and left
+  // at count=0 once real variant meshes are live.
+  const fallbackGeo = new THREE.DodecahedronGeometry(FALLBACK_RADIUS, 0);
+  fallbackGeo.scale(1, FALLBACK_HEIGHT / (FALLBACK_RADIUS * 2), 1);
+  fallbackGeo.translate(0, FALLBACK_HEIGHT * 0.5, 0);
+  const fallbackMesh = new THREE.InstancedMesh(fallbackGeo, rockMat, capacity);
+  fallbackMesh.count = 0;
+  fallbackMesh.castShadow = true;
+  fallbackMesh.receiveShadow = true;
+  scene.add(fallbackMesh);
+
+  /** @type {(THREE.InstancedMesh | null)[]} */
+  const regularMeshes = [null, null, null];
+  /** @type {(THREE.InstancedMesh | null)[]} */
+  const mossyMeshes = [null, null, null];
+
+  new GLTFLoader().load(BOULDER_GLB_URL, (gltf) => {
+    for (let v = 0; v < 3; v++) {
+      regularMeshes[v] = makeVariantMesh(scene, gltf, VARIANT_NAMES[v], rockMat, capacity);
+      mossyMeshes[v] = makeVariantMesh(scene, gltf, MOSSY_NAMES[v], rockMat, capacity);
+    }
+    dirty = true;
+  });
 
   const markerCap = Math.min(capacity, 256);
   const handleGeo = new THREE.CylinderGeometry(
@@ -80,8 +109,6 @@ export function createBoulderInstancer(scene, capacity = 4096) {
   markerHeadMesh.count = 0;
   scene.add(markerHeadMesh);
 
-  /** @type {number[]} */
-  const slotToEntity = [];
   let dirty = true;
 
   /**
@@ -90,28 +117,52 @@ export function createBoulderInstancer(scene, capacity = 4096) {
    */
   function update(world, grid) {
     if (!dirty) return;
-    let i = 0;
-    slotToEntity.length = 0;
-    _quat.identity();
-    for (const { id, components } of world.query(['Boulder', 'TileAnchor', 'BoulderViz'])) {
-      if (i >= capacity) break;
+    const glbReady =
+      regularMeshes[0] !== null && regularMeshes[1] !== null && regularMeshes[2] !== null;
+    const counts = [0, 0, 0, 0, 0, 0]; // [reg0, reg1, reg2, moss0, moss1, moss2]
+    let fallbackI = 0;
+    for (const { components } of world.query(['Boulder', 'TileAnchor', 'BoulderViz'])) {
       const anchor = components.TileAnchor;
       const boulder = components.Boulder;
+      const viz = components.BoulderViz;
       const draw = BOULDER_DRAW.get(boulder.kind) ?? FALLBACK_DRAW;
       const w = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
       const y = grid.getElevation(anchor.i, anchor.j);
       _position.set(w.x, y, w.z);
+      _euler.set(0, viz.yaw, 0);
+      _quat.setFromEuler(_euler);
       _scale.set(draw.scale[0], draw.scale[1], draw.scale[2]);
       _matrix.compose(_position, _quat, _scale);
-      rockMesh.setMatrixAt(i, _matrix);
-      rockMesh.setColorAt(i, draw.color);
-      slotToEntity[i] = id;
-      i++;
+
+      if (!glbReady) {
+        if (fallbackI >= capacity) break;
+        fallbackMesh.setMatrixAt(fallbackI, _matrix);
+        fallbackMesh.setColorAt(fallbackI, draw.color);
+        fallbackI++;
+        continue;
+      }
+      const variantIdx = viz.variantIdx % 3;
+      const useMossy = viz.mossy && boulder.kind === 'stone';
+      const bucket = useMossy ? 3 + variantIdx : variantIdx;
+      const mesh = useMossy ? mossyMeshes[variantIdx] : regularMeshes[variantIdx];
+      if (!mesh) continue;
+      const slot = counts[bucket];
+      if (slot >= capacity) continue;
+      mesh.setMatrixAt(slot, _matrix);
+      mesh.setColorAt(slot, useMossy ? MOSSY_TINT : draw.color);
+      counts[bucket] = slot + 1;
     }
-    rockMesh.count = i;
-    rockMesh.instanceMatrix.needsUpdate = true;
-    if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
-    rockMesh.computeBoundingSphere();
+    if (!glbReady) {
+      commitMesh(fallbackMesh, fallbackI);
+    } else {
+      commitMesh(fallbackMesh, 0);
+      for (let v = 0; v < 3; v++) {
+        const reg = regularMeshes[v];
+        const moss = mossyMeshes[v];
+        if (reg) commitMesh(reg, counts[v]);
+        if (moss) commitMesh(moss, counts[3 + v]);
+      }
+    }
     dirty = false;
   }
 
@@ -152,16 +203,43 @@ export function createBoulderInstancer(scene, capacity = 4096) {
     dirty = true;
   }
 
-  /** @param {number} instanceId */
-  function entityFromInstanceId(instanceId) {
-    return slotToEntity[instanceId] ?? null;
-  }
-
   return {
-    rockMesh,
     update,
     updateMarkers,
     markDirty,
-    entityFromInstanceId,
   };
+}
+
+/**
+ * @param {THREE.InstancedMesh} mesh
+ * @param {number} count
+ */
+function commitMesh(mesh, count) {
+  mesh.count = count;
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.computeBoundingSphere();
+}
+
+/**
+ * @param {THREE.Scene} scene
+ * @param {import('three/examples/jsm/loaders/GLTFLoader.js').GLTF} gltf
+ * @param {string} nodeName
+ * @param {THREE.Material} mat
+ * @param {number} capacity
+ */
+function makeVariantMesh(scene, gltf, nodeName, mat, capacity) {
+  const node = /** @type {THREE.Mesh | null} */ (gltf.scene.getObjectByName(nodeName));
+  if (!node) {
+    console.warn(`[boulderInstancer] boulder.glb missing node ${nodeName}`);
+    return null;
+  }
+  const geo = node.geometry.clone();
+  geo.scale(UNITS_PER_METER, UNITS_PER_METER, UNITS_PER_METER);
+  const im = new THREE.InstancedMesh(geo, mat, capacity);
+  im.count = 0;
+  im.castShadow = true;
+  im.receiveShadow = true;
+  scene.add(im);
+  return im;
 }

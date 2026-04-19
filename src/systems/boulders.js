@@ -23,6 +23,7 @@ const BOULDER_DENSITY_MULT = {
 
 const STONE_ATTEMPT_BUDGET = 12;
 const FALLBACK_ATTEMPT_BUDGET = 6;
+const MOSSY_STONE_CHANCE = 0.3;
 
 /**
  * @param {import('../ecs/world.js').World} world
@@ -36,9 +37,12 @@ function spawnBoulder(world, grid, kind, i, j) {
   grid.blockTile(i, j);
   const w = tileToWorld(i, j, grid.W, grid.H);
   const y = grid.getElevation(i, j);
+  const variantIdx = Math.floor(Math.random() * 3);
+  const mossy = kind === 'stone' && Math.random() < MOSSY_STONE_CHANCE;
+  const yaw = Math.random() * Math.PI * 2;
   return world.spawn({
     Boulder: { markedJobId: 0, progress: 0, kind },
-    BoulderViz: {},
+    BoulderViz: { variantIdx, mossy, yaw },
     TileAnchor: { i, j },
     Position: { x: w.x, y, z: w.z },
   });

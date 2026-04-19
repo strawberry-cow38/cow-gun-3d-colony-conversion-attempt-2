@@ -303,7 +303,14 @@ export function registerComponents(world) {
     progress: 0,
     kind: 'stone',
   }));
-  world.defineComponent('BoulderViz', () => ({}));
+  world.defineComponent('BoulderViz', () => ({
+    /** Which of the 3 boulder shape variants (0..2) this instance draws as. */
+    variantIdx: 0,
+    /** Stone-only mossy-top variant; copper/coal never get mossy. */
+    mossy: false,
+    /** Yaw rotation (radians) so neighbours don't look like clones. */
+    yaw: 0,
+  }));
   world.defineComponent('TileAnchor', () => ({ i: 0, j: 0, z: 0 }));
   world.defineComponent('Item', () => ({
     kind: 'wood',
