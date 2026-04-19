@@ -18,6 +18,7 @@ import {
   nutritionMultiplier,
   poisoningChance,
   qualityColor,
+  qualityDescription,
   qualityLabel,
   qualityRank,
 } from '../world/quality.js';
@@ -195,7 +196,7 @@ export function createItemStackPanel(opts) {
     }
 
     const label = mixed ? 'Mixed stacks' : (kind && ITEM_INFO[kind]?.label) || kind || 'Item';
-    const description = mixed
+    let description = mixed
       ? 'Multiple item kinds selected.'
       : (kind && ITEM_INFO[kind]?.description) || '';
     const allForbidden = forbiddenCount === n;
@@ -214,6 +215,8 @@ export function createItemStackPanel(opts) {
         const safety = poison === 0 ? 'safe' : `${Math.round(poison * 100)}% poison risk`;
         qualityText = `${qualityLabel(q)} · ${mult.toFixed(1)}× nutrition · ${safety}`;
         qualityTint = qualityColor(q);
+        const qd = qualityDescription(q);
+        if (qd) description = qd;
         if (singleIngredients && singleIngredients.length > 0) {
           ingredientsText = singleIngredients.map((k) => ITEM_INFO[k]?.label ?? k).join(' + ');
         }

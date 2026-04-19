@@ -150,6 +150,7 @@ function sanitizeSkillLevels(levels) {
  * @property {string} [quality]           meal tier (only on cooked meals)
  * @property {string[]} [ingredients]     source kinds the meal was cooked from
  * @property {number} [cookedBy]          entity id of the cow that cooked the meal
+ * @property {number} [preferredZoneId]   stockpile zone id to prefer (bill output routing)
  */
 
 /**
@@ -500,6 +501,7 @@ export function serializeState(tileGrid, world) {
       entry.ingredients = [...it.ingredients];
     }
     if (it.cookedBy) entry.cookedBy = it.cookedBy;
+    if (it.preferredZoneId) entry.preferredZoneId = it.preferredZoneId;
     items.push(entry);
   }
   /** @type {SerializedBuildSite[]} */
@@ -949,6 +951,7 @@ export function hydrateItems(world, grid, state) {
         quality: it.quality ?? '',
         ingredients: Array.isArray(it.ingredients) ? [...it.ingredients] : [],
         cookedBy: it.cookedBy ?? 0,
+        preferredZoneId: it.preferredZoneId ?? 0,
       },
       ItemViz: {},
       TileAnchor: { i: it.i, j: it.j },

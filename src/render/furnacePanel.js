@@ -17,6 +17,7 @@ import {
   STATION_RECIPES,
   billProgressLabel,
   nextCountMode,
+  nextOutputMode,
 } from '../world/recipes.js';
 import { computeStockByKind } from '../world/stock.js';
 
@@ -73,11 +74,12 @@ const KIND_META = {
  * @property {import('../boot/input.js').BootState} state
  * @property {() => void} onChange
  * @property {StationKind} [kind]
+ * @property {import('../systems/stockpileZones.js').StockpileZones} [stockpileZones]
  */
 
 /** @param {StationPanelOpts} opts */
 export function createFurnacePanel(opts) {
-  const { world, state, onChange, kind = 'furnace' } = opts;
+  const { world, state, onChange, kind = 'furnace', stockpileZones } = opts;
   const meta = KIND_META[kind];
 
   const root = document.createElement('div');
@@ -195,7 +197,10 @@ export function createFurnacePanel(opts) {
       return;
     }
     const billsKey = bills.list
-      .map((b) => `${b.id}:${b.suspended ? 'S' : 'R'}:${b.countMode}:${b.target}:${b.done}`)
+      .map(
+        (b) =>
+          `${b.id}:${b.suspended ? 'S' : 'R'}:${b.countMode}:${b.target}:${b.done}:${b.outputMode ?? 'haul'}:${b.outputStockpileId ?? 0}`,
+      )
       .join('|');
     const activeId = station?.activeBillId ?? 0;
     const key = `one:${id}:${bills.nextBillId}:${activeId}:${billsKey}`;
@@ -366,7 +371,11 @@ export function createFurnacePanel(opts) {
       }),
     );
 
+    // Output-mode routing currently only honored by stove (meals spawn as Items
+    // directly); furnace/easel outputs go through station-specific haul paths
+    // that don't read Bill.outputMode yet. Hide the row to avoid a dead control.
     row.append(head, ingLine);
+    if (kind === 'stove') row.append(makeOutputRow(bill));
     if (bill.id === activeBillId) {
       const track = document.createElement('div');
       Object.assign(track.style, {
@@ -415,6 +424,164 @@ export function createFurnacePanel(opts) {
     bills.list.splice(j, 0, moved);
     onChange();
     update();
+  }
+
+  /**
+   * Bill output mode row: "Output: [Haul] [Zone…]" — the cycle button flips
+   * haul → floor → stockpile, and the zone button (only rendered when mode is
+   * stockpile) opens a popover listing current stockpile zones.
+   * @param {import('../world/recipes.js').Bill} bill
+   */
+  function makeOutputRow(bill) {
+    const row = document.createElement('div');
+    Object.assign(row.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      fontSize: '11px',
+      color: '#9aa6b4',
+    });
+    const label = document.createElement('span');
+    label.textContent = 'Output:';
+    row.append(label);
+    const mode = bill.outputMode ?? 'haul';
+    const modeLabels = { haul: 'Haul', floor: 'Drop on floor', stockpile: 'Specific zone' };
+    const cycle = document.createElement('button');
+    cycle.type = 'button';
+    cycle.textContent = modeLabels[mode];
+    cycle.title = 'Cycle output: Haul → Drop on floor → Specific zone';
+    Object.assign(cycle.style, {
+      padding: '0 6px',
+      height: '20px',
+      background: 'rgba(40, 40, 50, 0.8)',
+      border: '1px solid rgba(255, 255, 255, 0.22)',
+      borderRadius: '3px',
+      color: '#e6e6e6',
+      font: 'inherit',
+      cursor: 'pointer',
+    });
+    cycle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      bill.outputMode = nextOutputMode(mode);
+      if (bill.outputMode !== 'stockpile') bill.outputStockpileId = 0;
+      onChange();
+      update();
+    });
+    row.append(cycle);
+    if (mode === 'stockpile') {
+      const zone = stockpileZones?.zoneById(bill.outputStockpileId ?? 0) ?? null;
+      const zoneBtn = document.createElement('button');
+      zoneBtn.type = 'button';
+      zoneBtn.textContent = zone ? zone.name || `Zone ${zone.id}` : 'Pick zone…';
+      zoneBtn.title = 'Choose destination stockpile';
+      Object.assign(zoneBtn.style, {
+        padding: '0 6px',
+        height: '20px',
+        background: zone ? 'rgba(40, 60, 40, 0.8)' : 'rgba(90, 60, 40, 0.85)',
+        border: `1px solid ${zone ? 'rgba(150, 255, 150, 0.35)' : 'rgba(255, 180, 120, 0.55)'}`,
+        borderRadius: '3px',
+        color: '#e6e6e6',
+        font: 'inherit',
+        cursor: 'pointer',
+        flex: '1',
+        textAlign: 'left',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      });
+      zoneBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openZonePicker(zoneBtn, bill);
+      });
+      row.append(zoneBtn);
+    }
+    return row;
+  }
+
+  /**
+   * @param {HTMLElement} anchor
+   * @param {import('../world/recipes.js').Bill} bill
+   */
+  function openZonePicker(anchor, bill) {
+    const pickerId = `${kind}-zone-picker`;
+    const existing = document.getElementById(pickerId);
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    const popup = document.createElement('div');
+    popup.id = pickerId;
+    const r = anchor.getBoundingClientRect();
+    Object.assign(popup.style, {
+      position: 'fixed',
+      left: `${r.left}px`,
+      top: `${r.bottom + 4}px`,
+      minWidth: `${r.width}px`,
+      maxHeight: '200px',
+      overflowY: 'auto',
+      padding: '4px',
+      background: 'rgba(18, 22, 28, 0.96)',
+      border: '1px solid rgba(255, 255, 255, 0.22)',
+      borderRadius: '3px',
+      zIndex: '41',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '2px',
+    });
+    const zones = stockpileZones ? [...stockpileZones.zones.values()] : [];
+    if (zones.length === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No stockpile zones yet.';
+      Object.assign(empty.style, {
+        padding: '5px 8px',
+        color: '#9aa6b4',
+        fontStyle: 'italic',
+      });
+      popup.append(empty);
+    } else {
+      for (const z of zones) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = z.name || `Zone ${z.id}`;
+        Object.assign(btn.style, {
+          padding: '5px 8px',
+          background:
+            bill.outputStockpileId === z.id ? 'rgba(60, 90, 60, 0.9)' : 'rgba(40, 40, 50, 0.85)',
+          border: '1px solid rgba(255, 255, 255, 0.18)',
+          borderRadius: '2px',
+          color: '#e6e6e6',
+          font: 'inherit',
+          cursor: 'pointer',
+          textAlign: 'left',
+        });
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          bill.outputStockpileId = z.id;
+          onChange();
+          update();
+          popup.remove();
+        });
+        popup.append(btn);
+      }
+    }
+    document.body.append(popup);
+    const teardown = () => {
+      popup.remove();
+      window.removeEventListener('mousedown', dismiss, true);
+      window.removeEventListener('keydown', keyDismiss);
+    };
+    const dismiss = (/** @type {MouseEvent} */ e) => {
+      const t = /** @type {Node} */ (e.target);
+      if (popup.contains(t) || anchor.contains(t)) return;
+      teardown();
+    };
+    const keyDismiss = (/** @type {KeyboardEvent} */ e) => {
+      if (e.key === 'Escape') teardown();
+    };
+    setTimeout(() => {
+      window.addEventListener('mousedown', dismiss, true);
+      window.addEventListener('keydown', keyDismiss);
+    }, 0);
   }
 
   /**
@@ -602,6 +769,8 @@ export function createFurnacePanel(opts) {
       countMode: 'forever',
       target: 10,
       done: 0,
+      outputMode: 'haul',
+      outputStockpileId: 0,
     });
     onChange();
     update();

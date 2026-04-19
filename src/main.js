@@ -1028,6 +1028,7 @@ const itemStackPanel = createItemStackPanel({
 const furnacePanel = createFurnacePanel({
   world,
   state,
+  stockpileZones,
   onChange: () => {
     furnaceInstancer.markDirty();
     updateHud();
@@ -1037,6 +1038,7 @@ const furnacePanel = createFurnacePanel({
 const easelPanel = createEaselPanel({
   world,
   state,
+  stockpileZones,
   onChange: () => {
     easelInstancer.markDirty();
     updateHud();
@@ -1046,6 +1048,7 @@ const easelPanel = createEaselPanel({
 const stovePanel = createStovePanel({
   world,
   state,
+  stockpileZones,
   onChange: () => {
     stoveInstancer.markDirty();
     updateHud();

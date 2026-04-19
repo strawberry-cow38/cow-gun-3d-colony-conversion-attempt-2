@@ -420,7 +420,7 @@ export function addItemToTile(world, grid, kind, i, j, opts) {
  * @param {string} kind
  * @param {number} count
  * @param {number} i @param {number} j
- * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[], cookedBy?: number }} [opts]
+ * @param {{ forbidden?: boolean, quality?: string, ingredients?: string[], cookedBy?: number, preferredZoneId?: number }} [opts]
  */
 export function addItemsToTile(world, grid, kind, count, i, j, opts) {
   if (!grid.inBounds(i, j) || count <= 0) return;
@@ -428,6 +428,7 @@ export function addItemsToTile(world, grid, kind, count, i, j, opts) {
   const quality = opts?.quality ?? '';
   const ingredients = opts?.ingredients ?? [];
   const cookedBy = opts?.cookedBy ?? 0;
+  const preferredZoneId = opts?.preferredZoneId ?? 0;
   const cap = maxStack(kind);
   const probe = { kind, forbidden, quality, ingredients, cookedBy };
   let remaining = count;
@@ -454,6 +455,7 @@ export function addItemsToTile(world, grid, kind, count, i, j, opts) {
         quality,
         ingredients: ingredients.slice(),
         cookedBy,
+        preferredZoneId,
       },
       ItemViz: {},
       TileAnchor: { i, j },

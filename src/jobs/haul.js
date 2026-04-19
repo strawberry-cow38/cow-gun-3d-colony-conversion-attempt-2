@@ -487,6 +487,18 @@ function findRelocationTile(grid, blueprintTiles, reservedDropTiles, i, j) {
  */
 export function makeHaulPostingSystem(board, grid, stockpileZones, paths) {
   const allowsAt = stockpileZones.allowsAt;
+  const zoneIdAt = stockpileZones.zoneIdAt;
+  /**
+   * Items produced by a bill with a specific output zone carry preferredZoneId.
+   * Filter slot candidates down to that zone before falling back to the normal
+   * allowsAt gate, so the meal lands in the "meals-only" stockpile the player
+   * picked — not whichever loose stockpile happens to be closer.
+   * @param {number} preferredZoneId
+   */
+  function allowsAtForItem(preferredZoneId) {
+    if (!preferredZoneId) return allowsAt;
+    return (ti, tj, kind) => zoneIdAt(ti, tj) === preferredZoneId && allowsAt(ti, tj, kind);
+  }
   // Cool-down for sites the poster has already proved have no adjacent
   // walkable delivery tile this run. Until the cooldown tick expires we skip
   // the site entirely — re-running adjacentDeliveryTiles + re-logging the
@@ -679,14 +691,21 @@ export function makeHaulPostingSystem(board, grid, stockpileZones, paths) {
         // Skip items already sitting in a zone that accepts them. Items in
         // disallowed zones (or loose off-stockpile) fall through to
         // findAndReserveSlot below, which gates candidates by allowsAt — so
-        // eviction and loose-haul share one code path.
-        if (allowsAt(a.i, a.j, item.kind)) continue;
+        // eviction and loose-haul share one code path. An item whose bill
+        // targeted a specific zone is only "at rest" inside that zone; a
+        // wrong-zone drop gets evicted to the preferred zone.
+        const prefZone = item.preferredZoneId ?? 0;
+        const itemAllowsAt = allowsAtForItem(prefZone);
+        const atRest = prefZone
+          ? zoneIdAt(a.i, a.j) === prefZone && allowsAt(a.i, a.j, item.kind)
+          : allowsAt(a.i, a.j, item.kind);
+        if (atRest) continue;
         const alreadyClaimed = targetedCounts.get(id) ?? 0;
         let need = item.count - alreadyClaimed;
         const key = stackKey(item);
         while (need > 0) {
           const target = findAndReserveSlot(grid, slots, item.kind, key, a.i, a.j, need, {
-            allowsAt,
+            allowsAt: itemAllowsAt,
           });
           if (!target) break;
           board.post('haul', {

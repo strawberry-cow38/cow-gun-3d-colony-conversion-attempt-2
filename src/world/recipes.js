@@ -23,6 +23,11 @@
  *
  * @typedef {'forever' | 'count' | 'untilHave'} BillCountMode
  *
+ * @typedef {'haul' | 'floor' | 'stockpile'} BillOutputMode
+ *   `haul` → output drops on workspot and auto-haul picks a stockpile (default).
+ *   `floor` → drops forbidden so no one hauls it.
+ *   `stockpile` → drops preferring `outputStockpileId` zone.
+ *
  * @typedef {Object} Bill
  * @property {number} id          unique within the host's Bills.nextBillId
  * @property {string} recipeId    references RECIPES[id]
@@ -31,6 +36,8 @@
  * @property {number} target      meaning depends on countMode (count: how
  *                                many to make; untilHave: stockpile cap)
  * @property {number} done        crafts completed so far (for count mode)
+ * @property {BillOutputMode} [outputMode]       defaults to 'haul'
+ * @property {number} [outputStockpileId]        zone id when outputMode='stockpile'
  */
 
 /** @type {Record<string, Recipe>} */
@@ -119,6 +126,15 @@ export const BILL_COUNT_MODES = ['forever', 'count', 'untilHave'];
 export function nextCountMode(mode) {
   const i = BILL_COUNT_MODES.indexOf(mode);
   return BILL_COUNT_MODES[(i + 1) % BILL_COUNT_MODES.length];
+}
+
+/** @type {BillOutputMode[]} */
+export const BILL_OUTPUT_MODES = ['haul', 'floor', 'stockpile'];
+
+/** @param {BillOutputMode} mode */
+export function nextOutputMode(mode) {
+  const i = BILL_OUTPUT_MODES.indexOf(mode);
+  return BILL_OUTPUT_MODES[(i + 1) % BILL_OUTPUT_MODES.length];
 }
 
 /**

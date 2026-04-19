@@ -105,8 +105,81 @@ export function createCowPanel(opts) {
     color: '#b5c0cc',
   });
 
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.textContent = '✏️';
+  renameBtn.title = 'Rename colonist';
+  Object.assign(renameBtn.style, {
+    flex: '0 0 auto',
+    padding: '2px 6px',
+    background: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRadius: '3px',
+    color: '#e6e6e6',
+    cursor: 'pointer',
+    font: 'inherit',
+  });
+
   headerText.append(nameEl, genderEl);
-  header.append(avatar, headerText);
+  header.append(avatar, headerText, renameBtn);
+
+  const renameForm = document.createElement('div');
+  Object.assign(renameForm.style, {
+    display: 'none',
+    flexDirection: 'column',
+    gap: '3px',
+    padding: '6px',
+    margin: '0 0 6px',
+    background: 'rgba(30, 36, 44, 0.8)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '3px',
+  });
+  const renameFirst = makeRenameField('First name');
+  const renameNick = makeRenameField('Nickname');
+  const renameSurname = makeRenameField('Surname');
+  const renameSave = document.createElement('button');
+  renameSave.type = 'button';
+  renameSave.textContent = 'Save';
+  Object.assign(renameSave.style, {
+    marginTop: '3px',
+    padding: '4px 6px',
+    background: 'rgba(68, 221, 136, 0.25)',
+    border: '1px solid rgba(68, 221, 136, 0.6)',
+    borderRadius: '2px',
+    color: '#e6f8ea',
+    font: 'inherit',
+    cursor: 'pointer',
+  });
+  renameForm.append(renameFirst.row, renameNick.row, renameSurname.row, renameSave);
+  renameBtn.addEventListener('click', () => {
+    const id = state.primaryCow;
+    if (id === null) return;
+    const identity = world.get(id, 'Identity');
+    if (!identity) return;
+    renameFirst.input.value = identity.firstName ?? '';
+    renameNick.input.value = identity.nickname ?? '';
+    renameSurname.input.value = identity.surname ?? '';
+    renameForm.style.display = 'flex';
+    renameFirst.input.focus();
+    renameFirst.input.select();
+  });
+  renameSave.addEventListener('click', () => {
+    const id = state.primaryCow;
+    if (id === null) return;
+    const identity = world.get(id, 'Identity');
+    if (!identity) return;
+    const first = renameFirst.input.value.trim().slice(0, 30);
+    const nick = renameNick.input.value.trim().slice(0, 30);
+    const surname = renameSurname.input.value.trim().slice(0, 30);
+    if (first) identity.firstName = first;
+    identity.nickname = nick || identity.firstName;
+    identity.surname = surname;
+    const brain = world.get(id, 'Brain');
+    if (brain) brain.name = identity.nickname;
+    renameForm.style.display = 'none';
+    last.key = '';
+    update();
+  });
 
   // Always-visible needs block: hunger + tiredness bars + the cow's assigned
   // bed. Sits above the tab bar so vitals stay visible no matter which tab
@@ -199,8 +272,31 @@ export function createCowPanel(opts) {
   const socialBody = document.createElement('div');
   Object.assign(socialBody.style, { fontSize: '12px', color: '#d8dfe6' });
 
-  root.append(header, needsBlock, tabBar, bioBody, skillsBody, medicalBody, socialBody);
+  root.append(header, renameForm, needsBlock, tabBar, bioBody, skillsBody, medicalBody, socialBody);
   document.body.appendChild(root);
+
+  /** @param {string} placeholder */
+  function makeRenameField(placeholder) {
+    const row = document.createElement('div');
+    Object.assign(row.style, { display: 'flex', flexDirection: 'column', gap: '1px' });
+    const label = document.createElement('span');
+    label.textContent = placeholder;
+    Object.assign(label.style, { fontSize: '10px', color: '#b5c0cc' });
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 30;
+    Object.assign(input.style, {
+      padding: '3px 6px',
+      background: 'rgba(14, 18, 24, 0.9)',
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      borderRadius: '2px',
+      color: '#e6e6e6',
+      font: 'inherit',
+    });
+    input.addEventListener('keydown', (e) => e.stopPropagation());
+    row.append(label, input);
+    return { row, input };
+  }
 
   /** @type {'bio'|'skills'|'medical'|'social'} */
   let activeTab = 'bio';

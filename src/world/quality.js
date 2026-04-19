@@ -82,6 +82,23 @@ export function qualityLabel(q) {
   return q[0].toUpperCase() + q.slice(1);
 }
 
+/** @type {Record<Quality, string>} Flavor text shown in the item panel per tier. */
+const QUALITY_DESCRIPTIONS = {
+  inedible: 'Barely recognizable as food. Chewing it feels like a mistake.',
+  unpleasant: 'Rubbery, bland, and faintly burnt. Eaten out of necessity.',
+  decent: 'Competent cooking. Fills the belly without complaint.',
+  tasty: 'Actually quite good — a welcome break from rations.',
+  delicious: 'Savory, warm, seasoned with care. A proper meal.',
+  lavish: 'Plated with pride. The kind of dish colonists talk about.',
+  gourmet: 'A masterpiece. Art you can eat.',
+};
+
+/** @param {string} q */
+export function qualityDescription(q) {
+  if (!isQuality(q)) return '';
+  return QUALITY_DESCRIPTIONS[/** @type {Quality} */ (q)];
+}
+
 /** @param {Quality} q */
 export function nutritionMultiplier(q) {
   return NUTRITION_MULT[q] ?? 1;

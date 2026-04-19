@@ -2566,10 +2566,15 @@ function finishCook(world, grid, stoveId, stove, bills, deps) {
   const recipe = RECIPES[bill.recipeId];
   if (!recipe) return;
   bill.done += 1;
+  const outputMode = bill.outputMode ?? 'haul';
+  const forbidden = outputMode === 'floor';
+  const preferredZoneId = outputMode === 'stockpile' ? (bill.outputStockpileId ?? 0) : 0;
   addItemsToTile(world, grid, recipe.outputKind, recipe.outputCount, anchor.i, anchor.j, {
     quality,
     ingredients,
     cookedBy,
+    forbidden,
+    preferredZoneId,
   });
   deps.onItemChange();
 }
