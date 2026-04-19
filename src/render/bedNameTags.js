@@ -177,7 +177,8 @@ function renderTextToCanvas(label, owned) {
  */
 function nameOf(world, cowId) {
   const ident = world.get(cowId, 'Identity');
-  if (ident?.name) return ident.name;
+  if (ident?.nickname) return ident.nickname;
+  if (ident?.firstName) return ident.firstName;
   const brain = world.get(cowId, 'Brain');
   return brain?.name ?? '';
 }

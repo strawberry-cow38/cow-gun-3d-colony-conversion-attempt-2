@@ -989,6 +989,30 @@ const buildTab = createBuildTab({
 
 const workTab = createWorkTab({ world });
 
+// Unified RimWorld-style bottom tab bar. Build + Work sit side-by-side at
+// bottom-center; each tab's own popup still grows upward from its button so
+// category/work grids stay visible above the bar.
+const bottomBar = document.createElement('div');
+bottomBar.id = 'bottom-bar';
+Object.assign(bottomBar.style, {
+  position: 'fixed',
+  bottom: '10px',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: '10px',
+  zIndex: '40',
+});
+document.body.appendChild(bottomBar);
+for (const root of [buildTab.root, workTab.root]) {
+  root.style.position = 'relative';
+  root.style.bottom = 'unset';
+  root.style.left = 'unset';
+  root.style.right = 'unset';
+  bottomBar.appendChild(root);
+}
+
 const itemStackPanel = createItemStackPanel({
   world,
   state,

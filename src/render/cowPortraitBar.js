@@ -38,14 +38,15 @@ export function createCowPortraitBar(opts) {
   Object.assign(root.style, {
     position: 'fixed',
     top: '8px',
-    left: '8px',
+    left: '50%',
+    transform: 'translateX(-50%)',
     display: 'flex',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     gap: '6px',
     padding: '0',
     margin: '0',
-    maxWidth: 'min(640px, calc(100vw - 320px))',
+    maxWidth: 'min(720px, calc(100vw - 320px))',
     zIndex: '40',
     pointerEvents: 'none',
   });

@@ -97,7 +97,7 @@ export function createBedPanel(opts) {
     }
 
     const cows = collectCows(world);
-    const rosterSig = cows.map((c) => `${c.id}:${c.name}`).join(',');
+    const rosterSig = cows.map((c) => `${c.id}:${c.name}:${c.ownedBedId}`).join(',');
     const key = `one:${id}:${bed.ownerId}:${rosterSig}`;
     if (key === lastKey) return;
     lastKey = key;
@@ -109,7 +109,12 @@ export function createBedPanel(opts) {
     listWrap.replaceChildren();
     listWrap.append(makeRow('Unassigned', bed.ownerId === 0, () => assign(id, 0)));
     for (const c of cows) {
-      listWrap.append(makeRow(c.name, bed.ownerId === c.id, () => assign(id, c.id)));
+      const isOwner = bed.ownerId === c.id;
+      // Each cow owns at most one bed. If the cow already owns a different bed,
+      // the row's action reassigns (unassigning the prior bed first).
+      const ownsOtherBed = !isOwner && c.ownedBedId > 0;
+      const label = ownsOtherBed ? `Reassign ${c.name}` : c.name;
+      listWrap.append(makeRow(label, isOwner, () => assign(id, c.id)));
     }
   }
 
@@ -120,6 +125,14 @@ export function createBedPanel(opts) {
   function assign(bedId, cowId) {
     const bed = world.get(bedId, 'Bed');
     if (!bed) return;
+    if (cowId > 0) {
+      // Enforce 1-bed-per-cow: strip the claim off any other bed that this cow
+      // already owns before writing the new assignment.
+      for (const { id: otherId, components } of world.query(['Bed'])) {
+        if (otherId === bedId) continue;
+        if (components.Bed.ownerId === cowId) components.Bed.ownerId = 0;
+      }
+    }
     // If we're reassigning while someone else is mid-sleep here, let their
     // sleep job bail naturally at its next tick (it re-checks ownership).
     bed.ownerId = cowId;
@@ -159,10 +172,20 @@ export function createBedPanel(opts) {
 
 /** @param {import('../ecs/world.js').World} world */
 function collectCows(world) {
-  /** @type {{ id: number, name: string }[]} */
+  /** @type {Map<number, number>} cowId → bedId currently claiming them */
+  const bedByOwner = new Map();
+  for (const { id, components } of world.query(['Bed'])) {
+    const owner = components.Bed.ownerId | 0;
+    if (owner > 0 && !bedByOwner.has(owner)) bedByOwner.set(owner, id);
+  }
+  /** @type {{ id: number, name: string, ownedBedId: number }[]} */
   const cows = [];
   for (const { id, components } of world.query(['Cow', 'Brain', 'Identity'])) {
-    cows.push({ id, name: nicknameOf(components.Identity, components.Brain, id) });
+    cows.push({
+      id,
+      name: nicknameOf(components.Identity, components.Brain, id),
+      ownedBedId: bedByOwner.get(id) ?? 0,
+    });
   }
   cows.sort((a, b) => a.name.localeCompare(b.name));
   return cows;
