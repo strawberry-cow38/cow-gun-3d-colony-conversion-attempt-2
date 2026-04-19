@@ -55,6 +55,7 @@ export class CowMoveCommand {
    * @param {() => Iterable<number>} getSelectedCows
    * @param {THREE.Scene} scene
    * @param {{ show: (x: number, y: number, items: { label: string, onPick?: (ev: MouseEvent) => void, disabled?: boolean }[]) => void, hide: () => void }} contextMenu
+   * @param {import('../systems/stockpileZones.js').StockpileZones} stockpileZones
    * @param {{ play: (kind: string) => void }} [audio]
    * @param {{ isDesignatorActive?: () => boolean, getHitboxMesh?: () => THREE.Mesh | null, tileWorld?: import('../world/tileWorld.js').TileWorld }} [opts]
    */
@@ -70,6 +71,7 @@ export class CowMoveCommand {
     getSelectedCows,
     scene,
     contextMenu,
+    stockpileZones,
     audio,
     opts = {},
   ) {
@@ -85,6 +87,7 @@ export class CowMoveCommand {
     this.board = jobBoard;
     this.getSelectedCows = getSelectedCows;
     this.contextMenu = contextMenu;
+    this.stockpileZones = stockpileZones;
     this.audio = audio;
     this.isDesignatorActive = opts.isDesignatorActive ?? (() => false);
     this.raycaster = new THREE.Raycaster();
@@ -210,6 +213,7 @@ export class CowMoveCommand {
         this.world,
         this.tileGrid,
         this.board,
+        this.stockpileZones,
         haulable.kind,
         tile.i,
         tile.j,
@@ -220,6 +224,7 @@ export class CowMoveCommand {
         this.world,
         this.tileGrid,
         this.board,
+        this.stockpileZones,
         cowId,
         tile.i,
         tile.j,
@@ -284,6 +289,7 @@ export class CowMoveCommand {
               this.world,
               this.tileGrid,
               this.board,
+              this.stockpileZones,
               haulable.kind,
               tile.i,
               tile.j,
@@ -297,6 +303,7 @@ export class CowMoveCommand {
                   this.world,
                   this.tileGrid,
                   this.board,
+                  this.stockpileZones,
                   cowId,
                   tile.i,
                   tile.j,

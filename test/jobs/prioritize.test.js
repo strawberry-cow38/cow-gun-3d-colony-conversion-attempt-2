@@ -9,7 +9,14 @@ import {
   prioritizeJob,
   stockpileSlotAvailable,
 } from '../../src/jobs/prioritize.js';
+import { createStockpileZones } from '../../src/systems/stockpileZones.js';
 import { TileGrid } from '../../src/world/tileGrid.js';
+
+function makeZones(grid) {
+  const z = createStockpileZones(grid);
+  z.hydrateFromGrid();
+  return z;
+}
 
 function makeWorld() {
   const w = new World();
@@ -106,7 +113,7 @@ describe('postAndPrioritizeHaul', () => {
     spawnItem(w, 1, 1, 'wood', 8);
     const b = new JobBoard();
 
-    const job = postAndPrioritizeHaul(w, grid, b, cow, 1, 1);
+    const job = postAndPrioritizeHaul(w, grid, b, makeZones(grid), cow, 1, 1);
     expect(job).not.toBeNull();
     expect(job?.kind).toBe('haul');
     expect(job?.payload.count).toBe(8);
@@ -121,7 +128,7 @@ describe('postAndPrioritizeHaul', () => {
     spawnItem(w, 1, 1, 'wood', 8);
     const b = new JobBoard();
 
-    expect(postAndPrioritizeHaul(w, grid, b, cow, 1, 1)).toBeNull();
+    expect(postAndPrioritizeHaul(w, grid, b, makeZones(grid), cow, 1, 1)).toBeNull();
     expect(b.jobs).toHaveLength(0);
   });
 
@@ -154,7 +161,7 @@ describe('postAndPrioritizeHaul', () => {
     aCowJob.payload = { jobId: aJob.id, itemId: item, count: 0, toI: 7, toJ: 7 };
     w.get(cowA, 'Inventory').items = [{ kind: 'wood', count: 12 }];
 
-    const posted = postAndPrioritizeHaul(w, grid, b, cowB, 1, 1);
+    const posted = postAndPrioritizeHaul(w, grid, b, makeZones(grid), cowB, 1, 1);
     expect(posted).not.toBeNull();
     expect(posted?.id).not.toBe(aJob.id);
     expect(posted?.claimedBy).toBe(cowB);
@@ -172,7 +179,7 @@ describe('stockpileSlotAvailable', () => {
     const grid = new TileGrid(4, 4);
     grid.setStockpile(3, 3, 1);
     const b = new JobBoard();
-    expect(stockpileSlotAvailable(w, grid, b, 'wood', 1, 1)).toBe(true);
+    expect(stockpileSlotAvailable(w, grid, b, makeZones(grid), 'wood', 1, 1)).toBe(true);
   });
 
   it('false when all slots are full', () => {
@@ -181,7 +188,7 @@ describe('stockpileSlotAvailable', () => {
     grid.setStockpile(3, 3, 1);
     spawnItem(w, 3, 3, 'wood', 50); // wood maxStack = 50
     const b = new JobBoard();
-    expect(stockpileSlotAvailable(w, grid, b, 'wood', 1, 1)).toBe(false);
+    expect(stockpileSlotAvailable(w, grid, b, makeZones(grid), 'wood', 1, 1)).toBe(false);
   });
 });
 

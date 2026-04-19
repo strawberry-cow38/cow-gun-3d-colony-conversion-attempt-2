@@ -74,18 +74,21 @@ export function findHaulableItemAtTile(world, grid, i, j) {
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
+ * @param {import('../systems/stockpileZones.js').StockpileZones} stockpileZones
  * @param {number} cowId
  * @param {number} i @param {number} j
  * @param {{ queue?: boolean }} [opts]
  */
-export function postAndPrioritizeHaul(world, grid, board, cowId, i, j, opts = {}) {
+export function postAndPrioritizeHaul(world, grid, board, stockpileZones, cowId, i, j, opts = {}) {
   const item = findHaulableItemAtTile(world, grid, i, j);
   if (!item) return null;
   const claimed = buildHaulTargetedCounts(world, board).get(item.id) ?? 0;
   const want = item.count - claimed;
   if (want <= 0) return null;
   const slots = computeStockpileSlots(world, grid, board);
-  const target = findAndReserveSlot(grid, slots, item.kind, item.key, i, j, want);
+  const target = findAndReserveSlot(grid, slots, item.kind, item.key, i, j, want, {
+    allowsAt: stockpileZones.allowsAt,
+  });
   if (!target) return null;
   const job = board.post('haul', {
     itemId: item.id,
@@ -114,14 +117,18 @@ export function postAndPrioritizeHaul(world, grid, board, cowId, i, j, opts = {}
  * @param {import('../ecs/world.js').World} world
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../jobs/board.js').JobBoard} board
+ * @param {import('../systems/stockpileZones.js').StockpileZones} stockpileZones
  * @param {string} kind
  * @param {number} i @param {number} j
  * @param {string} [key]
  */
-export function stockpileSlotAvailable(world, grid, board, kind, i, j, key) {
+export function stockpileSlotAvailable(world, grid, board, stockpileZones, kind, i, j, key) {
   const slots = computeStockpileSlots(world, grid, board);
   const k = key ?? stackKey({ kind });
-  return findAndReserveSlot(grid, slots, kind, k, i, j, 1) !== null;
+  return (
+    findAndReserveSlot(grid, slots, kind, k, i, j, 1, { allowsAt: stockpileZones.allowsAt }) !==
+    null
+  );
 }
 
 /**

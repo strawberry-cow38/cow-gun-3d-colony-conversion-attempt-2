@@ -3,6 +3,7 @@ import { registerComponents } from '../../src/components/index.js';
 import { World } from '../../src/ecs/world.js';
 import { JobBoard } from '../../src/jobs/board.js';
 import { makeFurnaceSystem } from '../../src/systems/furnace.js';
+import { createStockpileZones } from '../../src/systems/stockpileZones.js';
 import { TileGrid } from '../../src/world/tileGrid.js';
 
 function makeWorld() {
@@ -50,7 +51,9 @@ function spawnItem(world, i, j, kind, count, opts = {}) {
 }
 
 function tick(world, board, grid) {
-  makeFurnaceSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+  const zones = createStockpileZones(grid);
+  zones.hydrateFromGrid();
+  makeFurnaceSystem(board, grid, zones).run(world, /** @type {any} */ ({ tick: 0 }));
 }
 
 describe('furnace system: supply posting', () => {

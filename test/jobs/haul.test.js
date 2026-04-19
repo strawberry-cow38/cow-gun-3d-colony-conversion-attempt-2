@@ -3,12 +3,19 @@ import { registerComponents } from '../../src/components/index.js';
 import { World } from '../../src/ecs/world.js';
 import { JobBoard } from '../../src/jobs/board.js';
 import { makeHaulPostingSystem } from '../../src/jobs/haul.js';
+import { createStockpileZones } from '../../src/systems/stockpileZones.js';
 import { TileGrid } from '../../src/world/tileGrid.js';
 
 function makeWorld() {
   const w = new World();
   registerComponents(w);
   return w;
+}
+
+function runPoster(board, grid, world) {
+  const zones = createStockpileZones(grid);
+  zones.hydrateFromGrid();
+  makeHaulPostingSystem(board, grid, zones).run(world, /** @type {any} */ ({ tick: 0 }));
 }
 
 function spawnItem(world, i, j, kind, count, capacity, forbidden = false, extra = {}) {
@@ -55,7 +62,7 @@ describe('haul poster: stack consolidation', () => {
     const big = spawnItem(world, 3, 3, 'wood', 10, 50);
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     // One bundled haul carrying all 3 units of the small stack toward the big one.
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
@@ -79,7 +86,7 @@ describe('haul poster: stack consolidation', () => {
     spawnItem(world, 3, 3, 'wood', 48, 50);
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
     // dest has room for only 2 more units → one bundled haul with count=2
@@ -96,7 +103,7 @@ describe('haul poster: stack consolidation', () => {
     const b = spawnItem(world, 3, 3, 'wood', 5, 50);
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
     expect(hauls).toHaveLength(1);
@@ -113,7 +120,7 @@ describe('haul poster: stack consolidation', () => {
     spawnWallSite(world, 1, 1);
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul' && j.payload.itemId === blocker);
     expect(hauls).toHaveLength(1);
@@ -132,7 +139,7 @@ describe('haul poster: stack consolidation', () => {
     spawnItem(world, 1, 1, 'wood', 5, 50, true);
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     expect(board.jobs).toHaveLength(0);
   });
@@ -159,7 +166,7 @@ describe('haul poster: stack consolidation', () => {
     });
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const delivers = board.jobs.filter((j) => j.kind === 'deliver');
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
@@ -207,7 +214,7 @@ describe('haul poster: stack consolidation', () => {
     });
 
     const board = new JobBoard();
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const delivers = board.jobs.filter(
       (j) => j.kind === 'deliver' && j.payload.toBuildSite === true,
@@ -241,7 +248,7 @@ describe('haul poster: stack consolidation', () => {
     });
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const delivers = board.jobs.filter((j) => j.kind === 'deliver');
     expect(delivers).toHaveLength(1);
@@ -263,7 +270,7 @@ describe('haul poster: stack consolidation', () => {
     spawnItem(world, 3, 3, 'stone', 20, 30);
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     expect(board.jobs).toHaveLength(0);
   });
@@ -289,7 +296,7 @@ describe('haul poster: stack consolidation', () => {
     });
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     expect(board.jobs).toHaveLength(0);
   });
@@ -311,9 +318,49 @@ describe('haul poster: stack consolidation', () => {
     });
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     expect(board.jobs).toHaveLength(0);
+  });
+
+  it('evicts an item from a zone that no longer allows its kind to one that does', () => {
+    // Zone A@(0,0) rejects wood, zone B@(3,3) accepts everything. An item
+    // parked on A should get a haul job routed to B — loose-haul and eviction
+    // share the same findAndReserveSlot path.
+    const grid = new TileGrid(4, 4);
+    const world = makeWorld();
+    const item = spawnItem(world, 0, 0, 'wood', 5, 50);
+    const board = new JobBoard();
+
+    const zones = createStockpileZones(grid);
+    const zoneA = /** @type {{ id: number }} */ (zones.createZone([grid.idx(0, 0)]));
+    zones.createZone([grid.idx(3, 3)]);
+    zones.setAllowed(zoneA.id, 'wood', false);
+
+    makeHaulPostingSystem(board, grid, zones).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    const hauls = board.jobs.filter((j) => j.kind === 'haul' && j.payload.itemId === item);
+    expect(hauls).toHaveLength(1);
+    expect(hauls[0].payload.fromI).toBe(0);
+    expect(hauls[0].payload.fromJ).toBe(0);
+    expect(hauls[0].payload.toI).toBe(3);
+    expect(hauls[0].payload.toJ).toBe(3);
+  });
+
+  it('leaves a disallowed-zone item alone when no allowed zone exists', () => {
+    // Only zone on the map rejects wood → item sits in place.
+    const grid = new TileGrid(4, 4);
+    const world = makeWorld();
+    spawnItem(world, 0, 0, 'wood', 5, 50);
+    const board = new JobBoard();
+
+    const zones = createStockpileZones(grid);
+    const zoneA = /** @type {{ id: number }} */ (zones.createZone([grid.idx(0, 0)]));
+    zones.setAllowed(zoneA.id, 'wood', false);
+
+    makeHaulPostingSystem(board, grid, zones).run(world, /** @type {any} */ ({ tick: 0 }));
+
+    expect(board.jobs.filter((j) => j.kind === 'haul')).toHaveLength(0);
   });
 
   it('DOES merge meal stacks when full stack key matches', () => {
@@ -333,7 +380,7 @@ describe('haul poster: stack consolidation', () => {
     });
     const board = new JobBoard();
 
-    makeHaulPostingSystem(board, grid).run(world, /** @type {any} */ ({ tick: 0 }));
+    runPoster(board, grid, world);
 
     const hauls = board.jobs.filter((j) => j.kind === 'haul');
     expect(hauls).toHaveLength(1);

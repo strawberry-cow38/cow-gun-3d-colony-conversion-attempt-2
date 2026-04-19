@@ -165,10 +165,10 @@ scheduler.add(makeCowWallCollisionSystem(tileGrid));
 if (stressCount > 0) scheduler.add(stressBounce);
 scheduler.add(makeHungerSystem());
 scheduler.add(makeTirednessSystem());
-scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid, pathCache));
+scheduler.add(makeHaulPostingSystem(jobBoard, tileGrid, stockpileZones, pathCache));
 scheduler.add(makeFarmPostingSystem(jobBoard, tileGrid, world));
 scheduler.add(
-  makeFurnaceSystem(jobBoard, tileGrid, {
+  makeFurnaceSystem(jobBoard, tileGrid, stockpileZones, {
     // Forward-decl safe: furnaceInstancer + onWorldItemChange exist by the
     // time the first tick fires.
     onCraftChange: () => {
@@ -863,6 +863,7 @@ new CowMoveCommand(
   () => state.selectedCows,
   scene,
   prioritizeMenu,
+  stockpileZones,
   audio,
   {
     isDesignatorActive: isDesignatorArmed,

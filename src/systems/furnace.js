@@ -47,11 +47,13 @@ import { computeStockByKind } from '../world/stock.js';
 /**
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('./stockpileZones.js').StockpileZones} stockpileZones
  * @param {FurnaceSystemOpts} [opts]
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
-export function makeFurnaceSystem(board, grid, opts) {
+export function makeFurnaceSystem(board, grid, stockpileZones, opts) {
   const onCraftChange = opts?.onCraftChange ?? (() => {});
+  const allowsAt = stockpileZones.allowsAt;
   return {
     name: 'furnace',
     tier: 'rare',
@@ -102,6 +104,7 @@ export function makeFurnaceSystem(board, grid, opts) {
               furnace.workI,
               furnace.workJ,
               need,
+              { allowsAt },
             );
             if (!target) break;
             board.post('haul', {

@@ -20,6 +20,7 @@ import {
   makeHungerSystem,
 } from '../src/systems/cow.js';
 import { applyVelocity, snapshotPositions } from '../src/systems/movement.js';
+import { createStockpileZones } from '../src/systems/stockpileZones.js';
 import { spawnInitialTrees } from '../src/systems/trees.js';
 import { tileToWorld } from '../src/world/coords.js';
 import { TileGrid } from '../src/world/tileGrid.js';
@@ -35,9 +36,11 @@ registerComponents(world);
 const grid = new TileGrid(W, H);
 const paths = new PathCache(grid, defaultWalkable);
 const board = new JobBoard();
+const stockpileZones = createStockpileZones(grid);
 
 // Seed a handful of trees (so haul poster + chop system have real work).
 spawnInitialTrees(world, grid, 200);
+stockpileZones.hydrateFromGrid();
 
 // Spawn N cows across the grid.
 for (let n = 0; n < count; n++) {
@@ -74,7 +77,7 @@ scheduler.add(
 );
 scheduler.add(applyVelocity);
 scheduler.add(makeHungerSystem());
-scheduler.add(makeHaulPostingSystem(board, grid));
+scheduler.add(makeHaulPostingSystem(board, grid, stockpileZones));
 
 // Warmup 30 ticks so caches fill before we measure.
 for (let t = 0; t < 30; t++) scheduler.tick(world, t, 1 / 30);

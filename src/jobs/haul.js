@@ -161,9 +161,14 @@ export function buildHaulTargetedCounts(world, board) {
  * @param {string} key   composite stackKey — must match to merge
  * @param {number} i @param {number} j
  * @param {number} want  desired units to reserve (> 0)
+ * @param {{ allowsAt?: (i: number, j: number, kind: string) => boolean }} [opts]
+ *   `allowsAt` gates candidates by the zone filter at (ti,tj). When set, a
+ *   tile is skipped if the zone there doesn't list `kind` as allowed —
+ *   keeps the haul poster from parking wood on a food-only stockpile.
  */
-export function findAndReserveSlot(grid, slots, kind, key, i, j, want) {
+export function findAndReserveSlot(grid, slots, kind, key, i, j, want, opts = {}) {
   const cap = maxStack(kind);
+  const allowsAt = opts.allowsAt;
   let bestSame = null;
   let bestSameStack = null;
   let bestSameD = Number.POSITIVE_INFINITY;
@@ -173,6 +178,7 @@ export function findAndReserveSlot(grid, slots, kind, key, i, j, want) {
   for (const [idx, s] of slots) {
     const ti = idx % grid.W;
     const tj = (idx - ti) / grid.W;
+    if (allowsAt && !allowsAt(ti, tj, kind)) continue;
     const d = Math.max(Math.abs(ti - i), Math.abs(tj - j));
     const match = s.stacks.find((st) => st.key === key);
     if (match && match.count < cap) {
@@ -260,15 +266,20 @@ export function snapshotStockpileStacks(world, grid) {
  * @param {StockpileStack[]} snapshot
  * @param {StockpileStack} src
  * @param {number} want  desired units to reserve (> 0)
+ * @param {{ allowsAt?: (i: number, j: number, kind: string) => boolean }} [opts]
+ *   Same zone-filter gate as `findAndReserveSlot`: skips dst tiles whose zone
+ *   doesn't allow `src.kind`.
  */
-export function findAndReserveMergeTarget(grid, slots, snapshot, src, want) {
+export function findAndReserveMergeTarget(grid, slots, snapshot, src, want, opts = {}) {
   const cap = maxStack(src.kind);
+  const allowsAt = opts.allowsAt;
   let bestIdx = null;
   let bestStack = null;
   let bestD = Number.POSITIVE_INFINITY;
   for (const dst of snapshot) {
     if (dst.itemId === src.itemId) continue;
     if (dst.key !== src.key) continue;
+    if (allowsAt && !allowsAt(dst.i, dst.j, src.kind)) continue;
     // Strict (count, itemId) ordering: src merges INTO the "larger" partner,
     // and the reverse pair rejects its half, so the two cows never swap.
     if (dst.count < src.count) continue;
@@ -465,12 +476,17 @@ function findRelocationTile(grid, blueprintTiles, reservedDropTiles, i, j) {
  *
  * @param {import('./board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} grid
+ * @param {import('../systems/stockpileZones.js').StockpileZones} stockpileZones
+ *   Zone registry — pass 1 skips items whose current tile's zone already accepts
+ *   them (true stockpile membership), and every slot reservation is gated by
+ *   `stockpileZones.allowsAt` so mis-zoned items get evicted to an allowed zone.
  * @param {import('../sim/pathfinding.js').PathCache} [paths]  if provided, deliver jobs
  *   are only posted when the source tile can actually reach the site — prevents the
  *   pickup→drop loop when a z>0 blueprint has no stair built yet.
  * @returns {import('../ecs/schedule.js').SystemDef}
  */
-export function makeHaulPostingSystem(board, grid, paths) {
+export function makeHaulPostingSystem(board, grid, stockpileZones, paths) {
+  const allowsAt = stockpileZones.allowsAt;
   // Cool-down for sites the poster has already proved have no adjacent
   // walkable delivery tile this run. Until the cooldown tick expires we skip
   // the site entirely — re-running adjacentDeliveryTiles + re-logging the
@@ -660,12 +676,18 @@ export function makeHaulPostingSystem(board, grid, paths) {
         // Item at the destination, which would drop the Painting component.
         // Skip paintings here until a metadata-preserving haul path exists.
         if (item.kind === 'painting') continue;
-        if (grid.isStockpile(a.i, a.j)) continue;
+        // Skip items already sitting in a zone that accepts them. Items in
+        // disallowed zones (or loose off-stockpile) fall through to
+        // findAndReserveSlot below, which gates candidates by allowsAt — so
+        // eviction and loose-haul share one code path.
+        if (allowsAt(a.i, a.j, item.kind)) continue;
         const alreadyClaimed = targetedCounts.get(id) ?? 0;
         let need = item.count - alreadyClaimed;
         const key = stackKey(item);
         while (need > 0) {
-          const target = findAndReserveSlot(grid, slots, item.kind, key, a.i, a.j, need);
+          const target = findAndReserveSlot(grid, slots, item.kind, key, a.i, a.j, need, {
+            allowsAt,
+          });
           if (!target) break;
           board.post('haul', {
             itemId: id,
@@ -718,7 +740,9 @@ export function makeHaulPostingSystem(board, grid, paths) {
         const alreadyClaimed = targetedCounts.get(src.itemId) ?? 0;
         let need = src.count - alreadyClaimed;
         while (need > 0) {
-          const target = findAndReserveMergeTarget(grid, slots, snapshot, src, need);
+          const target = findAndReserveMergeTarget(grid, slots, snapshot, src, need, {
+            allowsAt,
+          });
           if (!target) break;
           board.post('haul', {
             itemId: src.itemId,

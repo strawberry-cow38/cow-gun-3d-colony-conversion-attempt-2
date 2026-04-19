@@ -311,3 +311,5 @@ export function createStockpileZones(grid) {
     setOnChanged,
   };
 }
+
+/** @typedef {ReturnType<typeof createStockpileZones>} StockpileZones */
