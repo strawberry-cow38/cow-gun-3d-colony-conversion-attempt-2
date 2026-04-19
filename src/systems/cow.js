@@ -1235,49 +1235,54 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
   const pos = world.get(siteId, 'Position');
   const position = pos ? { ...pos } : { x: 0, y: 0, z: 0 };
   const stuff = site.stuff ?? 'wood';
+  const anchorZ = anchor.z | 0;
+  // Route grid mutations through the layer matching the blueprint's z so
+  // upper-floor placements flip bits on their own TileGrid, not ground. Falls
+  // back to the passed grid when tileWorld is absent (tests, old saves).
+  const layer = tileWorld?.layers[anchorZ] ?? grid;
   if (site.kind === 'door') {
-    grid.setDoor(anchor.i, anchor.j, 1);
+    layer.setDoor(anchor.i, anchor.j, 1);
     world.spawn({
       Door: { stuff },
       DoorViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'torch') {
-    grid.setTorch(anchor.i, anchor.j, 1);
+    layer.setTorch(anchor.i, anchor.j, 1);
     world.spawn({
       Torch: {},
       TorchViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'wallTorch') {
-    grid.setTorch(anchor.i, anchor.j, 1);
+    layer.setTorch(anchor.i, anchor.j, 1);
     world.spawn({
       Torch: {
         deconstructJobId: 0,
         progress: 0,
         wallMounted: true,
-        yaw: yawAwayFromWallAt(grid, anchor.i, anchor.j),
+        yaw: yawAwayFromWallAt(layer, anchor.i, anchor.j),
       },
       TorchViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'roof') {
-    grid.setRoof(anchor.i, anchor.j, 1);
+    layer.setRoof(anchor.i, anchor.j, 1);
     world.spawn({
       Roof: { stuff },
       RoofViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'floor') {
-    grid.setFloor(anchor.i, anchor.j, 1);
+    layer.setFloor(anchor.i, anchor.j, 1);
     world.spawn({
       Floor: { stuff },
       FloorViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'furnace') {
@@ -1287,24 +1292,24 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
     // chosen facing; fall back to any walkable cardinal neighbor, then to the
     // furnace tile itself.
     const facing = site.facing | 0;
-    const workSpot = pickStationWorkSpot(grid, walkable, anchor, facing);
-    grid.blockTile(anchor.i, anchor.j);
+    const workSpot = pickStationWorkSpot(layer, walkable, anchor, facing);
+    layer.blockTile(anchor.i, anchor.j);
     world.spawn({
       Furnace: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
       FurnaceViz: {},
       Bills: { list: [], nextBillId: 1 },
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'easel') {
     const facing = site.facing | 0;
-    const workSpot = pickStationWorkSpot(grid, walkable, anchor, facing);
-    grid.blockTile(anchor.i, anchor.j);
+    const workSpot = pickStationWorkSpot(layer, walkable, anchor, facing);
+    layer.blockTile(anchor.i, anchor.j);
     world.spawn({
       Easel: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
       EaselViz: {},
       Bills: { list: [], nextBillId: 1 },
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'stove') {
@@ -1312,24 +1317,24 @@ function finishBuild(world, grid, siteId, jobId, board, walkable, tileWorld) {
     // Work-spot is picked from the anchor's facing; the full 3-tile footprint
     // then gets blocked. Pick BEFORE blocking so span tiles aren't rejected
     // from the neighbor scan.
-    const workSpot = pickStationWorkSpot(grid, walkable, anchor, facing);
+    const workSpot = pickStationWorkSpot(layer, walkable, anchor, facing);
     for (const t of stoveFootprintTiles(anchor, facing)) {
-      if (grid.inBounds(t.i, t.j)) grid.blockTile(t.i, t.j);
+      if (layer.inBounds(t.i, t.j)) layer.blockTile(t.i, t.j);
     }
     world.spawn({
       Stove: { stuff, workI: workSpot.i, workJ: workSpot.j, facing },
       StoveViz: {},
       Bills: { list: [], nextBillId: 1 },
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'bed') {
     const facing = site.facing | 0;
-    // Bed stays walkable (cows lie on it); no grid.blockTile.
+    // Bed stays walkable (cows lie on it); no layer.blockTile.
     world.spawn({
       Bed: { stuff, facing },
       BedViz: {},
-      TileAnchor: { i: anchor.i, j: anchor.j },
+      TileAnchor: { i: anchor.i, j: anchor.j, z: anchorZ },
       Position: position,
     });
   } else if (site.kind === 'stair') {
@@ -1476,6 +1481,7 @@ const DECON_COMP_BY_KIND = /** @type {const} */ ({
   easel: 'Easel',
   stove: 'Stove',
   bed: 'Bed',
+  stair: 'Stair',
 });
 
 /**
@@ -1497,9 +1503,11 @@ function runDeconstructJob(world, cowId, job, path, pos, grid, paths, walkable, 
   const { entityId, kind, jobId } =
     /** @type {{ entityId: number, kind: string, jobId: number }} */ (job.payload);
   const compName =
-    /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'|'Stove'|'Bed'} */ (
+    /** @type {'Wall'|'Door'|'Torch'|'Roof'|'Floor'|'Furnace'|'Easel'|'Stove'|'Bed'|'Stair'} */ (
       DECON_COMP_BY_KIND[
-        /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'|'stove'|'bed'} */ (kind)
+        /** @type {'wall'|'door'|'torch'|'roof'|'floor'|'furnace'|'easel'|'stove'|'bed'|'stair'} */ (
+          kind
+        )
       ] ?? 'Wall'
     );
   const tag = world.get(entityId, compName);
@@ -1558,7 +1566,7 @@ function runDeconstructJob(world, cowId, job, path, pos, grid, paths, walkable, 
     if (remaining > 0 && remaining % 18 === 0) deps.onCowHammer(pos);
     if (remaining <= 0) {
       deps.onBuildComplete(pos, kind);
-      finishDeconstruct(world, grid, entityId, kind, jobId, board);
+      finishDeconstruct(world, grid, entityId, kind, jobId, board, deps.tileWorld);
       awardXp(world, cowId, 'construction', XP_PER_WORK);
       deps.onItemChange();
       job.kind = 'none';
@@ -1580,24 +1588,48 @@ function runDeconstructJob(world, cowId, job, path, pos, grid, paths, walkable, 
  * @param {string} kind
  * @param {number} jobId
  * @param {import('../jobs/board.js').JobBoard} board
+ * @param {import('../world/tileWorld.js').TileWorld} [tileWorld]
  */
-function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
+function finishDeconstruct(world, grid, entityId, kind, jobId, board, tileWorld) {
   const anchor = world.get(entityId, 'TileAnchor');
   if (!anchor) {
     board.complete(jobId);
     return;
   }
-  if (kind === 'wall') grid.setWall(anchor.i, anchor.j, 0);
-  else if (kind === 'door') grid.setDoor(anchor.i, anchor.j, 0);
-  else if (kind === 'torch') grid.setTorch(anchor.i, anchor.j, 0);
-  else if (kind === 'roof') grid.setRoof(anchor.i, anchor.j, 0);
-  else if (kind === 'floor') grid.setFloor(anchor.i, anchor.j, 0);
-  else if (kind === 'furnace' || kind === 'easel') grid.unblockTile(anchor.i, anchor.j);
+  const anchorZ = anchor.z | 0;
+  // Route through the z-layer so upper-floor decons flip bits on their own
+  // TileGrid. Wall decon keeps reading its z from the Wall entity's anchor.
+  const layer = tileWorld?.layers[anchorZ] ?? grid;
+  if (kind === 'wall') layer.setWall(anchor.i, anchor.j, 0);
+  else if (kind === 'door') layer.setDoor(anchor.i, anchor.j, 0);
+  else if (kind === 'torch') layer.setTorch(anchor.i, anchor.j, 0);
+  else if (kind === 'roof') layer.setRoof(anchor.i, anchor.j, 0);
+  else if (kind === 'floor') layer.setFloor(anchor.i, anchor.j, 0);
+  else if (kind === 'furnace' || kind === 'easel') layer.unblockTile(anchor.i, anchor.j);
   else if (kind === 'stove') {
     const stoveEntity = world.get(entityId, 'Stove');
     const facing = stoveEntity ? stoveEntity.facing | 0 : 0;
     for (const t of stoveFootprintTiles(anchor, facing)) {
-      if (grid.inBounds(t.i, t.j)) grid.unblockTile(t.i, t.j);
+      if (layer.inBounds(t.i, t.j)) layer.unblockTile(t.i, t.j);
+    }
+  } else if (kind === 'stair') {
+    // Inverse of the build path: clear ramp bits on the bottom layer and
+    // strip the floor bit from the top landing on bottomZ+1. No grid bit
+    // needs clearing on the anchor — the bottom landing is just a walkable
+    // tile.
+    const stair = world.get(entityId, 'Stair');
+    const facing = stair ? stair.facing | 0 : 0;
+    const bottomZ = stair ? stair.bottomZ | 0 : anchor.z | 0;
+    const bottom = tileWorld?.layers[bottomZ];
+    const top = tileWorld?.layers[bottomZ + 1];
+    if (bottom) {
+      for (const t of stairRampTiles(anchor, facing)) {
+        if (bottom.inBounds(t.i, t.j)) bottom.setRamp(t.i, t.j, 0);
+      }
+    }
+    if (top) {
+      const landing = stairTopLandingTile(anchor, facing);
+      if (top.inBounds(landing.i, landing.j)) top.setFloor(landing.i, landing.j, 0);
     }
   }
   // Wall/door/torch cost 1 wood → 50% refund = 1. Roofs are free so they
@@ -1646,6 +1678,9 @@ function finishDeconstruct(world, grid, entityId, kind, jobId, board) {
   } else if (kind === 'bed') {
     // 8 wood → 50% refund = 4.
     for (let k = 0; k < 4; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
+  } else if (kind === 'stair') {
+    // 10 wood → 50% refund = 5.
+    for (let k = 0; k < 5; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);
   } else {
     const returned = kind === 'roof' ? 0 : Math.round(1 * 0.5);
     for (let k = 0; k < returned; k++) addItemToTile(world, grid, 'wood', anchor.i, anchor.j);

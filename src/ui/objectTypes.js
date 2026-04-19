@@ -16,6 +16,7 @@
 
 import { buildTicksForKind } from '../jobs/build.js';
 import { releaseBuildSite } from '../render/buildDesignator.js';
+import { WALL_FILL_FULL, WALL_FILL_HALF, WALL_FILL_QUARTER } from '../world/tileGrid.js';
 import { TREE_MAX_WOOD, TREE_MIN_YIELD_GROWTH, woodYieldFor } from '../world/trees.js';
 
 /**
@@ -149,6 +150,14 @@ function cancelDeconstructOrder(component) {
     key: 'KeyC',
     ...cancelOrder(component, 'deconstructJobId'),
   };
+}
+
+/** @param {number} fill */
+function wallTierLabel(fill) {
+  if (fill >= WALL_FILL_FULL) return 'wall';
+  if (fill >= WALL_FILL_HALF) return 'half wall';
+  if (fill >= WALL_FILL_QUARTER) return 'quarter wall';
+  return 'wall';
 }
 
 /** @type {ObjectType[]} */
@@ -299,10 +308,21 @@ export const OBJECT_TYPES = [
     component: 'Wall',
     label(world, id) {
       const w = world.get(id, 'Wall');
-      return w?.stuff === 'stone' ? 'Stone wall' : 'Wooden wall';
+      const tier = wallTierLabel(w?.fill | 0);
+      const stuff = w?.stuff === 'stone' ? 'Stone' : 'Wooden';
+      return `${stuff} ${tier}`;
     },
-    subtitle() {
-      return 'built · blocks pathing';
+    subtitle(world, id) {
+      const w = world.get(id, 'Wall');
+      const fill = w?.fill | 0;
+      // Full walls block pathing; partials are pass-through but still cost
+      // mats and support roofs above them. Surfacing the tier here saves the
+      // player from squinting at the geometry to tell whether a half/quarter
+      // is in place or just a paint job.
+      if (fill >= WALL_FILL_FULL) return 'full · blocks pathing';
+      if (fill >= WALL_FILL_HALF) return 'half · waist-high';
+      if (fill >= WALL_FILL_QUARTER) return 'quarter · ankle-high';
+      return 'empty';
     },
     description() {
       return 'Load-bearing wall. Forms rooms when closed; supports adjacent roofs. Deconstructing returns ~half its material.';

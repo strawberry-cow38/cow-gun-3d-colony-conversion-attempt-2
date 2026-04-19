@@ -43,6 +43,7 @@ import { createPrioritizeMenu } from './render/prioritizeMenu.js';
 import { RtsCamera } from './render/rtsCamera.js';
 import { createScene } from './render/scene.js';
 import { SelectionBox } from './render/selectionBox.js';
+import { createStairPanel } from './render/stairPanel.js';
 import { createStockpilePanel } from './render/stockpilePanel.js';
 import { StockpileSelector } from './render/stockpileSelector.js';
 import { createStressInstancer } from './render/stressInstancer.js';
@@ -1064,6 +1065,14 @@ const bedPanel = createBedPanel({
   },
 });
 
+const stairPanel = createStairPanel({
+  world,
+  state,
+  board: jobBoard,
+  audio,
+  onChange: updateHud,
+});
+
 const stockpilePanel = createStockpilePanel({
   state,
   stockpileZones,
@@ -1175,6 +1184,7 @@ const { render, getFps } = createRenderFrame({
   easelPanel,
   stovePanel,
   bedPanel,
+  stairPanel,
   stockpilePanel,
   farmPanel,
   objectPanel,

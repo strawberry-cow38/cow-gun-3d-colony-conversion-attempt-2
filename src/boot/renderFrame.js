@@ -56,6 +56,7 @@ function speedIcon(speed) {
  *   easelPanel: { update: () => void },
  *   stovePanel: { update: () => void },
  *   bedPanel: { update: () => void },
+ *   stairPanel: { update: () => void },
  *   stockpilePanel: { update: () => void },
  *   farmPanel: { update: () => void },
  *   objectPanel: { update: () => void },
@@ -97,6 +98,7 @@ export function createRenderFrame({
   easelPanel,
   stovePanel,
   bedPanel,
+  stairPanel,
   stockpilePanel,
   farmPanel,
   objectPanel,
@@ -299,6 +301,7 @@ export function createRenderFrame({
     easelPanel.update();
     stovePanel.update();
     bedPanel.update();
+    stairPanel.update();
     stockpilePanel.update();
     farmPanel.update();
     objectPanel.update();

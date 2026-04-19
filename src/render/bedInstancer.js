@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { FACING_OFFSETS, FACING_YAWS } from '../world/facing.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 /** Full bed dimensions — the glb spans exactly two tiles along its length. */
 export const BED_LENGTH = TILE_SIZE * 2;
@@ -106,7 +107,7 @@ export function createBedInstancer(scene, capacity = 64) {
       const facing = components.Bed.facing | 0;
       const off = FACING_OFFSETS[facing] ?? FACING_OFFSETS[0];
       const anchorWorld = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j);
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT;
       // Bed center sits between anchor and forward tile; head end points along
       // the facing direction, which yaw-rotates local +Z to world +facing.
       const cx = anchorWorld.x + off.di * (TILE_SIZE / 2);

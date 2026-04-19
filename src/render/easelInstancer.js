@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { FACING_YAWS } from '../world/facing.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 export const EASEL_FOOTPRINT = TILE_SIZE * 0.7;
 export const EASEL_HEIGHT = 1.6 * UNITS_PER_METER;
@@ -76,7 +77,7 @@ export function createEaselInstancer(scene, capacity = 32) {
       if (i >= capacity) break;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j);
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT;
       const facing = components.Easel.facing | 0;
       const yaw = FACING_YAWS[facing] ?? 0;
       _quat.setFromAxisAngle(_yAxis, yaw);

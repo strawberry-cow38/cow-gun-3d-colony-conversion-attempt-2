@@ -485,15 +485,19 @@ export class BuildDesignator {
     const isWallTorch = kind === 'wallTorch';
     const isFloor = kind === 'floor';
     const isStove = kind === 'stove';
+    const activeZ = this.tileWorld?.activeZ ?? 0;
+    const layer = this.tileWorld?.layers[activeZ] ?? this.tileGrid;
+    const zLift = activeZ * LAYER_HEIGHT;
     if (isStove) {
       const footprint = stoveFootprintTiles({ i, j }, this.currentFacing);
       for (const t of footprint) {
-        if (!this.tileGrid.inBounds(t.i, t.j)) return false;
-        if (this.tileGrid.isBlocked(t.i, t.j)) return false;
-        if (this.tileGrid.isDoor(t.i, t.j)) return false;
-        if (this.tileGrid.isTorch(t.i, t.j)) return false;
-        if (this.tileGrid.isStockpile(t.i, t.j)) return false;
-        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof' && k !== 'floor') !== null) {
+        if (!layer.inBounds(t.i, t.j)) return false;
+        if (layer.isBlocked(t.i, t.j)) return false;
+        if (layer.isDoor(t.i, t.j)) return false;
+        if (layer.isTorch(t.i, t.j)) return false;
+        if (layer.isStockpile(t.i, t.j)) return false;
+        if (activeZ > 0 && !this.#hasUpperSupport(t.i, t.j, activeZ)) return false;
+        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof' && k !== 'floor', activeZ) !== null) {
           return false;
         }
       }
@@ -503,7 +507,7 @@ export class BuildDesignator {
       // haulers deliver materials there.
       for (const t of footprint) {
         if (t.i === i && t.j === j) continue;
-        this.tileGrid.blockTile(t.i, t.j);
+        layer.blockTile(t.i, t.j);
       }
       const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
       this.world.spawn({
@@ -518,8 +522,8 @@ export class BuildDesignator {
           facing: this.currentFacing,
         },
         BuildSiteViz: {},
-        TileAnchor: { i, j },
-        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+        TileAnchor: { i, j, z: activeZ },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j) + zLift, z: w.z },
       });
       return true;
     }
@@ -580,12 +584,13 @@ export class BuildDesignator {
     if (isBed) {
       const footprint = bedFootprintTiles({ i, j }, this.currentFacing);
       for (const t of footprint) {
-        if (!this.tileGrid.inBounds(t.i, t.j)) return false;
-        if (this.tileGrid.isBlocked(t.i, t.j)) return false;
-        if (this.tileGrid.isDoor(t.i, t.j)) return false;
-        if (this.tileGrid.isTorch(t.i, t.j)) return false;
-        if (this.tileGrid.isStockpile(t.i, t.j)) return false;
-        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof' && k !== 'floor') !== null) {
+        if (!layer.inBounds(t.i, t.j)) return false;
+        if (layer.isBlocked(t.i, t.j)) return false;
+        if (layer.isDoor(t.i, t.j)) return false;
+        if (layer.isTorch(t.i, t.j)) return false;
+        if (layer.isStockpile(t.i, t.j)) return false;
+        if (activeZ > 0 && !this.#hasUpperSupport(t.i, t.j, activeZ)) return false;
+        if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof' && k !== 'floor', activeZ) !== null) {
           return false;
         }
       }
@@ -603,8 +608,8 @@ export class BuildDesignator {
           facing: this.currentFacing,
         },
         BuildSiteViz: {},
-        TileAnchor: { i, j },
-        Position: { x: w.x, y: this.tileGrid.getElevation(i, j), z: w.z },
+        TileAnchor: { i, j, z: activeZ },
+        Position: { x: w.x, y: this.tileGrid.getElevation(i, j) + zLift, z: w.z },
       });
       return true;
     }
@@ -613,10 +618,10 @@ export class BuildDesignator {
     // blueprint can sit atop any partial below and span z-boundaries freely.
     // Completion distributes the tier's quarters across the z-layer buckets.
     if (WALL_FAMILY.has(kind)) return this.#designateWallStack(i, j, kind);
-    const layer = this.tileGrid;
+    if (activeZ > 0 && !isRoof && !this.#hasUpperSupport(i, j, activeZ)) return false;
     if (isRoof) {
       if (layer.isRoof(i, j)) return false;
-      if (!hasRoofSupport(layer, this.world, i, j)) return false;
+      if (!hasRoofSupport(layer, this.world, i, j, activeZ)) return false;
     } else if (isFloor) {
       // Floors sit on the ground plane but don't block anything. Skip tiles
       // already floored, walled (wall replaces the ground), or occupied by
@@ -649,7 +654,7 @@ export class BuildDesignator {
       : isFloor
         ? /** @param {string} k */ (k) => k === 'floor'
         : /** @param {string} k */ (k) => k !== 'roof' && k !== 'floor';
-    const existingSiteId = this.#findSiteAt(i, j, samePlane, 0);
+    const existingSiteId = this.#findSiteAt(i, j, samePlane, activeZ);
     if (existingSiteId !== null) {
       // Door over wall blueprint: upgrade the plan in-place — cancel the
       // wall blueprint (refunds delivered resources) and drop through to
@@ -669,13 +674,13 @@ export class BuildDesignator {
     }
     // Door over built wall: queue the wall's deconstruct. The haul poster
     // holds the door's build job until grid.isFullWall flips back to 0.
-    if (isDoor && this.tileGrid.isFullWall(i, j)) {
-      this.#queueWallDeconstructAt(i, j);
+    if (isDoor && layer.isFullWall(i, j)) {
+      this.#queueWallDeconstructAt(i, j, activeZ);
     }
     const stuff = this.config.stuffed ? this.currentStuff : null;
     const requiredKind = stuff ? STUFF[stuff].itemKind : (this.config.requiredKind ?? 'wood');
     const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
-    const y = this.tileGrid.getElevation(i, j);
+    const y = this.tileGrid.getElevation(i, j) + zLift;
     this.world.spawn({
       BuildSite: {
         kind,
@@ -689,7 +694,7 @@ export class BuildDesignator {
         baseFill: 0,
       },
       BuildSiteViz: {},
-      TileAnchor: { i, j, z: 0 },
+      TileAnchor: { i, j, z: activeZ },
       Position: { x: w.x, y, z: w.z },
     });
     return true;
@@ -839,11 +844,12 @@ export class BuildDesignator {
     return fill;
   }
 
-  /** @param {number} i @param {number} j */
-  #queueWallDeconstructAt(i, j) {
+  /** @param {number} i @param {number} j @param {number} [z] */
+  #queueWallDeconstructAt(i, j, z = 0) {
     for (const { id, components } of this.world.query(['Wall', 'TileAnchor'])) {
       const a = components.TileAnchor;
       if (a.i !== i || a.j !== j) continue;
+      if ((a.z | 0) !== z) continue;
       const wall = components.Wall;
       if (wall.deconstructJobId > 0) return;
       const job = this.board.post('deconstruct', {
@@ -867,16 +873,20 @@ export class BuildDesignator {
     // the topmost layer first (and the player can click twice to peel two
     // stacked blueprints).
     const kind = this.config.kind;
+    const activeZ = this.tileWorld?.activeZ ?? 0;
     let id;
-    if (kind === 'stove') id = this.#findStoveSiteCovering(i, j);
-    else if (kind === 'bed') id = this.#findBedSiteCovering(i, j);
+    if (kind === 'stove') id = this.#findStoveSiteCovering(i, j, activeZ);
+    else if (kind === 'bed') id = this.#findBedSiteCovering(i, j, activeZ);
     else if (kind === 'stair') id = this.#findStairSiteCovering(i, j);
     else if (WALL_FAMILY.has(kind)) id = this.#findTopmostWallSiteAt(i, j);
-    else id = this.#findSiteAt(i, j, (k) => k === kind, 0);
+    else id = this.#findSiteAt(i, j, (k) => k === kind, activeZ);
     if (id === null) return false;
     const site = this.world.get(id, 'BuildSite');
     if (!site) return false;
-    releaseBuildSite(this.world, this.board, this.tileGrid, site, i, j);
+    const siteAnchor = this.world.get(id, 'TileAnchor');
+    const footprintZ = siteAnchor ? siteAnchor.z | 0 : activeZ;
+    const footprintLayer = this.tileWorld?.layers[footprintZ] ?? this.tileGrid;
+    releaseBuildSite(this.world, this.board, this.tileGrid, site, i, j, footprintLayer);
     this.world.despawn(id);
     return true;
   }
@@ -923,13 +933,14 @@ export class BuildDesignator {
   /**
    * Cancel needs to match the stove blueprint whose 3-tile footprint includes
    * the clicked tile, since the player can click any of the three positions.
-   * @param {number} i @param {number} j
+   * @param {number} i @param {number} j @param {number} [z]
    */
-  #findStoveSiteCovering(i, j) {
+  #findStoveSiteCovering(i, j, z = 0) {
     for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
       const site = components.BuildSite;
       if (site.kind !== 'stove') continue;
       const anchor = components.TileAnchor;
+      if ((anchor.z | 0) !== z) continue;
       for (const t of stoveFootprintTiles(anchor, site.facing | 0)) {
         if (t.i === i && t.j === j) return id;
       }
@@ -950,12 +961,13 @@ export class BuildDesignator {
     return null;
   }
 
-  /** @param {number} i @param {number} j */
-  #findBedSiteCovering(i, j) {
+  /** @param {number} i @param {number} j @param {number} [z] */
+  #findBedSiteCovering(i, j, z = 0) {
     for (const { id, components } of this.world.query(['BuildSite', 'TileAnchor'])) {
       const site = components.BuildSite;
       if (site.kind !== 'bed') continue;
       const anchor = components.TileAnchor;
+      if ((anchor.z | 0) !== z) continue;
       for (const t of bedFootprintTiles(anchor, site.facing | 0)) {
         if (t.i === i && t.j === j) return id;
       }
@@ -1005,16 +1017,15 @@ export class BuildDesignator {
     const z1 = se.z + TILE_SIZE * 0.5;
     // Walls are anchored at z=0 and stack via absolute baseFill; offset the
     // preview by the current pending stack height so it hovers at the tile's
-    // real top. Stairs still honor the layer switcher for their z anchor.
+    // real top. Every other kind rides the layer switcher so the ghost shows
+    // on the active z-layer.
     const activeZ = this.tileWorld?.activeZ ?? 0;
     const isWallFamily = WALL_FAMILY.has(this.config.kind);
     const elev = grid.getElevation(i0, j0);
     const y =
       isWallFamily && !this.removing
         ? elev + this.#totalWallFillAt(i0, j0) * TERRAIN_STEP + PREVIEW_CLEARANCE
-        : elev +
-          (this.removing ? 0 : this.config.kind === 'stair' ? activeZ : 0) * LAYER_HEIGHT +
-          PREVIEW_CLEARANCE;
+        : elev + activeZ * LAYER_HEIGHT + PREVIEW_CLEARANCE;
     const p = this.preview.positions;
     p[0] = x0;
     p[1] = y;
@@ -1055,14 +1066,16 @@ export class BuildDesignator {
     if (this.stoveGhost) {
       const anchor = this.curTile;
       const aw = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-      this.stoveGhost.group.position.set(aw.x, grid.getElevation(anchor.i, anchor.j), aw.z);
+      const stoveY = grid.getElevation(anchor.i, anchor.j) + activeZ * LAYER_HEIGHT;
+      this.stoveGhost.group.position.set(aw.x, stoveY, aw.z);
       this.stoveGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.stoveGhost.group.visible = !this.removing;
     }
     if (this.bedGhost) {
       const anchor = this.curTile;
       const aw = tileToWorld(anchor.i, anchor.j, grid.W, grid.H);
-      this.bedGhost.group.position.set(aw.x, grid.getElevation(anchor.i, anchor.j), aw.z);
+      const bedY = grid.getElevation(anchor.i, anchor.j) + activeZ * LAYER_HEIGHT;
+      this.bedGhost.group.position.set(aw.x, bedY, aw.z);
       this.bedGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.bedGhost.group.visible = !this.removing;
     }
@@ -1115,14 +1128,25 @@ export class BuildDesignator {
       // Work spot is the tile the front faces. If that tile is blocked or
       // off-grid, fall back to any walkable cardinal neighbor so the player
       // can still see *some* indicator (the build job will do the same fallback
-      // at completion).
+      // at completion). Uses the active-layer grid so upper-floor stations find
+      // their stand-tile on that same level.
+      const spotLayer = this.tileWorld?.layers[activeZ] ?? grid;
       const off = FACING_OFFSETS[this.currentFacing] ?? FACING_OFFSETS[0];
       const fi = this.curTile.i + off.di;
       const fj = this.curTile.j + off.dj;
-      let spot = grid.inBounds(fi, fj) && defaultWalkable(grid, fi, fj) ? { i: fi, j: fj } : null;
-      if (!spot) spot = findAdjacentWalkable(grid, defaultWalkable, this.curTile.i, this.curTile.j);
+      let spot =
+        spotLayer.inBounds(fi, fj) && defaultWalkable(spotLayer, fi, fj) ? { i: fi, j: fj } : null;
+      if (!spot)
+        spot = findAdjacentWalkable(spotLayer, defaultWalkable, this.curTile.i, this.curTile.j);
       if (spot && !this.removing) {
-        renderTilePreview(this.workSpotPreview, grid, spot.i, spot.j, WORK_SPOT_COLOR);
+        renderTilePreview(
+          this.workSpotPreview,
+          grid,
+          spot.i,
+          spot.j,
+          WORK_SPOT_COLOR,
+          activeZ * LAYER_HEIGHT,
+        );
       } else {
         this.workSpotPreview.line.visible = false;
       }
@@ -1166,14 +1190,15 @@ export class BuildDesignator {
  *
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {import('../ecs/world.js').World} world
- * @param {number} i @param {number} j
+ * @param {number} i @param {number} j @param {number} [z]
  */
-function hasRoofSupport(grid, world, i, j) {
+function hasRoofSupport(grid, world, i, j, z = 0) {
   if (roofIsSupported(grid, i, j)) return true;
   if (!structureWithinChebyshev(grid, i, j, ROOF_MAX_WALL_DISTANCE)) return false;
   for (const { components } of world.query(['BuildSite', 'TileAnchor'])) {
     if (components.BuildSite.kind !== 'roof') continue;
     const a = components.TileAnchor;
+    if ((a.z | 0) !== z) continue;
     if (Math.abs(a.i - i) + Math.abs(a.j - j) === 1) return true;
   }
   return false;
@@ -1185,13 +1210,20 @@ function hasRoofSupport(grid, world, i, j) {
  * this tile. Caller is responsible for despawning the BuildSite entity
  * afterward (the two-pass pattern matters when iterating a world.query).
  *
+ * `footprintLayer` is the TileGrid whose footprint bits the blueprint reserved
+ * (stove flanking tiles). For z>0 placements that's the upper-layer grid; for
+ * ground, it's the same as `tileGrid`. Refund items always drop on the ground
+ * tile — upper-floor items would need a z-aware item system, which is future
+ * work.
+ *
  * @param {import('../ecs/world.js').World} world
  * @param {import('../jobs/board.js').JobBoard} board
  * @param {import('../world/tileGrid.js').TileGrid} tileGrid
  * @param {{ kind?: string, facing?: number, buildJobId: number, delivered: number, requiredKind: string }} site
  * @param {number} i @param {number} j
+ * @param {import('../world/tileGrid.js').TileGrid} [footprintLayer]
  */
-export function releaseBuildSite(world, board, tileGrid, site, i, j) {
+export function releaseBuildSite(world, board, tileGrid, site, i, j, footprintLayer) {
   if (site.buildJobId > 0) board.complete(site.buildJobId);
   if (site.delivered > 0) {
     const w = tileToWorld(i, j, tileGrid.W, tileGrid.H);
@@ -1203,9 +1235,10 @@ export function releaseBuildSite(world, board, tileGrid, site, i, j) {
     });
   }
   if (site.kind === 'stove') {
+    const layer = footprintLayer ?? tileGrid;
     for (const t of stoveFootprintTiles({ i, j }, (site.facing ?? 0) | 0)) {
       if (t.i === i && t.j === j) continue;
-      tileGrid.unblockTile(t.i, t.j);
+      layer.unblockTile(t.i, t.j);
     }
   }
   for (const job of board.jobs) {
@@ -1222,14 +1255,15 @@ export function releaseBuildSite(world, board, tileGrid, site, i, j) {
  * @param {import('../world/tileGrid.js').TileGrid} grid
  * @param {number} i @param {number} j
  * @param {number} color
+ * @param {number} [yOffset] extra lift for upper-floor previews
  */
-function renderTilePreview(preview, grid, i, j, color) {
+function renderTilePreview(preview, grid, i, j, color, yOffset = 0) {
   const w = tileToWorld(i, j, grid.W, grid.H);
   const x0 = w.x - TILE_SIZE * 0.5;
   const x1 = w.x + TILE_SIZE * 0.5;
   const z0 = w.z - TILE_SIZE * 0.5;
   const z1 = w.z + TILE_SIZE * 0.5;
-  const y = grid.getElevation(i, j) + PREVIEW_CLEARANCE;
+  const y = grid.getElevation(i, j) + PREVIEW_CLEARANCE + yOffset;
   const p = preview.positions;
   p[0] = x0;
   p[1] = y;

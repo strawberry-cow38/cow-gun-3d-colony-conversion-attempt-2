@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { doorOrientationAt } from '../world/doorOrientation.js';
 import { getStuff } from '../world/stuff.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 const DOOR_HEIGHT = 2.4 * UNITS_PER_METER;
@@ -116,7 +117,7 @@ export function createDoorInstancer(scene, capacity, audio) {
       if (n >= capacity) break;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j);
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT;
       const stuffDef = getStuff(components.Door.stuff);
 
       // Axis selection: if adjacent walls sit east/west, run the slab along

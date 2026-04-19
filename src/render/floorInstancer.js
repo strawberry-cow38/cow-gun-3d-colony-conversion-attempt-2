@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { TILE_SIZE, tileToWorld } from '../world/coords.js';
 import { getStuff } from '../world/stuff.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 // Thin slab so floors look like a finished surface without poking into the
 // cow silhouette. Lifted (BASE_LIFT) so the slab's bottom face never
@@ -67,7 +68,7 @@ export function createFloorInstancer(scene, capacity = 4096) {
       const a = components.TileAnchor;
       if (grid.isFullWall(a.i, a.j)) continue;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j) + BASE_LIFT;
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT + BASE_LIFT;
       _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(k, _matrix);

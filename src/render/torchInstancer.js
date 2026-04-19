@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 import { TORCH_RADIUS_TILES } from '../systems/lighting.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
+import { LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const STICK_HEIGHT = 1.6 * UNITS_PER_METER;
 const STICK_RADIUS = 0.06 * UNITS_PER_METER;
@@ -141,7 +142,7 @@ export function createTorchInstancer(scene, capacity = 512) {
       const a = components.TileAnchor;
       const torch = components.Torch;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j);
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT;
 
       let baseX;
       let baseY;

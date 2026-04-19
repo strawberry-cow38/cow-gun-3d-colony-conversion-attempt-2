@@ -19,6 +19,7 @@
 
 import * as THREE from 'three';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld, worldToTile } from '../world/coords.js';
+import { stairFootprintTiles } from '../world/stair.js';
 import { stoveFootprintTiles } from '../world/stove.js';
 import { createDragSizeLabel } from './dragSizeLabel.js';
 
@@ -42,6 +43,7 @@ export const DECON_KINDS = /** @type {const} */ ([
   { comp: 'Easel', kind: 'easel' },
   { comp: 'Stove', kind: 'stove' },
   { comp: 'Bed', kind: 'bed' },
+  { comp: 'Stair', kind: 'stair' },
 ]);
 
 export class DeconstructDesignator {
@@ -222,6 +224,13 @@ export class DeconstructDesignator {
         let matched = false;
         if (comp === 'Stove') {
           for (const t of stoveFootprintTiles(anchor, components.Stove.facing | 0)) {
+            if (t.i >= i0 && t.i <= i1 && t.j >= j0 && t.j <= j1) {
+              matched = true;
+              break;
+            }
+          }
+        } else if (comp === 'Stair') {
+          for (const t of stairFootprintTiles(anchor, components.Stair.facing | 0)) {
             if (t.i >= i0 && t.i <= i1 && t.j >= j0 && t.j <= j1) {
               matched = true;
               break;

@@ -662,10 +662,12 @@ export function makeHaulPostingSystem(board, grid, stockpileZones, paths) {
         // within reach) — blueprints on invalid tiles wait until a nearby
         // wall/roof makes them valid, or the player cancels them.
         if (site.delivered >= site.required && site.buildJobId === 0) {
-          if (site.kind === 'roof' && !roofIsSupported(grid, a.i, a.j)) continue;
-          // Doors placed over walls wait for the wall deconstruct to finish.
-          // Once the wall's gone (setWall(0)) the next poster tick posts this.
-          if (site.kind === 'door' && grid.isWall(a.i, a.j)) continue;
+          // Roof/door support checks run on the blueprint's own z-layer — an
+          // upper-floor roof needs upper-floor walls, and an upper-floor door
+          // waits on the upper-floor wall deconstruct.
+          const supportLayer = /** @type {any} */ (paths?.grid)?.layers?.[a.z | 0] ?? grid;
+          if (site.kind === 'roof' && !roofIsSupported(supportLayer, a.i, a.j)) continue;
+          if (site.kind === 'door' && supportLayer.isWall(a.i, a.j)) continue;
           const job = board.post('build', { siteId, i: a.i, j: a.j });
           site.buildJobId = job.id;
         }

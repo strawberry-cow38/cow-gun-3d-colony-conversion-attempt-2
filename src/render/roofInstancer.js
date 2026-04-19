@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { findSupportedRoofTiles } from '../systems/autoRoof.js';
 import { TILE_SIZE, UNITS_PER_METER, tileToWorld } from '../world/coords.js';
 import { getStuff } from '../world/stuff.js';
-import { BIOME } from '../world/tileGrid.js';
+import { BIOME, LAYER_HEIGHT } from '../world/tileGrid.js';
 
 const WALL_HEIGHT = 3 * UNITS_PER_METER;
 // Roofs are a thick slab resting on top of the walls — the base face of the
@@ -77,7 +77,7 @@ export function createRoofInstancer(scene, capacity = 4096) {
       if (k >= capacity) break;
       const a = components.TileAnchor;
       const w = tileToWorld(a.i, a.j, grid.W, grid.H);
-      const y = grid.getElevation(a.i, a.j) + WALL_HEIGHT;
+      const y = grid.getElevation(a.i, a.j) + (a.z | 0) * LAYER_HEIGHT + WALL_HEIGHT;
       _position.set(w.x, y, w.z);
       _matrix.compose(_position, _quat, _scale);
       mesh.setMatrixAt(k, _matrix);
