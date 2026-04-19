@@ -36,6 +36,7 @@ import { createDragSizeLabel } from './dragSizeLabel.js';
 import { createFurnaceGhost } from './furnaceInstancer.js';
 import { createStairGhost } from './stairInstancer.js';
 import { createStoveGhost } from './stoveInstancer.js';
+import { createWallGhost } from './wallInstancer.js';
 
 const _ndc = new THREE.Vector2();
 const PREVIEW_CLEARANCE = 0.08 * UNITS_PER_METER;
@@ -293,6 +294,7 @@ export class BuildDesignator {
     this.stoveGhost = config.kind === 'stove' ? createStoveGhost(scene) : null;
     this.bedGhost = config.kind === 'bed' ? createBedGhost(scene) : null;
     this.stairGhost = config.kind === 'stair' ? createStairGhost(scene) : null;
+    this.wallGhost = WALL_FAMILY.has(config.kind) ? createWallGhost(scene) : null;
     this.workSpotPreview = WORK_SPOT_KINDS.has(config.kind)
       ? buildPreview(scene, WORK_SPOT_COLOR)
       : null;
@@ -1073,6 +1075,43 @@ export class BuildDesignator {
       this.stairGhost.group.rotation.y = FACING_YAWS[this.currentFacing] ?? 0;
       this.stairGhost.group.visible = !this.removing;
     }
+    if (this.wallGhost) {
+      if (this.removing) {
+        this.wallGhost.hide();
+      } else {
+        const tier = WALL_TIER_BY_KIND[this.config.kind];
+        const maxFill = (this.tileWorld?.layers.length ?? 1) * WALL_FILL_FULL;
+        const depth = this.tileWorld?.layers.length ?? 1;
+        // Scan BuildSites once, not per-cell — a 20x20 drag would otherwise do
+        // 400 full world.query scans each mousemove.
+        const pendingByCell = new Map();
+        for (const { components } of this.world.query(['BuildSite', 'TileAnchor'])) {
+          const t = WALL_TIER_BY_KIND[components.BuildSite.kind];
+          if (!t) continue;
+          const a = components.TileAnchor;
+          const k = a.j * grid.W + a.i;
+          pendingByCell.set(k, (pendingByCell.get(k) ?? 0) + t);
+        }
+        const cells = [];
+        for (let j = j0; j <= j1; j++) {
+          for (let i = i0; i <= i1; i++) {
+            if (!grid.inBounds(i, j)) continue;
+            if (grid.isOccupied(i, j)) continue;
+            if (grid.isDoor(i, j) || grid.isTorch(i, j) || grid.isStockpile(i, j)) continue;
+            let baseFill = pendingByCell.get(j * grid.W + i) ?? 0;
+            for (let z = 0; z < depth; z++) {
+              const layer = z === 0 ? this.tileGrid : this.tileWorld?.layers[z];
+              if (layer) baseFill += layer.wallFill(i, j);
+            }
+            if (baseFill + tier > maxFill) continue;
+            if (baseFill > 0 && !this.allowStack) continue;
+            const w = tileToWorld(i, j, grid.W, grid.H);
+            cells.push({ cx: w.x, cz: w.z, y: grid.getElevation(i, j), baseFill });
+          }
+        }
+        this.wallGhost.setCells(cells, tier, this.config.previewColorAdd);
+      }
+    }
     if (this.workSpotPreview) {
       // Work spot is the tile the front faces. If that tile is blocked or
       // off-grid, fall back to any walkable cardinal neighbor so the player
@@ -1098,6 +1137,7 @@ export class BuildDesignator {
     if (this.stoveGhost) this.stoveGhost.group.visible = false;
     if (this.bedGhost) this.bedGhost.group.visible = false;
     if (this.stairGhost) this.stairGhost.group.visible = false;
+    if (this.wallGhost) this.wallGhost.hide();
     if (this.workSpotPreview) this.workSpotPreview.line.visible = false;
   }
 

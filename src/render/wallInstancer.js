@@ -163,3 +163,75 @@ export function createWallInstancer(scene, capacity = 2048) {
 
   return { update, markDirty };
 }
+
+const QUARTER_HEIGHT = WALL_HEIGHT / WALL_FILL_FULL;
+const _ghostMatrix = new THREE.Matrix4();
+const _ghostPos = new THREE.Vector3();
+const _ghostQuat = new THREE.Quaternion();
+const _ghostScale = new THREE.Vector3();
+const _ghostColor = new THREE.Color();
+
+/**
+ * Translucent box-instancer used by the wall designator to preview each cell
+ * of a drag-rect at the right Y for its stack position. One InstancedMesh
+ * shared across full/half/quarter — tier sets the Y-scale on each instance.
+ *
+ * @param {THREE.Scene} scene
+ * @param {number} capacity max cells the ghost can preview at once.
+ */
+export function createWallGhost(scene, capacity = 1024) {
+  const geo = new THREE.BoxGeometry(TILE_SIZE, QUARTER_HEIGHT, TILE_SIZE);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false,
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, capacity);
+  mesh.count = 0;
+  mesh.frustumCulled = false;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  // Prime instance-color buffer so per-instance colors take effect on first
+  // render — same trick as the live wall instancer above.
+  mesh.setColorAt(0, new THREE.Color(1, 1, 1));
+  scene.add(mesh);
+
+  /**
+   * Place one box per cell. Each cell's `baseFill` is in quarter units; the
+   * ghost is anchored at `y + baseFill * QUARTER_HEIGHT` and scaled to the
+   * tier's height. `tier` is in quarter units (1/2/4 for quarter/half/full).
+   *
+   * @param {{ cx: number, cz: number, y: number, baseFill: number }[]} cells
+   * @param {number} tier
+   * @param {number} colorHex
+   */
+  function setCells(cells, tier, colorHex) {
+    _ghostQuat.identity();
+    _ghostColor.setHex(colorHex);
+    const tierH = tier * QUARTER_HEIGHT;
+    const n = Math.min(cells.length, capacity);
+    for (let k = 0; k < n; k++) {
+      const c = cells[k];
+      const baseY = c.y + c.baseFill * QUARTER_HEIGHT;
+      _ghostPos.set(c.cx, baseY + tierH * 0.5, c.cz);
+      // Geometry is unit-quarter tall — scale Y by tier so a half-wall ghost
+      // is twice as tall and a full-wall ghost four times.
+      _ghostScale.set(1, tier, 1);
+      _ghostMatrix.compose(_ghostPos, _ghostQuat, _ghostScale);
+      mesh.setMatrixAt(k, _ghostMatrix);
+      mesh.setColorAt(k, _ghostColor);
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.visible = n > 0;
+  }
+
+  function hide() {
+    mesh.count = 0;
+    mesh.visible = false;
+  }
+
+  return { setCells, hide };
+}
