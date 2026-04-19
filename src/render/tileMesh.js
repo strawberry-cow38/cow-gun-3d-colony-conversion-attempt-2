@@ -44,13 +44,36 @@ const CHUNK_TILES = 32;
 // translucent surface mesh built in buildWaterSurface, so the bed reads
 // through it as wet sand rather than an opaque blue tile.
 const BIOME_COLORS = {
-  [BIOME.GRASS]: new THREE.Color(0x3a7a3a),
+  [BIOME.GRASS]: new THREE.Color(0x6db416),
   [BIOME.DIRT]: new THREE.Color(0x6b4f2a),
   [BIOME.STONE]: new THREE.Color(0x6a6e74),
   [BIOME.SAND]: SAND_TOP_COLOR,
   [BIOME.SHALLOW_WATER]: SAND_TOP_COLOR,
   [BIOME.DEEP_WATER]: new THREE.Color(0x2a5a8c),
 };
+
+// PS2 dreamcore grass palette: 9 mean colors sampled from Marlin Studios
+// "Seamless Textures vol 1" grass tiles after LAB color-matching to a
+// unified bright green and HSV saturation boost. Each grass tile picks one
+// palette entry deterministically by tile coords so the field reads as
+// varied turf instead of a single flat green slab.
+const GRASS_PALETTE = [
+  new THREE.Color(0x75c41d),
+  new THREE.Color(0x70ba15),
+  new THREE.Color(0x70bf12),
+  new THREE.Color(0x64bd0c),
+  new THREE.Color(0x61b311),
+  new THREE.Color(0x5daf16),
+  new THREE.Color(0x58ab1d),
+  new THREE.Color(0x58af17),
+  new THREE.Color(0x56a921),
+];
+
+function grassPaletteIndex(i, j) {
+  // Cheap integer hash so neighboring tiles rarely land on the same shade.
+  const h = (i * 73856093) ^ (j * 19349663);
+  return ((h % GRASS_PALETTE.length) + GRASS_PALETTE.length) % GRASS_PALETTE.length;
+}
 
 // Cliff faces are coloured per biome so stone tiles expose grey rock, sand
 // shows sand, and water tiles keep their water tint through the cliff. Grass
@@ -236,7 +259,10 @@ function buildChunkMesh(
       positions[v++] = z1;
 
       const biome = getBiome(i, j);
-      const base = BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
+      const base =
+        biome === BIOME.GRASS
+          ? GRASS_PALETTE[grassPaletteIndex(i, j)]
+          : BIOME_COLORS[biome] || BIOME_COLORS[BIOME.GRASS];
       const topShade = 1 + Math.max(-0.25, Math.min(0.25, y / 60));
       const tr = base.r * topShade;
       const tg = base.g * topShade;
