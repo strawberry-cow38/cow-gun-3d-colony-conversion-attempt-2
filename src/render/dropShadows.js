@@ -19,7 +19,7 @@ const SHADOW_OPACITY = 0.55;
 const SHADOW_LIFT_Y = 0.04 * UNITS_PER_METER;
 // Ellipse diameter = footprint width * this factor. Slight overscan so the
 // soft radial edge fades past the pile silhouette instead of cutting inside.
-const FOOTPRINT_TO_SHADOW = 1.2;
+const FOOTPRINT_TO_SHADOW = 2.4;
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
