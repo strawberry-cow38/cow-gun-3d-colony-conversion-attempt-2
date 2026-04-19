@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { UNITS_PER_METER } from '../world/coords.js';
 
 const TAG_HEIGHT_M = 0.35;
-const HEAD_OFFSET_M = 1.15;
+const HEAD_OFFSET_M = 1.4;
 const FADE_START_M = 30;
 const FADE_END_M = 120;
 
