@@ -264,6 +264,12 @@ export class BuildDesignator {
     this.raycaster = new THREE.Raycaster();
     this.mousedown = false;
     this.removing = false;
+    // Wall-family stack gate: ctrl held = allow stacking onto an existing wall
+    // tile (z+ blueprints). Default off so a drag-rect outline of a building
+    // doesn't sneak second-floor blueprints onto each cell that had a prior
+    // wall plan. Re-evaluated on each mousedown / move so the live rect can
+    // toggle mid-drag.
+    this.allowStack = false;
     /** @type {{ i: number, j: number } | null} */
     this.startTile = null;
     /** @type {{ i: number, j: number } | null} */
@@ -365,6 +371,7 @@ export class BuildDesignator {
     if (!tile) return;
     e.stopImmediatePropagation();
     e.preventDefault();
+    this.allowStack = e.ctrlKey;
     if (this.config.singlePlace) {
       // Single-place: no drag, no size label. Apply one tile and let the
       // hover preview keep tracking the cursor for the next click.
@@ -418,6 +425,7 @@ export class BuildDesignator {
     const tile = this.#pickTile(e);
     if (!tile) return;
     this.curTile = tile;
+    this.allowStack = e.ctrlKey;
     this.#renderPreview();
     this.sizeLabel.render(e, this.startTile, this.curTile, this.removing);
   }
@@ -705,6 +713,11 @@ export class BuildDesignator {
     const baseFill = this.#totalWallFillAt(i, j);
     const maxFill = (this.tileWorld?.layers.length ?? 1) * WALL_FILL_FULL;
     if (baseFill + tier > maxFill) return false;
+    // Stack gate: only build atop an existing wall/blueprint when the player
+    // explicitly asks for it (ctrl). Otherwise the corner tiles of a drag-rect
+    // outline would silently get a 2nd-floor blueprint stacked on top of the
+    // ground-floor wall they share with the adjacent edges.
+    if (baseFill > 0 && !this.allowStack) return false;
     const ground = this.tileGrid;
     if (ground.isOccupied(i, j)) return false;
     if (ground.isDoor(i, j)) return false;
