@@ -58,15 +58,15 @@ const BIOME_COLORS = {
 // palette entry deterministically by tile coords so the field reads as
 // varied turf instead of a single flat green slab.
 const GRASS_PALETTE = [
-  new THREE.Color(0x75c41d),
-  new THREE.Color(0x70ba15),
-  new THREE.Color(0x70bf12),
-  new THREE.Color(0x64bd0c),
-  new THREE.Color(0x61b311),
-  new THREE.Color(0x5daf16),
-  new THREE.Color(0x58ab1d),
-  new THREE.Color(0x58af17),
-  new THREE.Color(0x56a921),
+  new THREE.Color(0x80bf37),
+  new THREE.Color(0x7ab62e),
+  new THREE.Color(0x79ba26),
+  new THREE.Color(0x6db821),
+  new THREE.Color(0x67af1e),
+  new THREE.Color(0x64aa23),
+  new THREE.Color(0x61a72b),
+  new THREE.Color(0x63aa2a),
+  new THREE.Color(0x5fa52f),
 ];
 
 function grassPaletteIndex(i, j) {
