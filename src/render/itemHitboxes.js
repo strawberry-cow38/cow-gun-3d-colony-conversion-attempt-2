@@ -30,6 +30,12 @@ const STONE_TIER_DIMS = /** @type {const} */ ([
   { w: 0.58, d: 0.47, h: 0.27 },
 ]);
 
+const CORN_TIER_DIMS = /** @type {const} */ ([
+  { w: 0.16, d: 0.09, h: 0.08 },
+  { w: 0.27, d: 0.18, h: 0.11 },
+  { w: 0.27, d: 0.21, h: 0.14 },
+]);
+
 /**
  * @param {string} kind
  * @param {number} count
@@ -46,6 +52,9 @@ export function footprintMeters(kind, count, capacity) {
   }
   if (kind === 'stone' || kind === 'coal' || kind === 'copper_ore') {
     return STONE_TIER_DIMS[tier];
+  }
+  if (kind === 'corn') {
+    return CORN_TIER_DIMS[tier];
   }
   return { w: GENERIC_FOOTPRINT_M, h: GENERIC_FOOTPRINT_M, d: GENERIC_FOOTPRINT_M };
 }
