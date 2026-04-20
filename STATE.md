@@ -1,6 +1,6 @@
 # STATE
 
-Snapshot of `cow-gun-3d-colony-conversion-attempt-2` as of **2026-04-13**.
+Snapshot of `cow-gun-3d-colony-conversion-attempt-2` as of **2026-04-20**.
 
 This is a point-in-time status doc. For the roadmap see [PLAN.md](./PLAN.md); for foundational decisions see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
@@ -8,9 +8,11 @@ This is a point-in-time status doc. For the roadmap see [PLAN.md](./PLAN.md); fo
 
 ## TL;DR
 
-A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-player, local-only. The core loop works: cows wander, chop trees, haul wood/stone/food to stockpiles, eat when hungry, can be drafted, can be taken over in first-person. Live at **<https://game.cowtools.uk>** via a Cloudflare Tunnel → `vite preview` on the dev box (both systemd services, survive reboots).
+A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-player, local-only, RimWorld-flavored. The core loop is full: cows wander, chop, mine, till, plant, harvest, cook meals (w/ quality), smelt ore, paint paintings, build walls (w/ partial-fill tiers), stairs, roofs, and floors across multiple z-levels, haul items into filtered stockpiles, eat, sleep in owned beds, and chit-chat. Live at **<https://game.cowtools.uk>** via a Cloudflare Tunnel → `vite preview` on the dev box (both systemd services, survive reboots).
 
-**Performance headline:** 1000 cows runs at avg **6.2 ms/tick** on a 128×128 grid — ~5.4× real-time headroom at 30 Hz.
+**Perf headline (2026-04-13 bench, still representative):** 1000 cows at avg **6.2 ms/tick** on a 128×128 grid — ~5.4× real-time headroom at 30 Hz. Brain hot-path is now the dirty-flag gated `systems/cow.js`; the old O(N²) neighbor sweep in `cowFollowPath` is still the dominant cost above 1500 cows.
+
+**Since the last STATE snapshot (2026-04-13):** ~380 commits. Full phase 4 + phase 6 landed. Phase 5 shipped a PS2-dreamcore postprocessing stack (LUT / caustics / TOD / skybox) instead of OIT; OIT remains open.
 
 ---
 
@@ -18,14 +20,17 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 
 | Phase | Status | Notes |
 |---|---|---|
-| 0 — Bootstrap | ✅ | vite + biome + tsc --checkJS + vitest scaffolding all in place. |
-| 1 — Core ECS + 30 Hz loop | ✅ | Archetype ECS, tiered scheduler (every/rare/long/dirty), fixed-step loop, profiler. |
-| 2 — World, terrain, camera | ✅ | Tile grid, RTS camera, tile picker, gzip save/load with migration chain (v0 → v7). |
-| 3 — First cow | ✅ | Pathfinding + Brain + Wander + click-to-select. |
-| 4 — Job ecosystem | ✅ (a–h shipped) | Trees/chop (4a), stockpile/haul (4b), stacks + stone/food + eat (4c), item labels + consolidation (4d), first-person takeover (4e), cow names + CowCam (4f), drafting (4g), F-focus + Q/E cycle (4h). |
-| 5 — AI perf + OIT | 🛠 in progress | 5a dirty-flag AI in flight; OIT not started. |
-| 6 — Colony feel | ⏳ | Scale-up, mood, day/night, speed controls. |
-| 7–10 — Server, encounters, async, polish | ⏳ | Not started. |
+| 0 — Bootstrap | ✅ | vite + biome + tsc --checkJS + vitest, CI in `.github/workflows/`. |
+| 1 — Core ECS + 30 Hz loop | ✅ | Archetype ECS, tiered scheduler (every / rare / long / dirty), fixed-step loop + render interpolation, profiler. |
+| 2 — World, terrain, camera | ✅ | Atlas-baked tile tops, per-tile mutation API, z-levels + ramps, chunked terrain, RTS + cowCam cameras, gzip save at schema **v36** (37-step migration chain). |
+| 3 — First cow | ✅ | Pathfinding + Brain + Wander + nametag sprites + click-select. |
+| 4 — Job ecosystem | ✅ | Chop / cut / haul / mine / till / plant / harvest / cook / smelt / paint / build / deconstruct. Stockpile zones + farm zones + bills + work tab. Stations: stove, furnace, easel, bed, torch, wall (4-quarter partial), door, floor, roof (w/ material options), stair. |
+| 5 — Rendering polish | 🛠 | PS2 dreamcore shipped (phases 1–4). OIT (ARCHITECTURE.md §2) not started. |
+| 6 — Colony feel | ✅ | Day/night, sleep, drafting, speed (1/2/3/6×) + pause (Space). Mood-lite via skills + traits + backstories + identity + social/chitchat. |
+| 7 — Tier 1 dedicated server | ⏳ | Not started. |
+| 8 — Tier 3 encounters | ⏳ | Not started. |
+| 9 — Async inter-colony + world events | ⏳ | Not started. |
+| 10 — Polish + content + ship | 🛠 | Content landing every day. Audio gen stood up on the 4080S but not wired in-engine. |
 
 ---
 
@@ -33,35 +38,70 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 
 ### ECS core (`src/ecs/`)
 - Archetype tables keyed by exact component set. Slot+gen entity IDs.
-- Tiered scheduler with `every` (every tick), `rare` (every 8), `long` (every 64), `dirty` (fires only when its tag is set).
+- Tiered scheduler: `every`, `rare` (every 8), `long` (every 64), `dirty` (fires only when its tag is set).
 - Per-system wall-ms EWMA exposed for the profiler overlay.
+- `world.query` result caching in render hot paths.
 
 ### World (`src/world/`)
-- `TileGrid` — W×H typed arrays for elevation / biome / occupancy / stockpile.
+- `TileGrid` + `TileWorld` — per-layer typed arrays for elevation / biome / wall / door / torch / roof / floor / ramp / stockpile / farmZone / tilled / flower, plus the `ignoreRoof` override.
 - `coords.js` — `tileToWorld` / `worldToTile`, `TILE_SIZE = 43` units (1.5 m physical).
-- Gzip save/load (`persist.js`) at schema **v7**. Migrations chain v0 → v7 and never delete old steps. Save key derives from `CURRENT_VERSION`.
-- Item kind registry (`items.js`) — wood/stone/food, per-kind stack cap, nutrition, render color, shared `addItemToTile`.
+- Gzip save/load (`persist.js`) at **v36**. Migrations chain `v0 → v36` and never delete old steps.
+- **Items** (`items.js`) — wood, stone, coal, copper_ore, corn, carrot, potato, meal. Per-kind stack cap, nutrition, render color, tier-sized GLB drop visuals, shared `addItemToTile`.
+- **Buildables** — `bed.js`, `stair.js`, `stove.js`, `painting.js` + `easel`, `furnace`, `wallArt`, `flowers.js`.
+- **Crops** (`crops.js`) — per-type growth stages + harvest yield; planted-at-tick for ETA display.
+- **Recipes** (`recipes.js`) — bill system definitions w/ output destination routing.
+- **Meal quality** (`quality.js`) — 0–4 tiers driven by cooking skill roll, descriptions per tier surfaced in the item panel.
+- **Skills** (`skills.js`) — XP-backed, 0–20 levels, awarded from work systems.
+- **Identity / traits / backstories** (`identity.js`, `traits.js`, `backstories.js`) — seeded on spawn; every backstory tagged w/ skill hints.
+- **Social / chitchat** (`chitchat.js`) — topic pool for the social system.
+- **Time of day** (`timeOfDay.js`) — tick-driven TOD curve feeding the dreamcore palette.
+- **Weather** stubs (`weather.js`) — not yet driving anything.
 
 ### Simulation (`src/sim/` + `src/systems/` + `src/jobs/`)
-- A* pathfinding with result cache; invalidated on tree/stockpile change.
-- **JobBoard** (`jobs/board.js`) — chop + haul jobs; bumps `version` on post/release/complete so idle cows wake.
-- **Cow brain** (`systems/cow.js`) — dirty-flag gate on decide (`jobDirty | vitalsDirty | lastBoardVersion !== board.version`), hunger-triggered eat job, nearest-unclaimed-job scan, wander fallback.
-- **PathFollow** — steers Velocity toward next tile; soft cow-cow avoidance (lateral nudge + 70% slow when crowded).
-- **Hunger** — drains 1 unit per in-game day; below 0.45 threshold sets `vitalsDirty` to force brain re-decide.
-- **HaulPoster** (rare tier) — posts one haul job per loose item unit, runs a consolidation pass that merges smaller stockpile stacks into larger ones with a strict ordering rule so the pair never thrashes.
+- A* pathfind w/ result cache, per-layer grids, cliff-climb tier, dirty invalidation on tree / boulder / wall / door / floor / ramp change.
+- **JobBoard** (`jobs/board.js`) — chop / cut / haul / mine / till / plant / harvest / build / deconstruct + priority tiers (`prioritize.js`, `tiers.js`). Bumps `version` on post / release / complete so idle cows wake.
+- **Cow brain** (`systems/cow.js`) — dirty-flag gate on decide (`jobDirty | vitalsDirty | lastBoardVersion !== board.version`), hunger / tiredness / thirst triggered job selection, nearest-unclaimed-job scan within the cow's work-tab filter, wander fallback.
+- **PathFollow** — steers Velocity toward next tile; soft cow-cow avoidance. Wade-slowdown in shallow water.
+- **Hunger** — drains per in-game day; low hunger sets `vitalsDirty`.
+- **Tiredness** — drains while awake; restoring in owned bed. Guarded against double-drain during sleep.
+- **HaulPoster** — one haul job per loose item unit; consolidation pass merges smaller stockpile stacks with a strict ordering rule; cooldown on unreachable drop sites; in-flight per-site keying for stacked wall blueprints.
+- **Stations**: `stove` (cook → meal w/ quality), `furnace` + `furnaceExpel` (smelt), `easel` (paint → painting entity), `farm` / `farmZones` (till + plant + harvest w/ zone filters), `stockpileZones` (accept filters + eviction), `trees` (chop → wood), `boulders` (mine → stone/coal/copper_ore), `bushes` (decorative), `growth` (crop stages), `social` (chitchat), `rooms` (auto-detect via roof + hasRoofSupport), `autoRoof` (auto-place roofs on enclosed rooms), `roofCollapse` (structural sanity), `itemRescue` (un-stuck loose items), `lighting` (torch pool, no sun shadow), `movement`.
 
 ### Render (`src/render/`)
-- InstancedMesh for cows + items + trees + stress entities.
-- RTS camera + first-person camera + camera-smoothed focus mode.
-- Tile mesh, tile picker, selection viz (waypoint markers), stockpile overlay, chop designator, stockpile designator.
-- Cow name tags (HTML billboards), draft badge (sword/shield), item labels, CowCam first-person overlay.
-- Click-to-select with two-stage pick (direct cow raycast → fallback nearest-cow-to-tile).
+- InstancedMesh for cows, items (tiered GLBs — wood / stone / coal / copper_ore / corn / carrot / potato), trees (pine + maple GLBs), boulders (3 shape variants × material tint w/ embedded ore chunks), bushes (crossed-quad billboards).
+- Atlas-baked tile tops w/ per-tile UV offset, chunked for frustum culling.
+- Drop shadows: unified blob decal system for cows + items + trees + boulders + bushes.
+- Postprocessing pipeline: tonemap + LUT + water caustics + dreamcore skybox palette.
+- Sun directional shadow was added and then **removed globally** (perf + art direction).
+- Pooled torch lights only; furnace PointLight cut; decorative mesh castShadow disabled.
+- RTS camera + first-person cowCam + smoothed focus mode.
+- 3D selection ghosts on items (tier-sized) / beds / stairs / trees / boulders / zones.
+- Click-to-select w/ two-stage pick (direct cow raycast → fallback nearest-cow-to-tile); itemSelector w/ per-stack click hitboxes.
+- Cow nametags: Title/First/Nickname/Last scheme, sharp glyph rewrite, 2× size over heads.
+- CowCam first-person overlay, draft badge (sword/shield), item labels via `ITEM_INFO.label`.
+
+### UI (`src/ui/` + `src/boot/`)
+- `objectTypes.js` — append-only registry of clickable types (tree, boulder, wall, door, torch, roof, floor, buildsite) for panel routing.
+- `src/boot/` now hosts wiring modules split out of `main.js`: `drafting`, `hotkeys`, `hud`, `input`, `layerSwitcher`, `params`, `renderFrame`, `setupDesignators`, `setupInstancers`, `setupWorldCallbacks`, `spawn`, `utils`. `main.js` is still ~1300 lines.
+- RimWorld-style bottom tab bar + layout shuffle. Portrait cards (avatar on top, name + activity below) square layout.
+- Zone UIs: stockpile filters, farm zone crop + till + harvest toggles, rename, expand, X-delete, Delete-keybind.
+- Cow info panel: rename, skills section, work tab w/ 1–8 priority modes, drafting.
+- Bills: output destination (floor / haul / specific stockpile).
+- Stair info panel + deconstruct wiring.
+- Bed panel w/ owner picker + in-world owner nametag sprites.
+- Meal quality descriptions surfaced in item stack panel.
 
 ### Tooling
-- `pnpm dev` (vite), `pnpm build`, `pnpm test` (vitest), `pnpm lint` (biome), `pnpm typecheck` (tsc --checkJS).
-- **69 vitest tests** covering ECS, scheduler, pathfinding, coords, tileGrid, persist, migrations, board, haul posting.
-- GitHub Actions CI workflow drafted (`.github/workflows/ci.yml`, not yet pushed).
+- `pnpm dev` (vite), `pnpm build` (vite), `pnpm test` (vitest run), `pnpm lint` (biome check), `pnpm typecheck` (tsc --noEmit).
+- **28 vitest test files, 305+ tests** across `test/ecs/`, `test/jobs/`, `test/render/`, `test/boot/`, `test/sim/`, `test/systems/`, `test/world/`.
+- CI workflow at `.github/workflows/ci.yml`.
 - Repo live at <https://github.com/strawberry-cow38/cow-gun-3d-colony-conversion-attempt-2>.
+
+### Dev-side audio generation (4080S Windows, not yet in-engine)
+- Python 3.11 venv at `C:\claude-workspace\audio_env\`.
+- **AudioGen** (facebook/audiogen-medium) working — `gen_sfx.py` / `gen_sfx.ps1` CLI wrappers, 3 × 4 s clips in ~4 s on GPU after cached load.
+- **Stable Audio Open 1.0** install in progress (weights downloaded via `hf_xet`; smoke test running at time of writing).
+- SSH via `claude-admin@192.168.1.145`.
 
 ---
 
@@ -69,38 +109,23 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 
 | Input | Action |
 |---|---|
-| LMB | Select cow (or clear) |
+| LMB | Select cow / item / zone / buildable (or clear) |
 | Shift+LMB | Toggle cow in selection |
 | RMB drag | Move camera |
 | Scroll | Zoom |
 | RMB on tile (with selection) | Move-command |
+| `Space` | Pause / resume |
+| `1` / `2` / `3` / `4` | Sim speed 1× / 2× / 3× / 6× |
+| `Q` / `E` | Switch z-layer (down / up) |
 | `C` | Toggle chop-designate mode |
 | `V` | Toggle stockpile-designate mode |
-| `G` / `J` | Debug: drop stone / food on picked tile |
+| `F` | Focus/follow selected cow |
+| `R` | Enter first-person / take over cow |
+| `T` | Toggle draft on selected cows |
 | `N` | Spawn a cow |
 | `K` / `L` | Save / Load to localStorage |
 | `P` | Toggle debug overlays |
-| `F` | Focus/follow selected cow |
-| `Q` / `E` | Cycle focused cow |
-| `R` | Enter first-person / take over cow |
-| `T` | Toggle draft on selected cows |
-
----
-
-## Perf numbers (2026-04-13, `bench/cows.js`)
-
-Full-brain cows on a 128×128 grid, 900 ticks measured after 30-tick warmup. 30 Hz budget is 33.33 ms/tick.
-
-| Cows | Avg | p50 | p95 | p99 | Max | Headroom |
-|---|---|---|---|---|---|---|
-|  500 |  1.8 ms |  1.7 |  2.1 |  3.1 |  3.8 | 18.8× |
-| **1000** | **6.2 ms** | **6.1** | **7.1** | **7.8** | **11.3** | **5.4×** |
-| 2000 | 22.6 ms | 22.3 | 26.6 | 28.8 | 29.2 | 1.5× |
-| 3000 | 48.3 ms | 48.2 | 55.9 | 59.3 | 85.5 | 0.7× — breaks |
-
-**Dominant cost:** `cowFollowPath` eats ~86% of the tick. It's the O(N²) cow-cow avoidance sweep — each cow linearly scans all others for personal-space / steering. Scaling shows it: 500 → 1000 is 3.5×, 1000 → 2000 is 3.7× (clean N²).
-
-Phase 5a.3 (spatial grid for neighbor queries) targets exactly this; expected to push the break-point past 5000 cows.
+| `Delete` | Delete selected zone |
 
 ---
 
@@ -113,48 +138,42 @@ Phase 5a.3 (spatial grid for neighbor queries) targets exactly this; expected to
 | Preview server | `vite preview` on `:4173`, as systemd unit `cow-sim-preview.service`. |
 | Tunnel service | `cloudflared.service`, `cloudflared service install` with config at `/etc/cloudflared/config.yml`. |
 | Reboot survival | Both services `enabled`; `Restart=on-failure` for preview. |
+| Deploy step | After `git push`, run `vite build` — `vite preview` serves `dist/`, so the master will see nothing new until the build finishes. |
 
 ---
 
 ## Active work
 
-### In flight: **Phase 5a — dirty-flag AI**
-5-slice perf push so colony scale can grow past ~3000 cows.
+### In flight
+- Audio gen on the 4080S: AudioGen shipped; Stable Audio Open smoke test resuming (downloaded weights via `hf_xet`, previous kill interrupted the HF fetch).
+- Partial wall: per-entity selection ghost + decon + blueprint cancel (task #429).
+- Z-level building UI: stair designator polish, wall-top walkability, z+1 blueprints (task #398).
+- All buildables z-aware (structural) — task #420.
+- Phase 3: polish + panel UI (food) — task #378.
+- Install / uninstall round-trip for furnace / easel / torch + wallart info panel — **paused 2026-04-15**.
 
-| Slice | Status | What |
-|---|---|---|
-| 5a.1 | ✅ shipped | Dirty-flag gate on cow brain (`jobDirty` / `vitalsDirty` / `lastBoardVersion`). Idle cows skip the decide block when nothing changed. |
-| 5a.2 | ⏳ next | Job priority tiers (0=emergency → 4=idle). Cow on tier N only scans tiers 0..N-1 for interrupts — wakes don't stampede. |
-| 5a.3 | ⏳ | Spatial grid (tile-bucketed) to replace the O(N²) neighbor sweep in `cowFollowPath` and `findNearestFood`. |
-| 5a.4 | ⏳ | Staggered evaluation — brains distribute across tick offsets so heavy frames spread out. |
-| 5a.5 | ⏳ | Thought system — cows produce `Thought` records (small reasons they did what they did), surfaced in CowCam + debug UI. |
-
-### Also pending
-- Push CI workflow to GitHub (pending gh auth refresh).
-- Phase 5b — buildings (blocked on 5a.2 landing first, since build jobs need tiered board queuing).
+### Next shelf
+- OIT fork + cutaway building view (Phase 5 proper).
+- Wire AudioGen / Stable Audio SFX output into the game.
+- Phase 7 (dedicated server) scoping.
 
 ---
 
 ## Known debt / audit carry-overs
 
-The last audit pass (today) cleared the biggest items:
-- Stale `tileMesh` stash in pickers → fixed via getter closures.
-- `board.complete` not bumping `version` → fixed.
-- `cowFollowPath` overshoot at final step → velocity now zeroed on arrival.
-- Eat vs. haul race on food stacks → `buildHaulTargetedCounts` now counts cow eat claims too.
-- Dead exports (`spawnTree`, `despawnTree`, `WANDER_RADIUS_TILES`) dropped.
-- `addItemToTile` de-duplicated between `main.js` and `cow.js` via `src/world/items.js`.
-
-Still open / acknowledged:
-- `main.js` is ~800 lines and carries the bulk of wiring. Splitting into `src/boot/` modules is on the near-term shelf.
-- Path cache invalidation is all-or-nothing on terrain change — fine at 128² but will want incremental invalidation later.
-- Entity gen rollover at 65535 reuses is a theoretical issue; not a concern until we're churning cows.
+- **`main.js` still ~1300 lines.** Split continues incrementally — `src/boot/` already holds 11 modules extracted from it.
+- **Path cache invalidation** is still all-or-nothing on terrain change — fine at 128² but want incremental invalidation when grids get larger.
+- **Entity gen rollover** at 65535 reuses is a theoretical concern; not urgent.
+- **Cow-cow avoidance** in `cowFollowPath` is still O(N²). A spatial grid replacement is the main perf carrot at >1500 cows. Planned in PLAN.md Phase 5a-alike slice, not yet scheduled.
+- **Triton missing** on Windows audio env — fine, xformers falls back to non-triton kernels.
+- **Discord allowlist** drops transiently mid-session; master re-runs `/discord:access`. Not a code concern.
 
 ---
 
 ## Repo stats (rough)
 
-- **48** JS files under `src/`
-- **~6.6k** lines of source
-- **~880** lines of tests (69 tests, 11 files)
+- **221** JS files under `src/`
+- **28** test files under `test/` with **305+** tests
+- `main.js` at **1316** lines
 - **3** top-level docs: ARCHITECTURE, PLAN, STATE (this file)
+- Save schema **v36**, 37 migration files
