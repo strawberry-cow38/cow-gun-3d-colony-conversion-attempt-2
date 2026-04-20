@@ -31,7 +31,20 @@ export function createWboitRenderer(renderer, scene, camera) {
   return {
     /** Render the current scene with OIT. Targets the canvas. */
     render() {
-      pass.render(renderer, null);
+      // WboitPass re-runs renderer.render(scene,camera) once per stage with
+      // different subsets of meshes visible. On the transparent + wboit stages
+      // the sky mesh is hidden, so scene.background (the placeholder purple)
+      // fills the render target and then gets composited over the canvas —
+      // painting everything purple. Null the background during the pass; the
+      // sky mesh covers the camera during the opaque stage, so visually we
+      // lose nothing.
+      const savedBackground = scene.background;
+      scene.background = null;
+      try {
+        pass.render(renderer, null);
+      } finally {
+        scene.background = savedBackground;
+      }
     },
     dispose() {
       window.removeEventListener('resize', onResize);
