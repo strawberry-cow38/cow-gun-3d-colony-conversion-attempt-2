@@ -26,7 +26,7 @@ Last rescan: **2026-04-20** (post-corn / pre-sound-in-engine). See [STATE.md](./
 | 2 — World, terrain, camera | ✅ | Atlas-baked tile tops, z-levels + ramps, chunked terrain, RTS camera + Q/E layer switcher, gzip save at schema **v36**. |
 | 3 — First cow | ✅ | Pathfind + Brain + Wander + select. |
 | 4 — Job ecosystem | ✅ | Chop/haul/mine/till/plant/harvest/cook/smelt/paint/build/deconstruct + bills + work tab + priorities. |
-| 5 — Rendering polish | 🛠 | PS2-dreamcore LUT + caustics + TOD + skybox done. OIT (ARCHITECTURE.md §2) **not started**. |
+| 5 — Rendering polish | 🛠 | OIT wboit vendored + wired (smoke test via `?oitTest`). Dreamcore skybox + TOD done. EffectComposer stack (LUT / tonemap / caustics) still open — earlier PLAN overclaimed these as shipped. |
 | 6 — Colony feel | ✅ | Day/night, sleep, drafting, speed (1/2/3/6×) + pause (Space), skills + traits + backstories, social/chitchat. |
 | 7 — Tier 1 dedicated server | ⏳ | Not started. |
 | 8 — Tier 3 encounters | ⏳ | Not started. |
@@ -114,21 +114,20 @@ Remaining scope moved to Phase 10 content drops.
 
 ## Phase 5 — Rendering polish *(in progress)*
 
-Original Phase 5 was OIT. That's still open. A parallel PS2-dreamcore postprocessing stack landed first because content shipped faster than OIT would have.
+Original Phase 5 was OIT. Basic OIT now landed; cutaway-building + particles still open. A parallel dreamcore look pass (skybox mesh + TOD palette) shipped in parallel — **no EffectComposer postprocessing stack ever landed** (LUT / tonemap / caustics were tracked as "done" but never committed; corrected 2026-04-20).
 
 **Shipped:**
-- [x] Postprocessing pipeline + tonemapping + LUT (PS2 dreamcore phase 1)
-- [x] Water caustics shader (PS2 dreamcore phase 2)
-- [x] Dusk/night TOD palette tuning (PS2 dreamcore phase 3)
-- [x] Dreamcore skybox + stars (PS2 dreamcore phase 4)
+- [x] Dreamcore skybox mesh + stars (scene-object, not postprocessing)
+- [x] Dusk/night TOD palette tuning (`timeOfDay.js`)
 - [x] Drop shadows: unified blob system for cows / items / trees / boulders / bushes
 - [x] Sun directional shadow landed then **removed globally** (perf + art direction)
 - [x] Torch shadow drop + pool shrink
 - [x] Frustum culling on instancers + `computeBoundingSphere` on InstancedMesh updates
+- [x] OIT: vendor [stevinz/three-wboit](https://github.com/stevinz/three-wboit) into `src/render/wboit/`
+- [x] OIT: wire WboitPass into `renderFrame.js` (toggle via `?noOit`, smoke test via `?oitTest`)
 
 **Still open:**
-- [ ] Fork [stevinz/three-wboit](https://github.com/stevinz/three-wboit) into `src/render/wboit/`
-- [ ] Wire OIT as discrete render pass; verify on 10 overlapping transparent cubes
+- [ ] EffectComposer postprocessing stack: tonemap + LUT + water caustics (previously claimed shipped; actually not started)
 - [ ] Cutaway building view (camera below roof → walls go semi-transparent)
 - [ ] OIT particle system (smoke / dust)
 

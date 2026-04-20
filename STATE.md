@@ -12,7 +12,7 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 
 **Perf headline (2026-04-13 bench, still representative):** 1000 cows at avg **6.2 ms/tick** on a 128×128 grid — ~5.4× real-time headroom at 30 Hz. Brain hot-path is now the dirty-flag gated `systems/cow.js`; the old O(N²) neighbor sweep in `cowFollowPath` is still the dominant cost above 1500 cows.
 
-**Since the last STATE snapshot (2026-04-13):** ~380 commits. Full phase 4 + phase 6 landed. Phase 5 shipped a PS2-dreamcore postprocessing stack (LUT / caustics / TOD / skybox) instead of OIT; OIT remains open.
+**Since the last STATE snapshot (2026-04-13):** ~380 commits. Full phase 4 + phase 6 landed. Phase 5 now has basic OIT landed (vendored `stevinz/three-wboit` wired as a render-pass wrapper, URL toggles `?noOit` / `?oitTest`). Dreamcore skybox + TOD palette shipped — the previously-claimed EffectComposer postprocessing stack (LUT / tonemap / caustics) was **never actually committed**; corrected here.
 
 ---
 
@@ -25,7 +25,7 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 | 2 — World, terrain, camera | ✅ | Atlas-baked tile tops, per-tile mutation API, z-levels + ramps, chunked terrain, RTS + cowCam cameras, gzip save at schema **v36** (37-step migration chain). |
 | 3 — First cow | ✅ | Pathfinding + Brain + Wander + nametag sprites + click-select. |
 | 4 — Job ecosystem | ✅ | Chop / cut / haul / mine / till / plant / harvest / cook / smelt / paint / build / deconstruct. Stockpile zones + farm zones + bills + work tab. Stations: stove, furnace, easel, bed, torch, wall (4-quarter partial), door, floor, roof (w/ material options), stair. |
-| 5 — Rendering polish | 🛠 | PS2 dreamcore shipped (phases 1–4). OIT (ARCHITECTURE.md §2) not started. |
+| 5 — Rendering polish | 🛠 | OIT vendored (`three-wboit`) + wired via `?oitTest` / `?noOit`. Dreamcore skybox mesh + TOD palette shipped. EffectComposer stack (tonemap / LUT / caustics) — previously claimed shipped, actually never committed. Cutaway-wall + particles still open. |
 | 6 — Colony feel | ✅ | Day/night, sleep, drafting, speed (1/2/3/6×) + pause (Space). Mood-lite via skills + traits + backstories + identity + social/chitchat. |
 | 7 — Tier 1 dedicated server | ⏳ | Not started. |
 | 8 — Tier 3 encounters | ⏳ | Not started. |
@@ -54,7 +54,7 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 - **Skills** (`skills.js`) — XP-backed, 0–20 levels, awarded from work systems.
 - **Identity / traits / backstories** (`identity.js`, `traits.js`, `backstories.js`) — seeded on spawn; every backstory tagged w/ skill hints.
 - **Social / chitchat** (`chitchat.js`) — topic pool for the social system.
-- **Time of day** (`timeOfDay.js`) — tick-driven TOD curve feeding the dreamcore palette.
+- **Time of day** (`timeOfDay.js`) — tick-driven TOD curve feeding sun / sky / hemi colors.
 - **Weather** stubs (`weather.js`) — not yet driving anything.
 
 ### Simulation (`src/sim/` + `src/systems/` + `src/jobs/`)
@@ -71,7 +71,8 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 - InstancedMesh for cows, items (tiered GLBs — wood / stone / coal / copper_ore / corn / carrot / potato), trees (pine + maple GLBs), boulders (3 shape variants × material tint w/ embedded ore chunks), bushes (crossed-quad billboards).
 - Atlas-baked tile tops w/ per-tile UV offset, chunked for frustum culling.
 - Drop shadows: unified blob decal system for cows + items + trees + boulders + bushes.
-- Postprocessing pipeline: tonemap + LUT + water caustics + dreamcore skybox palette.
+- Dreamcore skybox mesh + stars + sun/moon discs positioned each frame to follow the camera.
+- OIT render wrapper (`wboitRenderer.js`) around the vendored `WboitPass` — opaque + sorted-transparent + accumulation + revealage + composite. Toggle via `?noOit`; smoke test via `?oitTest` (spawns 10 overlapping `MeshWboitMaterial` cubes).
 - Sun directional shadow was added and then **removed globally** (perf + art direction).
 - Pooled torch lights only; furnace PointLight cut; decorative mesh castShadow disabled.
 - RTS camera + first-person cowCam + smoothed focus mode.
@@ -153,7 +154,8 @@ A 3D cow colony sim running on a hand-rolled archetype ECS + three.js. Single-pl
 - Install / uninstall round-trip for furnace / easel / torch + wallart info panel — **paused 2026-04-15**.
 
 ### Next shelf
-- OIT fork + cutaway building view (Phase 5 proper).
+- OIT cutaway building view + OIT particle system (Phase 5 continuation; vendor + wire shipped 2026-04-20).
+- EffectComposer postprocessing (tonemap / LUT / water caustics) — re-opened after PLAN audit.
 - Wire AudioGen / Stable Audio SFX output into the game.
 - Phase 7 (dedicated server) scoping.
 

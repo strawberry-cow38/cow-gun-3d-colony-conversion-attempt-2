@@ -36,6 +36,7 @@ function speedIcon(speed) {
  *   renderer: import('three').WebGLRenderer,
  *   scene: import('three').Scene,
  *   camera: import('three').PerspectiveCamera,
+ *   wboit: { render: () => void } | null,
  *   sun: import('three').DirectionalLight,
  *   sky: import('three').Object3D,
  *   rts: import('../render/rtsCamera.js').RtsCamera,
@@ -78,6 +79,7 @@ export function createRenderFrame({
   renderer,
   scene,
   camera,
+  wboit,
   sun,
   sky,
   rts,
@@ -340,7 +342,11 @@ export function createRenderFrame({
     // can put the camera outside the sky — the purple scene.background stays
     // hidden regardless of camera distance from the world origin.
     sky.position.copy(camera.position);
-    renderer.render(scene, camera);
+    if (wboit) {
+      wboit.render();
+    } else {
+      renderer.render(scene, camera);
+    }
     renderFrameCount++;
     if (now - renderFpsSampleStart >= 500) {
       measuredFps = (renderFrameCount * 1000) / (now - renderFpsSampleStart);

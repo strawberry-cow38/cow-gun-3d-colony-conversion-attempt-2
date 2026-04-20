@@ -49,6 +49,8 @@ import { StockpileSelector } from './render/stockpileSelector.js';
 import { createStressInstancer } from './render/stressInstancer.js';
 import { buildTileMesh, buildWaterSurface } from './render/tileMesh.js';
 import { WallArtSelector } from './render/wallArtSelector.js';
+import { createWboitRenderer } from './render/wboitRenderer.js';
+import { spawnOitSmokeTest } from './render/wboitSmoke.js';
 import { createWorkTab } from './render/workTab.js';
 import { TICKS_PER_SIM_HOUR, dayFractionOfTick } from './sim/calendar.js';
 import { SimLoop } from './sim/loop.js';
@@ -201,6 +203,14 @@ spawnInitialCows(world, tileGrid, cowCount);
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
 const { renderer, scene, camera, sun, hemi, sky, sunDisc, moonDisc } = createScene(canvas);
+// Weighted-blended OIT wrapper — replaces plain renderer.render(scene,camera).
+// Toggled via URL ?noOit for side-by-side comparison when debugging.
+const wboit = new URLSearchParams(location.search).has('noOit')
+  ? null
+  : createWboitRenderer(renderer, scene, camera);
+if (new URLSearchParams(location.search).has('oitTest')) {
+  spawnOitSmokeTest(scene);
+}
 const audio = createAudio({ camera });
 const timeOfDay = createTimeOfDay({
   sun,
@@ -1164,6 +1174,7 @@ const { render, getFps } = createRenderFrame({
   renderer,
   scene,
   camera,
+  wboit,
   sun,
   sky,
   rts,
