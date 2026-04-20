@@ -490,8 +490,10 @@ export class BuildDesignator {
     const zLift = activeZ * LAYER_HEIGHT;
     if (isStove) {
       const footprint = stoveFootprintTiles({ i, j }, this.currentFacing);
+      const anchorElev = layer.getElevation(i, j);
       for (const t of footprint) {
         if (!layer.inBounds(t.i, t.j)) return false;
+        if (Math.abs(layer.getElevation(t.i, t.j) - anchorElev) > TERRAIN_STEP * 0.5) return false;
         if (layer.isBlocked(t.i, t.j)) return false;
         if (layer.isDoor(t.i, t.j)) return false;
         if (layer.isTorch(t.i, t.j)) return false;
@@ -501,6 +503,7 @@ export class BuildDesignator {
           return false;
         }
       }
+      if (this.#footprintHasItem(footprint, activeZ)) return false;
       // Reserve the flanking footprint tiles immediately so no cow wanders
       // (or gets picked as a build stand-tile) onto a tile that's about to
       // be blocked when the build completes. The anchor stays walkable since
@@ -536,8 +539,12 @@ export class BuildDesignator {
       const bottomLayer = this.tileWorld?.layers[bottomZ] ?? this.tileGrid;
       const topLayer = this.tileWorld?.layers[bottomZ + 1] ?? null;
       const footprint = stairFootprintTiles({ i, j }, this.currentFacing);
+      const anchorElev = bottomLayer.getElevation(i, j);
       for (const t of footprint) {
         if (!bottomLayer.inBounds(t.i, t.j)) return false;
+        if (Math.abs(bottomLayer.getElevation(t.i, t.j) - anchorElev) > TERRAIN_STEP * 0.5) {
+          return false;
+        }
         if (bottomLayer.isBlocked(t.i, t.j)) return false;
         if (bottomLayer.isDoor(t.i, t.j)) return false;
         if (bottomLayer.isTorch(t.i, t.j)) return false;
@@ -545,6 +552,7 @@ export class BuildDesignator {
         if (bottomLayer.isRamp(t.i, t.j)) return false;
         if (this.#findSiteAt(t.i, t.j, (k) => k !== 'roof', bottomZ) !== null) return false;
       }
+      if (this.#footprintHasItem(footprint, bottomZ)) return false;
       // Upper-level stairs need a floor / wall-top on every footprint tile to
       // actually stand on — otherwise the ramp would hang in the air above the
       // ground layer. Support mirrors the pathfinder's z>0 passable rule.
@@ -583,8 +591,10 @@ export class BuildDesignator {
     const isBed = kind === 'bed';
     if (isBed) {
       const footprint = bedFootprintTiles({ i, j }, this.currentFacing);
+      const anchorElev = layer.getElevation(i, j);
       for (const t of footprint) {
         if (!layer.inBounds(t.i, t.j)) return false;
+        if (Math.abs(layer.getElevation(t.i, t.j) - anchorElev) > TERRAIN_STEP * 0.5) return false;
         if (layer.isBlocked(t.i, t.j)) return false;
         if (layer.isDoor(t.i, t.j)) return false;
         if (layer.isTorch(t.i, t.j)) return false;
@@ -594,6 +604,7 @@ export class BuildDesignator {
           return false;
         }
       }
+      if (this.#footprintHasItem(footprint, activeZ)) return false;
       // Beds stay walkable (cows need to lie on them), so no blockTile here.
       const w = tileToWorld(i, j, this.tileGrid.W, this.tileGrid.H);
       this.world.spawn({
@@ -762,6 +773,26 @@ export class BuildDesignator {
       Position: { x: w.x, y, z: w.z },
     });
     return true;
+  }
+
+  /**
+   * Reject multi-tile placement if an item stack sits on any footprint tile.
+   * Items don't set TileGrid.occupancy, so isBlocked misses them — scan the
+   * ECS directly. Matches the active blueprint layer; items live at their
+   * TileAnchor.z (defaults to 0 at spawn).
+   *
+   * @param {Array<{i:number,j:number}>} footprint
+   * @param {number} z
+   */
+  #footprintHasItem(footprint, z) {
+    for (const { components } of this.world.query(['Item', 'TileAnchor'])) {
+      const a = components.TileAnchor;
+      if ((a.z | 0) !== z) continue;
+      for (const t of footprint) {
+        if (a.i === t.i && a.j === t.j) return true;
+      }
+    }
+    return false;
   }
 
   /**
